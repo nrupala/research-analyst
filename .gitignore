@@ -1,0 +1,56 @@
+# Research Analyst — .gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# Cache and output (runtime generated)
+.cache/
+output/
+*.log
+
+# Environment files (secrets)
+.env
+.env.local
+.env.production
+
+# Docker
+docker-compose.override.yml
+
+# Capacitor / mobile builds
+android/
+ios/
+node_modules/
+package-lock.json
+www/
+
+# OS
+*.bak
+*.tmp
