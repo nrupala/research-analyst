@@ -1,0 +1,23 @@
+# Research Analyst - Cloudflare Worker API Proxy
+# Routes /api/* from Cloudflare Pages to the Python backend on Fly.io
+#
+# Deploy: cd workers/api-proxy && npx wrangler deploy
+# Docs: https://developers.cloudflare.com/workers/wrangler/configuration/
+
+name = "ra-api-proxy"
+main = "src/index.js"
+compatibility_date = "2024-09-01"
+
+[vars]
+# Primary backend (Fly.io)
+BACKEND_PRIMARY = "https://research-analyst.fly.dev"
+# Backup backend (Render)
+BACKEND_FALLBACK = "https://research-analyst.onrender.com"
+# Failover timeout (ms) - if primary doesn't respond in 10s, try fallback
+FAILOVER_TIMEOUT = "10000"
+
+# Routes: attach to your Pages custom domain
+# Uncomment and set your domain after Pages deploy
+# [[routes]]
+# pattern = "ra.devinfo.dev/api/*"
+# zone_name = "devinfo.dev"
