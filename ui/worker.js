@@ -1,114 +1,62 @@
-/**
- * Research Analyst - Markdown Web Worker
- * Module: ui/worker.js | Version: 0.1.0 | Updated: 2026-05-15
- *
- * Offloads Markdown-to-HTML conversion to a background thread.
- * Prevents UI jank on mobile devices when rendering large reports.
- *
- * Protocol:
- *   Main thread sends:  { id: number, markdown: string }
- *   Worker responds:    { id: number, html: string, parseTimeMs: number }
- */
-
 "use strict";
 
-self.addEventListener("message", function(e) {
-    var data = e.data;
-    var id = data.id;
-    var markdown = data.markdown || "";
+// Research Analyst - Markdown Web Worker v0.1.0
+// Offloads MD-to-HTML to background thread
 
+self.addEventListener("message", function (e) {
+    var id = e.data.id;
+    var md = e.data.markdown || "";
     var start = performance.now();
-    var html = markdownToHTML(markdown);
-    var elapsed = performance.now() - start;
-
-    self.postMessage({
-        id: id,
-        html: html,
-        parseTimeMs: Math.round(elapsed * 100) / 100
-    });
+    var html = mdToHTML(md);
+    self.postMessage({ id: id, html: html, parseTimeMs: Math.round((performance.now() - start) * 100) / 100 });
 });
 
-/**
- * Lightweight Markdown to HTML converter.
- * Handles: headings, bold, italic, code blocks, inline code, tables,
- * unordered lists, blockquotes, horizontal rules, paragraphs.
- *
- * Security: escapes HTML entities before processing to prevent XSS.
- * Mermaid blocks are preserved as <pre class="mermaid"> for post-processing.
- * Python code blocks get copy buttons for Plotly code.
- */
-function markdownToHTML(md) {
-    var html = md;
+function mdToHTML(md) {
+    var h = md;
+    h = h.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-    // Sanitize: escape HTML entities
-    html = html
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-
-    // Code blocks (``` ... ```)
-    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, function(match, lang, code) {
-        var trimmed = code.trim();
-        if (lang === "mermaid") {
-            return '<div class="mermaid-diagram"><pre class="mermaid">' + trimmed + '</pre></div>';
-        }
-        if (lang === "python") {
-            return '<div class="plotly-code-block"><pre><code class="language-python">' +
-                trimmed + '</code></pre>' +
-                '<button class="btn btn--secondary btn-copy-plotly" onclick="copyToClipboard(this)" type="button">Copy Code</button></div>';
-        }
-        return '<pre><code class="language-' + (lang || "text") + '">' + trimmed + '</code></pre>';
+    h = h.replace(/```(\w*)\n([\s\S]*?)```/g, function (_, lang, code) {
+        var c = code.trim();
+        if (lang === "mermaid") return '<div class="mermaid-diagram"><pre class="mermaid">' + c + '</pre></div>';
+        if (lang === "python") return '<div class="plotly-code-block"><pre><code class="language-python">' + c + '</code></pre><button class="btn btn--secondary btn-copy-plotly" onclick="copyToClipboard(this)" type="button">Copy Code</button></div>';
+        return '<pre><code class="language-' + (lang || "text") + '">' + c + '</code></pre>';
     });
 
-    // Headers
-    html = html.replace(/^#### (.+)$/gm, "<h4>$1</h4>");
-    html = html.replace(/^### (.+)$/gm, "<h3>$1</h3>");
-    html = html.replace(/^## (.+)$/gm, "<h2>$1</h2>");
-    html = html.replace(/^# (.+)$/gm, "<h1>$1</h1>");
+    h = h.replace(/^#### (.+)$/gm, "<h4>$1</h4>");
+    h = h.replace(/^### (.+)$/gm, "<h3>$1</h3>");
+    h = h.replace(/^## (.+)$/gm, "<h2>$1</h2>");
+    h = h.replace(/^# (.+)$/gm, "<h1>$1</h1>");
+    h = h.replace(/^---$/gm, "<hr>");
+    h = h.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    h = h.replace(/\*(.+?)\*/g, "<em>$1</em>");
+    h = h.replace(/`([^`]+)`/g, "<code>$1</code>");
 
-    // Horizontal rules
-    html = html.replace(/^---$/gm, "<hr>");
-
-    // Bold and italic
-    html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-    html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
-
-    // Inline code
-    html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
-
-    // Tables
-    html = html.replace(/^(\|.+\|)\n(\|[\-\|: ]+\|)\n((?:\|.+\|\n?)*)/gm, function(match, header, sep, body) {
-        var ths = header.split("|").filter(function(c) { return c.trim(); })
-            .map(function(c) { return "<th>" + c.trim() + "</th>"; }).join("");
-        var rows = body.trim().split("\n").map(function(row) {
-            var tds = row.split("|").filter(function(c) { return c.trim(); })
-                .map(function(c) { return "<td>" + c.trim() + "</td>"; }).join("");
+    h = h.replace(/^(\|.+\|)\n(\|[-|: ]+\|)\n((?:\|.+\|\n?)*)/gm, function (_, hdr, sep, body) {
+        var ths = hdr.split("|").filter(function (c) { return c.trim(); }).map(function (c) { return "<th>" + c.trim() + "</th>"; }).join("");
+        var rows = body.trim().split("\n").map(function (row) {
+            var tds = row.split("|").filter(function (c) { return c.trim(); }).map(function (c) { return "<td>" + c.trim() + "</td>"; }).join("");
             return "<tr>" + tds + "</tr>";
         }).join("");
         return "<table><thead><tr>" + ths + "</tr></thead><tbody>" + rows + "</tbody></table>";
     });
 
-    // Unordered lists
-    html = html.replace(/^- (.+)$/gm, "<li>$1</li>");
-    html = html.replace(/(<li>.*<\/li>\n?)+/g, function(match) { return "<ul>" + match + "</ul>"; });
+    h = h.replace(/^- (.+)$/gm, "<li>$1</li>");
+    h = h.replace(/(<li>[\s\S]*?<\/li>(?:\n|$))+/g, function (m) { return "<ul>" + m + "</ul>"; });
 
-    // Paragraphs
-    html = html.replace(/\n\n+/g, "</p><p>");
-    html = "<p>" + html + "</p>";
+    h = h.replace(/\n\n+/g, "</p><p>");
+    h = "<p>" + h + "</p>";
+    h = h.replace(/<p>\s*<\/p>/g, "");
+    h = h.replace(/<p>(<h[1-4]>)/g, "$1");
+    h = h.replace(/(<\/h[1-4]>)<\/p>/g, "$1");
+    h = h.replace(/<p>(<hr>)<\/p>/g, "$1");
+    h = h.replace(/<p>(<table>)/g, "$1");
+    h = h.replace(/(<\/table>)<\/p>/g, "$1");
+    h = h.replace(/<p>(<ul>)/g, "$1");
+    h = h.replace(/(<\/ul>)<\/p>/g, "$1");
+    h = h.replace(/<p>(<pre>)/g, "$1");
+    h = h.replace(/(<\/pre>)<\/p>/g, "$1");
+    h = h.replace(/<p>(<div)/g, "$1");
+    h = h.replace(/(<\/div>)<\/p>/g, "$1");
 
-    // Clean up empty paragraphs and misplaced wrapping
-    html = html.replace(/<p>\s*<\/p>/g, "");
-    html = html.replace(/<p>(<h[1-4]>)/g, "$1");
-    html = html.replace(/(<\/h[1-4]>)<\/p>/g, "$1");
-    html = html.replace(/<p>(<hr>)<\/p>/g, "$1");
-    html = html.replace(/<p>(<table>)/g, "$1");
-    html = html.replace(/(<\/table>)<\/p>/g, "$1");
-    html = html.replace(/<p>(<ul>)/g, "$1");
-    html = html.replace(/(<\/ul>)<\/p>/g, "$1");
-    html = html.replace(/<p>(<pre>)/g, "$1");
-    html = html.replace(/(<\/pre>)<\/p>/g, "$1");
-    html = html.replace(/<p>(<div)/g, "$1");
-    html = html.replace(/(<\/div>)<\/p>/g, "$1");
-
-    return html;
+    return h;
 }
