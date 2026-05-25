@@ -1,0 +1,21 @@
+# Research Analyst - Render Blueprint (BACKUP)
+# Deploy: connect GitHub repo at https://dashboard.render.com/blueprints
+# Docs: https://docs.render.com/blueprint-spec
+
+services:
+  - type: web
+    name: research-analyst
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    region: oregon
+    plan: free
+    envVars:
+      - key: RA_SERVER_HOST
+        value: "0.0.0.0"
+      - key: RA_SERVER_PORT
+        value: "8700"
+      - key: RA_DEBUG
+        value: "false"
+    healthCheckPath: /api/health
+    autoDeploy: true
+    branch: main
