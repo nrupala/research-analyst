@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <meta name="description" content="Research Analyst — Institutional-grade equity and ETF research agent">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Research Analyst">
+    <meta name="msapplication-TileColor" content="#0f172a">
+    <meta name="msapplication-TileImage" content="/static/icons/icon-144x144.png">
+
+    <title>Research Analyst</title>
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    <\!-- Icons -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png">
+    <link rel="mask-icon" href="/static/icons/icon-512x512.png" color="#0f172a">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+
+    <!-- Plotly -->
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js" defer></script>
+
+    <!-- Mermaid -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js" defer></script>
+
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Skip nav for a11y -->
+    <a href="#main" class="sr-only">Skip to main content</a>
+
+    <!-- Header -->
+    <header class="header" role="banner">
+        <div class="header__inner">
+            <div class="header__brand">
+                <div class="header__logo" aria-hidden="true">RA</div>
+                <div>
+                    <h1 class="header__title">Research Analyst</h1>
+                    <p class="header__subtitle">Institutional-Grade Equity &amp; ETF Research</p>
+                </div>
+            </div>
+            <nav class="header__nav" aria-label="Primary">
+                <button id="btn-about" class="btn btn--ghost" type="button">About</button>
+                <a href="/api/docs" class="btn btn--ghost" target="_blank" rel="noopener">API Docs</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main id="main" class="main">
+        <!-- Research Form -->
+        <section class="card card--form" aria-label="Research request">
+            <form id="research-form" autocomplete="off" novalidate>
+                <div class="form-row">
+                    <div class="form-group form-group--ticker">
+                        <label for="ticker" class="form-label">Ticker Symbol</label>
+                        <input
+                            type="text"
+                            id="ticker"
+                            name="ticker"
+                            class="form-input"
+                            placeholder="e.g. AAPL, MSFT, SPY"
+                            required
+                            maxlength="10"
+                            pattern="[A-Za-z0-9\.\-]{1,10}"
+                            autocapitalize="characters"
+                            spellcheck="false"
+                            aria-describedby="ticker-help"
+                        >
+                        <small id="ticker-help" class="form-help">Enter an equity or ETF ticker symbol</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="report-type" class="form-label">Report Type</label>
+                        <select id="report-type" name="report_type" class="form-select">
+                            <option value="">Comprehensive (Default)</option>
+                            <option value="long_term">Long-Term</option>
+                            <option value="tactical">Tactical / Near-Term</option>
+                            <option value="all">All Reports</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="timeframe" class="form-label">Timeframe</label>
+                        <select id="timeframe" name="timeframe" class="form-select">
+                            <option value="3M">3 Months</option>
+                            <option value="6M">6 Months</option>
+                            <option value="1Y" selected>1 Year</option>
+                            <option value="3Y">3 Years</option>
+                            <option value="5Y">5 Years</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" id="btn-submit" class="btn btn--primary">
+                        <span id="btn-text">Run Research</span>
+                        <span id="btn-spinner" class="spinner" hidden aria-hidden="true"></span>
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <!-- Status -->
+        <section id="status" class="status" hidden aria-live="polite">
+            <div class="status__bar">
+                <div class="status__progress" id="progress-bar"></div>
+            </div>
+            <p class="status__text" id="status-text">Initializing research pipeline...</p>
+        </section>
+
+        <!-- Error -->
+        <section id="error-panel" class="card card--error" hidden role="alert">
+            <h2 class="error__title">Research Error</h2>
+            <p id="error-message" class="error__message"></p>
+            <button id="btn-retry" class="btn btn--secondary" type="button">Retry</button>
+        </section>
+
+        <!-- Results -->
+        <section id="results" class="results" hidden>
+            <!-- Metadata bar -->
+            <div id="meta-bar" class="meta-bar"></div>
+
+            <!-- Report tabs -->
+            <div id="report-tabs" class="tabs" role="tablist" aria-label="Report types"></div>
+
+            <!-- Report content -->
+            <div id="report-content" class="report" role="tabpanel"></div>
+        </section>
+    </main>
+
+    <!-- About Modal -->
+    <dialog id="about-modal" class="modal" aria-labelledby="about-title">
+        <div class="modal__content">
+            <h2 id="about-title" class="modal__title">About Research Analyst</h2>
+            <p>
+                Research Analyst is an institutional-grade equity and ETF research agent that produces
+                decision-intelligence research comparable to top-tier sell-side and buy-side analysts.
+            </p>
+            <p>
+                It synthesizes fundamentals, technicals, macro context, competitor dynamics, and valuation
+                frameworks into clear, structured 7-step research reports.
+            </p>
+            <h3>Supported Report Types</h3>
+            <ul>
+                <li><strong>Long-Term</strong> — Deep, structural, timeless analysis</li>
+                <li><strong>Tactical</strong> — Short-horizon, market-driven insights</li>
+                <li><strong>Comprehensive</strong> — Hybrid long-term + tactical synthesis</li>
+            </ul>
+            <h3>Data Sources</h3>
+            <ul>
+                <li>SEC EDGAR (filings, XBRL financials)</li>
+                <li>Market data (prices, estimates, institutional holdings)</li>
+                <li>Technical indicators (computed from price data)</li>
+                <li>Macro proxies (Treasury yields, VIX, market indices)</li>
+            </ul>
+            <p class="modal__disclaimer">
+                <strong>Disclaimer:</strong> This tool is for informational and educational purposes only.
+                It is not financial advice, investment advice, or a recommendation to buy or sell any security.
+            </p>
+            <button class="btn btn--secondary" id="btn-close-about" type="button">Close</button>
+        </div>
+    </dialog>
+
+    <!-- Footer -->
+    <footer class="footer" role="contentinfo">
+        <p>Research Analyst v0.1.0 &mdash; For informational and educational purposes only. Not financial advice.</p>
+    </footer>
+
+    <script src="/static/app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,682 @@
+"""Market data provider — price data, fundamentals, and macro indicators.
+
+Design:
+  - Primary source: yfinance (free, no API key, comprehensive)
+  - Optional fallback: Alpha Vantage (keyed)
+  - Disk-based TTL cache to avoid redundant API calls (O(1) lookup via hash key)
+  - All data returned as typed Pydantic models
+  - Thread-safe: yfinance calls wrapped in asyncio.to_thread for non-blocking I/O
+  - Input sanitized before any external call
+  - Graceful degradation: missing fields logged, never crash
+"""
+# Module: research_analyst/providers/market_data.py | Version: 0.1.0 | Updated: 2026-05-15
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import json
+import logging
+import re
+import time
+from datetime import date, datetime, timedelta
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+from ..config import settings
+from ..models import (
+    AnalystEstimates,
+    CompanyProfile,
+    Competitor,
+    FinancialStatement,
+    InstitutionalHolder,
+    MacroSnapshot,
+    PriceData,
+    PriceSeries,
+    SecurityType,
+)
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Input validation
+# ---------------------------------------------------------------------------
+_TICKER_RE = re.compile(r"^[A-Z0-9\.\-]{1,10}$")
+
+
+def _sanitize_ticker(ticker: str) -> str:
+    """Validate ticker: 1-10 chars, uppercase alphanumeric + dot/hyphen only."""
+    cleaned = ticker.strip().upper()
+    if not _TICKER_RE.match(cleaned):
+        raise ValueError(f"Invalid ticker: must be 1-10 alphanumeric chars, got '{cleaned}'")
+    return cleaned
+
+
+def _safe_decimal(val: Any) -> Decimal | None:
+    if val is None or (isinstance(val, float) and (np.isnan(val) or np.isinf(val))):
+        return None
+    try:
+        return Decimal(str(val))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
+def _safe_float(val: Any) -> float | None:
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        return None if (np.isnan(f) or np.isinf(f)) else f
+    except (ValueError, TypeError):
+        return None
+
+
+def _safe_int(val: Any) -> int | None:
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        return None if (np.isnan(f) or np.isinf(f)) else int(f)
+    except (ValueError, TypeError):
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Disk cache — avoids hammering yfinance on repeat requests
+# ---------------------------------------------------------------------------
+
+class _DiskCache:
+    """Simple TTL-based disk cache using JSON files.
+
+    Key: SHA-256 hash of (ticker + data_type + params)
+    Value: JSON payload + timestamp
+    Lookup: O(1) via filesystem hash
+    """
+
+    def __init__(self, cache_dir: Path, ttl_seconds: int) -> None:
+        self._dir = cache_dir
+        self._ttl = ttl_seconds
+        self._dir.mkdir(parents=True, exist_ok=True)
+
+    def _key_path(self, key: str) -> Path:
+        h = hashlib.sha256(key.encode()).hexdigest()[:16]
+        return self._dir / f"{h}.json"
+
+    def get(self, key: str) -> Any | None:
+        path = self._key_path(key)
+        if not path.exists():
+            return None
+        try:
+            raw = json.loads(path.read_text())
+            if time.time() - raw.get("ts", 0) > self._ttl:
+                path.unlink(missing_ok=True)
+                return None
+            return raw.get("data")
+        except (json.JSONDecodeError, OSError):
+            path.unlink(missing_ok=True)
+            return None
+
+    def put(self, key: str, data: Any) -> None:
+        path = self._key_path(key)
+        try:
+            path.write_text(json.dumps({"ts": time.time(), "data": data}))
+        except OSError as e:
+            logger.warning("Cache write failed: %s", e)
+
+
+# ---------------------------------------------------------------------------
+# Provider
+# ---------------------------------------------------------------------------
+
+class MarketDataProvider:
+    """Async market data provider backed by yfinance.
+
+    Usage:
+        provider = MarketDataProvider()
+        prices = await provider.get_price_series("AAPL", period="1y")
+        profile = await provider.get_company_profile("AAPL")
+    """
+
+    def __init__(self) -> None:
+        self._cfg = settings.market
+        self._cache = _DiskCache(
+            cache_dir=self._cfg.cache_dir,
+            ttl_seconds=self._cfg.cache_ttl_seconds,
+        )
+
+    # ------------------------------------------------------------------
+    # yfinance wrapper — runs blocking calls in thread pool
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _yf_ticker(ticker: str) -> Any:
+        """Create yfinance Ticker object in thread pool.
+
+        yfinance is synchronous; wrapping in to_thread prevents
+        blocking the event loop.
+        """
+        import yfinance as yf
+        return await asyncio.to_thread(lambda: yf.Ticker(ticker))
+
+    @staticmethod
+    async def _yf_download(
+        ticker: str, period: str = "1y", interval: str = "1d"
+    ) -> pd.DataFrame:
+        """Download OHLCV data via yfinance in thread pool."""
+        import yfinance as yf
+
+        def _dl() -> pd.DataFrame:
+            df = yf.download(
+                ticker, period=period, interval=interval,
+                auto_adjust=False, progress=False, threads=False,
+            )
+            return df
+
+        return await asyncio.to_thread(_dl)
+
+    # ------------------------------------------------------------------
+    # Price data
+    # ------------------------------------------------------------------
+
+    async def get_price_series(
+        self,
+        ticker: str,
+        period: str = "1y",
+        interval: str = "1d",
+    ) -> PriceSeries:
+        """Fetch OHLCV price series.
+
+        Args:
+            ticker: Security ticker.
+            period: yfinance period string (1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, max).
+            interval: Bar interval (1d, 1wk, 1mo).
+
+        Returns:
+            PriceSeries with computed summary stats.
+        """
+        ticker = _sanitize_ticker(ticker)
+
+        cache_key = f"prices:{ticker}:{period}:{interval}"
+        cached = self._cache.get(cache_key)
+        if cached:
+            return PriceSeries.model_validate(cached)
+
+        df = await self._yf_download(ticker, period=period, interval=interval)
+
+        if df.empty:
+            logger.warning("No price data returned for %s (period=%s)", ticker, period)
+            return PriceSeries(
+                ticker=ticker, data=[], period_start=date.today(), period_end=date.today()
+            )
+
+        # Handle multi-level columns from yfinance
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
+        data_points: list[PriceData] = []
+        for idx, row in df.iterrows():
+            dt = idx.date() if hasattr(idx, "date") else idx
+            o = _safe_float(row.get("Open"))
+            h = _safe_float(row.get("High"))
+            l_ = _safe_float(row.get("Low"))
+            c = _safe_float(row.get("Close"))
+            ac = _safe_float(row.get("Adj Close", row.get("Close")))
+            v = _safe_int(row.get("Volume"))
+
+            if c is not None:
+                data_points.append(PriceData(
+                    date=dt,
+                    open=o or c,
+                    high=h or c,
+                    low=l_ or c,
+                    close=c,
+                    adj_close=ac or c,
+                    volume=v or 0,
+                ))
+
+        if not data_points:
+            return PriceSeries(
+                ticker=ticker, data=[], period_start=date.today(), period_end=date.today()
+            )
+
+        # Compute summary stats — O(n) single pass where possible
+        closes = [p.adj_close for p in data_points]
+        volumes = [p.volume for p in data_points]
+        current = closes[-1]
+        high_52w = max(p.high for p in data_points[-252:]) if len(data_points) >= 1 else current
+        low_52w = min(p.low for p in data_points[-252:]) if len(data_points) >= 1 else current
+
+        # Average volumes
+        avg_vol_30 = float(np.mean(volumes[-30:])) if len(volumes) >= 30 else float(np.mean(volumes))
+        avg_vol_90 = float(np.mean(volumes[-90:])) if len(volumes) >= 90 else float(np.mean(volumes))
+
+        # YTD return
+        year_start = date(data_points[-1].date.year, 1, 1)
+        ytd_start_price = next(
+            (p.adj_close for p in data_points if p.date >= year_start), closes[0]
+        )
+        ytd_return = (current - ytd_start_price) / ytd_start_price if ytd_start_price else 0.0
+
+        # 1Y return
+        if len(closes) >= 252:
+            ret_1y = (current - closes[-252]) / closes[-252] if closes[-252] else 0.0
+        elif len(closes) >= 2:
+            ret_1y = (current - closes[0]) / closes[0] if closes[0] else 0.0
+        else:
+            ret_1y = 0.0
+
+        series = PriceSeries(
+            ticker=ticker,
+            data=data_points,
+            period_start=data_points[0].date,
+            period_end=data_points[-1].date,
+            current_price=current,
+            price_52w_high=high_52w,
+            price_52w_low=low_52w,
+            avg_volume_30d=avg_vol_30,
+            avg_volume_90d=avg_vol_90,
+            ytd_return=ytd_return,
+            total_return_1y=ret_1y,
+        )
+
+        self._cache.put(cache_key, series.model_dump(mode="json"))
+        return series
+
+    # ------------------------------------------------------------------
+    # Company profile (from yfinance .info)
+    # ------------------------------------------------------------------
+
+    async def get_company_profile(self, ticker: str) -> CompanyProfile:
+        """Fetch company profile from yfinance.
+
+        This is richer than SEC for market data fields (market cap, EV, etc.)
+        but SEC is authoritative for legal/filing data.
+        """
+        ticker = _sanitize_ticker(ticker)
+
+        cache_key = f"profile:{ticker}"
+        cached = self._cache.get(cache_key)
+        if cached:
+            return CompanyProfile.model_validate(cached)
+
+        yf_ticker = await self._yf_ticker(ticker)
+        info = await asyncio.to_thread(lambda: yf_ticker.info)
+
+        if not info:
+            raise ValueError(f"No data returned from yfinance for '{ticker}'")
+
+        # Determine security type
+        quote_type = info.get("quoteType", "EQUITY").upper()
+        is_etf = quote_type == "ETF"
+
+        profile = CompanyProfile(
+            ticker=ticker,
+            name=info.get("longName") or info.get("shortName") or ticker,
+            security_type=SecurityType.ETF if is_etf else SecurityType.EQUITY,
+            sector=info.get("sector", ""),
+            industry=info.get("industry", ""),
+            market_cap=_safe_decimal(info.get("marketCap")),
+            enterprise_value=_safe_decimal(info.get("enterpriseValue")),
+            employees=_safe_int(info.get("fullTimeEmployees")),
+            country=info.get("country", ""),
+            exchange=info.get("exchange", ""),
+            currency=info.get("currency", "USD"),
+            description=info.get("longBusinessSummary", ""),
+            website=info.get("website", ""),
+        )
+
+        self._cache.put(cache_key, profile.model_dump(mode="json"))
+        return profile
+
+    # ------------------------------------------------------------------
+    # Analyst estimates
+    # ------------------------------------------------------------------
+
+    async def get_analyst_estimates(self, ticker: str) -> AnalystEstimates:
+        """Fetch analyst consensus estimates from yfinance."""
+        ticker = _sanitize_ticker(ticker)
+
+        cache_key = f"estimates:{ticker}"
+        cached = self._cache.get(cache_key)
+        if cached:
+            return AnalystEstimates.model_validate(cached)
+
+        yf_ticker = await self._yf_ticker(ticker)
+        info = await asyncio.to_thread(lambda: yf_ticker.info)
+
+        estimates = AnalystEstimates(
+            target_price_mean=_safe_float(info.get("targetMeanPrice")),
+            target_price_median=_safe_float(info.get("targetMedianPrice")),
+            target_price_high=_safe_float(info.get("targetHighPrice")),
+            target_price_low=_safe_float(info.get("targetLowPrice")),
+            num_analysts=_safe_int(info.get("numberOfAnalystOpinions")) or 0,
+            recommendation_mean=_safe_float(info.get("recommendationMean")),
+            eps_estimate_current_year=_safe_float(info.get("epsCurrentYear")),
+            eps_estimate_next_year=_safe_float(info.get("epsForward")),
+            revenue_estimate_current_year=_safe_decimal(info.get("revenueEstimate")),
+            earnings_growth_5y=_safe_float(info.get("earningsQuarterlyGrowth")),
+        )
+
+        self._cache.put(cache_key, estimates.model_dump(mode="json"))
+        return estimates
+
+    # ------------------------------------------------------------------
+    # Institutional holders
+    # ------------------------------------------------------------------
+
+    async def get_institutional_holders(self, ticker: str) -> list[InstitutionalHolder]:
+        """Fetch top institutional holders."""
+        ticker = _sanitize_ticker(ticker)
+
+        cache_key = f"inst_holders:{ticker}"
+        cached = self._cache.get(cache_key)
+        if cached:
+            return [InstitutionalHolder.model_validate(h) for h in cached]
+
+        yf_ticker = await self._yf_ticker(ticker)
+        try:
+            holders_df = await asyncio.to_thread(lambda: yf_ticker.institutional_holders)
+        except Exception as e:
+            logger.warning("Could not fetch institutional holders for %s: %s", ticker, e)
+            return []
+
+        if holders_df is None or holders_df.empty:
+            return []
+
+        holders: list[InstitutionalHolder] = []
+        for _, row in holders_df.iterrows():
+            holders.append(InstitutionalHolder(
+                holder_name=str(row.get("Holder", "")),
+                shares=_safe_int(row.get("Shares")) or 0,
+                value=_safe_decimal(row.get("Value")),
+                pct_held=_safe_float(row.get("% Out")),
+                date_reported=(
+                    row["Date Reported"].date()
+                    if pd.notna(row.get("Date Reported"))
+                    else None
+                ),
+            ))
+
+        data = [h.model_dump(mode="json") for h in holders]
+        self._cache.put(cache_key, data)
+        return holders
+
+    # ------------------------------------------------------------------
+    # Financials from yfinance (supplement to SEC XBRL)
+    # ------------------------------------------------------------------
+
+    async def get_financials(self, ticker: str) -> list[FinancialStatement]:
+        """Fetch annual financials from yfinance as a supplement/fallback to SEC.
+
+        yfinance provides pre-computed ratios and cleaner data for recent periods.
+        SEC XBRL is authoritative; use this to fill gaps.
+        """
+        ticker = _sanitize_ticker(ticker)
+
+        cache_key = f"yf_financials:{ticker}"
+        cached = self._cache.get(cache_key)
+        if cached:
+            return [FinancialStatement.model_validate(f) for f in cached]
+
+        yf_ticker = await self._yf_ticker(ticker)
+
+        try:
+            income = await asyncio.to_thread(lambda: yf_ticker.financials)
+            balance = await asyncio.to_thread(lambda: yf_ticker.balance_sheet)
+            cashflow = await asyncio.to_thread(lambda: yf_ticker.cashflow)
+        except Exception as e:
+            logger.warning("Could not fetch yfinance financials for %s: %s", ticker, e)
+            return []
+
+        statements: list[FinancialStatement] = []
+
+        if income is not None and not income.empty:
+            for col in income.columns:
+                period_date = col.date() if hasattr(col, "date") else None
+                fy_label = f"FY{period_date.year}" if period_date else str(col)
+
+                # Helper to pull row value safely
+                def _row(df: pd.DataFrame | None, key: str) -> Any:
+                    if df is None or df.empty or key not in df.index:
+                        return None
+                    val = df.loc[key, col] if col in df.columns else None
+                    return val if pd.notna(val) else None
+
+                revenue = _safe_decimal(_row(income, "Total Revenue"))
+                gross_profit = _safe_decimal(_row(income, "Gross Profit"))
+                op_income = _safe_decimal(_row(income, "Operating Income"))
+                ebitda = _safe_decimal(_row(income, "EBITDA"))
+                net_income = _safe_decimal(_row(income, "Net Income"))
+                eps = _safe_float(_row(income, "Diluted EPS"))
+
+                total_assets = _safe_decimal(_row(balance, "Total Assets"))
+                total_liabilities = _safe_decimal(_row(balance, "Total Liabilities Net Minority Interest"))
+                total_equity = _safe_decimal(_row(balance, "Stockholders Equity"))
+                cash = _safe_decimal(_row(balance, "Cash And Cash Equivalents"))
+                total_debt = _safe_decimal(_row(balance, "Total Debt"))
+
+                op_cf = _safe_decimal(_row(cashflow, "Operating Cash Flow"))
+                capex = _safe_decimal(_row(cashflow, "Capital Expenditure"))
+                fcf = _safe_decimal(_row(cashflow, "Free Cash Flow"))
+                divs = _safe_decimal(_row(cashflow, "Cash Dividends Paid"))
+                buybacks = _safe_decimal(_row(cashflow, "Repurchase Of Capital Stock"))
+
+                # Margins
+                gm = float(gross_profit / revenue) if gross_profit and revenue and revenue != 0 else None
+                om = float(op_income / revenue) if op_income and revenue and revenue != 0 else None
+                nm = float(net_income / revenue) if net_income and revenue and revenue != 0 else None
+                em = float(ebitda / revenue) if ebitda and revenue and revenue != 0 else None
+
+                # Ratios
+                roe = float(net_income / total_equity) if net_income and total_equity and total_equity != 0 else None
+                roa = float(net_income / total_assets) if net_income and total_assets and total_assets != 0 else None
+                d_e = float(total_debt / total_equity) if total_debt and total_equity and total_equity != 0 else None
+
+                net_debt = total_debt - cash if total_debt is not None and cash is not None else None
+
+                statements.append(FinancialStatement(
+                    period=fy_label,
+                    period_end_date=period_date,
+                    is_annual=True,
+                    revenue=revenue,
+                    gross_profit=gross_profit,
+                    operating_income=op_income,
+                    ebitda=ebitda,
+                    net_income=net_income,
+                    eps_diluted=eps,
+                    gross_margin=gm,
+                    operating_margin=om,
+                    net_margin=nm,
+                    ebitda_margin=em,
+                    total_assets=total_assets,
+                    total_liabilities=total_liabilities,
+                    total_equity=total_equity,
+                    cash_and_equivalents=cash,
+                    total_debt=total_debt,
+                    net_debt=net_debt,
+                    operating_cash_flow=op_cf,
+                    capex=capex,
+                    free_cash_flow=fcf,
+                    dividends_paid=divs,
+                    share_buybacks=buybacks,
+                    roe=roe,
+                    roa=roa,
+                    debt_to_equity=d_e,
+                ))
+
+        data = [s.model_dump(mode="json") for s in statements]
+        self._cache.put(cache_key, data)
+        return statements
+
+    # ------------------------------------------------------------------
+    # Peer / competitor lookup
+    # ------------------------------------------------------------------
+
+    async def get_sector_peers(self, ticker: str, max_peers: int = 8) -> list[Competitor]:
+        """Discover sector peers using yfinance sector/industry data.
+
+        Strategy:
+          1. Get target's sector + industry from profile
+          2. Use a curated sector-to-ETF mapping to find constituents
+          3. Filter by market cap proximity
+          4. Return top peers sorted by market cap
+
+        This is a heuristic — competitor engine will refine further.
+        """
+        ticker = _sanitize_ticker(ticker)
+
+        profile = await self.get_company_profile(ticker)
+        if not profile.sector:
+            logger.warning("No sector data for %s; cannot discover peers.", ticker)
+            return []
+
+        # Sector ETF mapping for peer discovery
+        sector_etfs: dict[str, str] = {
+            "Technology": "XLK",
+            "Healthcare": "XLV",
+            "Financial Services": "XLF",
+            "Financials": "XLF",
+            "Consumer Cyclical": "XLY",
+            "Consumer Defensive": "XLP",
+            "Communication Services": "XLC",
+            "Industrials": "XLI",
+            "Energy": "XLE",
+            "Utilities": "XLU",
+            "Real Estate": "XLRE",
+            "Basic Materials": "XLB",
+        }
+
+        etf_ticker = sector_etfs.get(profile.sector)
+        if not etf_ticker:
+            logger.info("No sector ETF mapping for '%s'", profile.sector)
+            return []
+
+        try:
+            import yfinance as yf
+            etf = await asyncio.to_thread(lambda: yf.Ticker(etf_ticker))
+            # Get top holdings which serve as sector peers
+            holdings = await asyncio.to_thread(lambda: getattr(etf, "funds_data", None))
+
+            if holdings is None:
+                return []
+
+            top_holdings = await asyncio.to_thread(
+                lambda: holdings.top_holdings if hasattr(holdings, "top_holdings") else pd.DataFrame()
+            )
+
+            if top_holdings is None or (isinstance(top_holdings, pd.DataFrame) and top_holdings.empty):
+                return []
+
+        except Exception as e:
+            logger.warning("Peer discovery via ETF failed for %s: %s", ticker, e)
+            return []
+
+        peers: list[Competitor] = []
+        peer_tickers: list[str] = []
+
+        if isinstance(top_holdings, pd.DataFrame):
+            peer_tickers = [str(idx).strip().upper() for idx in top_holdings.index if str(idx).strip().upper() != ticker]
+        elif isinstance(top_holdings, dict):
+            peer_tickers = [k.strip().upper() for k in top_holdings.keys() if k.strip().upper() != ticker]
+
+        # Fetch peer profiles in parallel — bounded concurrency
+        sem = asyncio.Semaphore(4)
+
+        async def _fetch_peer(pt: str) -> Competitor | None:
+            async with sem:
+                try:
+                    pp = await self.get_company_profile(pt)
+                    info = (await self._yf_ticker(pt))
+                    yf_info = await asyncio.to_thread(lambda: info.info)
+
+                    return Competitor(
+                        ticker=pt,
+                        name=pp.name,
+                        market_cap=pp.market_cap,
+                        revenue=_safe_decimal(yf_info.get("totalRevenue")),
+                        gross_margin=_safe_float(yf_info.get("grossMargins")),
+                        operating_margin=_safe_float(yf_info.get("operatingMargins")),
+                        pe_ratio=_safe_float(yf_info.get("trailingPE")),
+                        ev_ebitda=_safe_float(yf_info.get("enterpriseToEbitda")),
+                        revenue_growth_yoy=_safe_float(yf_info.get("revenueGrowth")),
+                        roe=_safe_float(yf_info.get("returnOnEquity")),
+                        debt_to_equity=_safe_float(yf_info.get("debtToEquity")),
+                    )
+                except Exception as e:
+                    logger.debug("Could not fetch peer %s: %s", pt, e)
+                    return None
+
+        tasks = [_fetch_peer(pt) for pt in peer_tickers[:max_peers * 2]]
+        results = await asyncio.gather(*tasks)
+
+        for r in results:
+            if r is not None and len(peers) < max_peers:
+                peers.append(r)
+
+        # Sort by market cap descending
+        peers.sort(key=lambda p: float(p.market_cap or 0), reverse=True)
+        return peers[:max_peers]
+
+    # ------------------------------------------------------------------
+    # Macro snapshot
+    # ------------------------------------------------------------------
+
+    async def get_macro_snapshot(self) -> MacroSnapshot:
+        """Fetch current macro environment data.
+
+        Uses market ETFs/indices as proxies:
+          - ^TNX: 10Y Treasury yield
+          - ^IRX: 13-week T-Bill (proxy for short rates)
+          - ^VIX: Volatility index
+          - ^GSPC: S&P 500 for market valuation
+
+        This is supplementary — FRED API would provide official data.
+        """
+        cache_key = "macro_snapshot"
+        cached = self._cache.get(cache_key)
+        if cached:
+            return MacroSnapshot.model_validate(cached)
+
+        snapshot = MacroSnapshot(as_of_date=date.today())
+
+        # Fetch macro tickers in parallel
+        macro_tickers = {
+            "^TNX": "us_10y_yield",
+            "^VIX": "vix",
+        }
+
+        async def _fetch_macro(symbol: str, field: str) -> tuple[str, float | None]:
+            try:
+                series = await self.get_price_series(symbol.replace("^", "%5E"), period="5d")
+                if series.data:
+                    return field, series.current_price
+            except Exception as e:
+                logger.debug("Macro fetch failed for %s: %s", symbol, e)
+            return field, None
+
+        # Note: yfinance handles ^-prefixed symbols directly
+        try:
+            import yfinance as yf
+
+            for symbol, field in macro_tickers.items():
+                try:
+                    tk = await asyncio.to_thread(lambda s=symbol: yf.Ticker(s))
+                    hist = await asyncio.to_thread(lambda t=tk: t.history(period="5d"))
+                    if hist is not None and not hist.empty:
+                        val = _safe_float(hist["Close"].iloc[-1])
+                        if field == "us_10y_yield" and val is not None:
+                            snapshot.us_10y_yield = val / 100.0 if val > 1 else val
+                        elif field == "vix":
+                            snapshot.vix = val
+                except Exception as e:
+                    logger.debug("Macro ticker %s failed: %s", symbol, e)
+
+        except ImportError:
+            logger.warning("yfinance not available for macro data")
+
+        self._cache.put(cache_key, snapshot.model_dump(mode="json"))
+        return snapshot

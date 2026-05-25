@@ -1,0 +1,37 @@
+{
+  "name": "research-analyst",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Research Analyst - Institutional-grade equity and ETF research agent",
+  "author": "Nrupal Akolkar <nrupalakolkar@gmail.com>",
+  "license": "AGPL-3.0",
+  "scripts": {
+    "cap:init": "npx cap init 'Research Analyst' com.research.analyst --web-dir ui",
+    "cap:add:android": "npx cap add android",
+    "cap:add:ios": "npx cap add ios",
+    "cap:sync": "npx cap sync",
+    "cap:sync:android": "npx cap sync android",
+    "cap:sync:ios": "npx cap sync ios",
+    "cap:open:android": "npx cap open android",
+    "cap:open:ios": "npx cap open ios",
+    "apk:debug": "cd android && ./gradlew assembleDebug",
+    "apk:release": "cd android && ./gradlew assembleRelease",
+    "apk:bundle": "cd android && ./gradlew bundleRelease",
+    "clean": "rm -rf android/app/build ios/App/build node_modules/.cache"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/app": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/ios": "^6.0.0",
+    "@capacitor/splash-screen": "^6.0.0",
+    "@capacitor/status-bar": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
