@@ -1,247 +1,120 @@
-/**
- * Research Analyst - Service Worker v0.1.0
- * Module: ui/sw.js | Version: 0.1.0 | Updated: 2026-05-15
- *
- * Strategies:
- *   - Static assets: cache-first (app shell)
- *   - CDN assets: cache-first with network update (stale-while-revalidate)
- *   - API /api/research: network-first with offline fallback from cache
- *   - API /api/health: network-only
- *
- * Security:
- *   - Only caches same-origin + whitelisted CDN hosts
- *   - Research data cached per-ticker with 1-hour TTL
- *   - Cache versioned; stale caches purged on update
- *   - Max cache size enforced (50 research entries)
- */
-
 "use strict";
 
-const CACHE_VERSION = "ra-v1";
-const STATIC_CACHE = CACHE_VERSION + "-static";
-const DATA_CACHE = CACHE_VERSION + "-data";
-const CDN_CACHE = CACHE_VERSION + "-cdn";
+// Research Analyst - Service Worker v0.1.0
 
-const DATA_CACHE_MAX_ENTRIES = 50;
-const DATA_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+var CACHE_VERSION = "ra-v1";
+var STATIC_CACHE = CACHE_VERSION + "-static";
+var DATA_CACHE = CACHE_VERSION + "-data";
+var CDN_CACHE = CACHE_VERSION + "-cdn";
+var DATA_MAX = 50;
+var DATA_TTL = 3600000;
 
-const PRECACHE_URLS = [
+var PRECACHE = [
     "/",
-    "/static/style.css",
-    "/static/app.js",
-    "/static/worker.js",
+    "/style.css",
+    "/app.js",
+    "/worker.js",
     "/manifest.json",
-    "/static/icons/icon-192x192.png",
-    "/static/icons/icon-512x512.png",
-    "/static/icons/favicon-32x32.png",
+    "/icons/icon-192x192.png",
+    "/icons/icon-512x512.png",
+    "/icons/favicon-32x32.png"
 ];
 
-const CDN_WHITELIST = [
-    "cdn.plot.ly",
-    "cdn.jsdelivr.net",
-    "fonts.googleapis.com",
-    "fonts.gstatic.com",
-];
+var CDN_HOSTS = ["cdn.plot.ly", "cdn.jsdelivr.net", "fonts.googleapis.com", "fonts.gstatic.com"];
 
-// ============================================================
-// Install - pre-cache app shell
-// ============================================================
-
-self.addEventListener("install", (event) => {
+self.addEventListener("install", function (event) {
     event.waitUntil(
         caches.open(STATIC_CACHE)
-            .then((cache) => cache.addAll(PRECACHE_URLS))
-            .then(() => self.skipWaiting())
+            .then(function (cache) { return cache.addAll(PRECACHE); })
+            .then(function () { return self.skipWaiting(); })
     );
 });
 
-// ============================================================
-// Activate - purge old caches
-// ============================================================
-
-self.addEventListener("activate", (event) => {
-    const keepCaches = new Set([STATIC_CACHE, DATA_CACHE, CDN_CACHE]);
+self.addEventListener("activate", function (event) {
+    var keep = [STATIC_CACHE, DATA_CACHE, CDN_CACHE];
     event.waitUntil(
-        caches.keys().then((keys) =>
-            Promise.all(
-                keys
-                    .filter((key) => \!keepCaches.has(key))
-                    .map((key) => caches.delete(key))
-            )
-        ).then(() => self.clients.claim())
+        caches.keys().then(function (keys) {
+            return Promise.all(keys.filter(function (k) { return keep.indexOf(k) === -1; }).map(function (k) { return caches.delete(k); }));
+        }).then(function () { return self.clients.claim(); })
     );
 });
 
-// ============================================================
-// Fetch - routing by request type
-// ============================================================
+self.addEventListener("fetch", function (event) {
+    var url = new URL(event.request.url);
 
-self.addEventListener("fetch", (event) => {
-    const url = new URL(event.request.url);
-
-    // --- API: research endpoint (network-first with data cache fallback) ---
     if (url.pathname === "/api/research" && event.request.method === "POST") {
-        event.respondWith(networkFirstWithDataCache(event.request));
+        event.respondWith(networkFirstData(event.request));
         return;
     }
-
-    // --- API: other endpoints (network-only) ---
-    if (url.pathname.startsWith("/api/")) {
-        event.respondWith(
-            fetch(event.request).catch(() =>
-                new Response(
-                    JSON.stringify({ error: "offline", detail: "Network unavailable." }),
-                    { status: 503, headers: { "Content-Type": "application/json" } }
-                )
-            )
-        );
+    if (url.pathname.indexOf("/api/") === 0) {
+        event.respondWith(fetch(event.request).catch(function () {
+            return new Response(JSON.stringify({ error: "offline" }), { status: 503, headers: { "Content-Type": "application/json" } });
+        }));
         return;
     }
-
-    // --- CDN assets: stale-while-revalidate ---
-    const isCDN = CDN_WHITELIST.some((host) => url.hostname === host);
+    var isCDN = CDN_HOSTS.some(function (h) { return url.hostname === h; });
     if (isCDN) {
-        event.respondWith(staleWhileRevalidate(event.request, CDN_CACHE));
+        event.respondWith(staleRevalidate(event.request, CDN_CACHE));
         return;
     }
-
-    // --- Same-origin static assets: cache-first ---
     if (url.origin === self.location.origin) {
         event.respondWith(cacheFirst(event.request, STATIC_CACHE));
         return;
     }
-
-    // --- Everything else: network only ---
     event.respondWith(fetch(event.request));
 });
 
-// ============================================================
-// Cache Strategies
-// ============================================================
-
-/**
- * Cache-first: serve from cache, fall back to network.
- * On network success, update the cache for next time.
- */
-async function cacheFirst(request, cacheName) {
-    const cached = await caches.match(request);
-    if (cached) return cached;
-
-    try {
-        const response = await fetch(request);
-        if (response.ok) {
-            const cache = await caches.open(cacheName);
-            cache.put(request, response.clone());
-        }
-        return response;
-    } catch (err) {
-        // Offline and not in cache
-        return new Response("Offline", { status: 503 });
-    }
+function cacheFirst(req, name) {
+    return caches.match(req).then(function (cached) {
+        if (cached) return cached;
+        return fetch(req).then(function (resp) {
+            if (resp.ok) { caches.open(name).then(function (c) { c.put(req, resp.clone()); }); }
+            return resp;
+        }).catch(function () { return new Response("Offline", { status: 503 }); });
+    });
 }
 
-/**
- * Stale-while-revalidate: serve cached immediately,
- * fetch fresh in background to update cache.
- */
-async function staleWhileRevalidate(request, cacheName) {
-    const cache = await caches.open(cacheName);
-    const cached = await cache.match(request);
-
-    const networkPromise = fetch(request).then((response) => {
-        if (response.ok) {
-            cache.put(request, response.clone());
-        }
-        return response;
-    }).catch(() => null);
-
-    return cached || (await networkPromise) || new Response("Offline", { status: 503 });
+function staleRevalidate(req, name) {
+    return caches.open(name).then(function (cache) {
+        return cache.match(req).then(function (cached) {
+            var net = fetch(req).then(function (resp) {
+                if (resp.ok) cache.put(req, resp.clone());
+                return resp;
+            }).catch(function () { return null; });
+            return cached || net.then(function (r) { return r || new Response("Offline", { status: 503 }); });
+        });
+    });
 }
 
-/**
- * Network-first with data cache: try network, cache successful responses,
- * fall back to cached data if offline.
- *
- * Caches POST responses by generating a cache key from the request body.
- * Enforces max entries and TTL to prevent unbounded growth.
- */
-async function networkFirstWithDataCache(request) {
-    const cache = await caches.open(DATA_CACHE);
+function networkFirstData(req) {
+    return caches.open(DATA_CACHE).then(function (cache) {
+        return req.clone().text().then(function (body) {
+            var key;
+            try {
+                var p = JSON.parse(body);
+                key = new Request("/api/research?k=" + encodeURIComponent((p.ticker || "") + "|" + (p.report_type || "") + "|" + (p.timeframe || "")));
+            } catch (e) { key = req; }
 
-    // Generate cache key from request body
-    const body = await request.clone().text();
-    let cacheKey;
-    try {
-        const parsed = JSON.parse(body);
-        // Key by ticker + report_type + timeframe
-        cacheKey = new Request(
-            "/api/research?k=" +
-            encodeURIComponent((parsed.ticker || "") + "|" + (parsed.report_type || "") + "|" + (parsed.timeframe || ""))
-        );
-    } catch (e) {
-        cacheKey = request;
-    }
-
-    try {
-        const response = await fetch(request);
-
-        if (response.ok) {
-            // Clone and add timestamp header for TTL tracking
-            const responseToCache = response.clone();
-            const headers = new Headers(responseToCache.headers);
-            headers.set("x-ra-cached-at", Date.now().toString());
-
-            const cachedResponse = new Response(await responseToCache.blob(), {
-                status: responseToCache.status,
-                statusText: responseToCache.statusText,
-                headers: headers,
+            return fetch(req).then(function (resp) {
+                if (resp.ok) {
+                    resp.clone().blob().then(function (blob) {
+                        var h = new Headers(resp.headers);
+                        h.set("x-ra-ts", String(Date.now()));
+                        cache.put(key, new Response(blob, { status: resp.status, headers: h }));
+                        cache.keys().then(function (ks) {
+                            if (ks.length > DATA_MAX) {
+                                for (var i = 0; i < ks.length - DATA_MAX; i++) cache.delete(ks[i]);
+                            }
+                        });
+                    });
+                }
+                return resp;
+            }).catch(function () {
+                return cache.match(key).then(function (c) {
+                    if (c) return c;
+                    return new Response(JSON.stringify({ error: "offline", detail: "No cached data for this ticker." }), { status: 503, headers: { "Content-Type": "application/json" } });
+                });
             });
-
-            await cache.put(cacheKey, cachedResponse);
-            await enforceMaxEntries(cache, DATA_CACHE_MAX_ENTRIES);
-        }
-
-        return response;
-
-    } catch (err) {
-        // Offline - try cache
-        const cached = await cache.match(cacheKey);
-        if (cached) {
-            // Check TTL
-            const cachedAt = parseInt(cached.headers.get("x-ra-cached-at") || "0", 10);
-            if (Date.now() - cachedAt < DATA_CACHE_TTL_MS) {
-                return cached;
-            }
-            // Expired but return anyway with warning header
-            const headers = new Headers(cached.headers);
-            headers.set("x-ra-stale", "true");
-            return new Response(cached.body, {
-                status: cached.status,
-                statusText: cached.statusText,
-                headers: headers,
-            });
-        }
-
-        return new Response(
-            JSON.stringify({
-                error: "offline",
-                detail: "Network unavailable and no cached data for this ticker.",
-            }),
-            { status: 503, headers: { "Content-Type": "application/json" } }
-        );
-    }
-}
-
-/**
- * Enforce maximum cache entries (LRU eviction by insertion order).
- * Cache API doesn't expose timestamps, so we evict oldest keys first.
- */
-async function enforceMaxEntries(cache, maxEntries) {
-    const keys = await cache.keys();
-    if (keys.length > maxEntries) {
-        const toDelete = keys.length - maxEntries;
-        for (let i = 0; i < toDelete; i++) {
-            await cache.delete(keys[i]);
-        }
-    }
+        });
+    });
 }
