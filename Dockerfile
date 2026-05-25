@@ -1,9 +1,9 @@
 # ============================================================
-# Research Analyst — Multi-stage production Docker build
+# Research Analyst - Multi-stage production Docker build
 #
 # Stage 1: Install Python dependencies (cached layer)
-# Stage 2: Copy application code + UI assets
-# Result:  Minimal image, no dev deps, non-root user
+# Stage 2: Copy app code, reinstall package, run
+# Result:  Minimal image, non-root user, working entry point
 #
 # Build:   docker build -t research-analyst .
 # Run:     docker run -p 8700:8700 research-analyst
@@ -14,19 +14,34 @@ FROM python:3.11-slim AS deps
 
 WORKDIR /build
 
-# System deps for numpy/scipy wheel building (if needed)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends gcc g++ && \
     rm -rf /var/lib/apt/lists/*
 
+# Install only the dependencies (not the package itself)
+# We extract dependency list from pyproject.toml via pip
 COPY pyproject.toml .
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir .
+    pip install --no-cache-dir \
+    "fastapi>=0.115" \
+    "uvicorn[standard]>=0.30" \
+    "pydantic>=2.7" \
+    "pydantic-settings>=2.3" \
+    "httpx>=0.27" \
+    "yfinance>=0.2.40" \
+    "pandas>=2.2" \
+    "numpy>=1.26" \
+    "scipy>=1.12" \
+    "plotly>=5.22" \
+    "jinja2>=3.1" \
+    "python-dateutil>=2.9" \
+    "aiofiles>=24.1" \
+    "beautifulsoup4>=4.12" \
+    "lxml>=5.2"
 
 # --- Stage 2: Application ---
 FROM python:3.11-slim AS runtime
 
-# Security: non-root user
 RUN groupadd -r analyst && useradd -r -g analyst -d /app -s /sbin/nologin analyst
 
 WORKDIR /app
@@ -40,14 +55,15 @@ COPY research_analyst/ ./research_analyst/
 COPY ui/ ./ui/
 COPY pyproject.toml README.md LICENSE ./
 
+# Install the package itself (creates the console script entry point)
+RUN pip install --no-cache-dir --no-deps -e .
+
 # Create cache and output directories
 RUN mkdir -p /app/.cache/market_data /app/output && \
     chown -R analyst:analyst /app
 
-# Switch to non-root
 USER analyst
 
-# Environment
 ENV RA_SERVER_HOST=0.0.0.0 \
     RA_SERVER_PORT=8700 \
     PYTHONUNBUFFERED=1 \
@@ -55,8 +71,8 @@ ENV RA_SERVER_HOST=0.0.0.0 \
 
 EXPOSE 8700
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8700/api/health')" || exit 1
 
-ENTRYPOINT ["research-analyst"]
-CMD ["serve"]
+# Use uvicorn directly instead of entry point (more reliable in containers)
+CMD ["python", "-m", "uvicorn", "research_analyst.server:app", "--host", "0.0.0.0", "--port", "8700"]
