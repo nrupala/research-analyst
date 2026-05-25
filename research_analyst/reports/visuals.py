@@ -160,37 +160,39 @@ fig.show()
         colors = {"Bull Case": "#16a34a", "Base Case": "#2563eb", "Bear Case": "#dc2626"}
         bar_colors = [colors.get(l, "#6b7280") for l in labels]
 
-        code = f'''import plotly.graph_objects as go
-
-labels = {json.dumps(labels)}
-lows = {json.dumps(lows)}
-highs = {json.dumps(highs)}
-bar_colors = {json.dumps(bar_colors)}
-current_price = {valuation.current_price}
-
-fig = go.Figure()
-
-for i, (label, lo, hi, color) in enumerate(zip(labels, lows, highs, bar_colors)):
-    fig.add_trace(go.Bar(
-        y=[label], x=[hi - lo], base=[lo], orientation="h",
-        name=label, marker_color=color, opacity=0.8,
-        text=[f"${{{lo}:.0f}} - ${{{hi}:.0f}}"], textposition="inside",
-        hovertemplate=f"{{label}}: ${{{lo}:.0f}} - ${{{hi}:.0f}}<extra></extra>",
-    ))
-
-fig.add_vline(x=current_price, line_dash="dash", line_color="black", line_width=2,
-              annotation_text=f"Current: ${{current_price:.0f}}", annotation_position="top")
-
-fig.update_layout(
-    title="Scenario-Based Valuation Range",
-    xaxis_title="Price ($)",
-    template="plotly_white",
-    showlegend=False,
-    height=300,
-    margin=dict(l=120),
-)
-fig.show()
-'''
+        code_lines = [
+            "import plotly.graph_objects as go",
+            "",
+            "labels = " + json.dumps(labels),
+            "lows = " + json.dumps(lows),
+            "highs = " + json.dumps(highs),
+            "bar_colors = " + json.dumps(bar_colors),
+            "current_price = " + str(valuation.current_price),
+            "",
+            "fig = go.Figure()",
+            "",
+            "for i, (label, lo, hi, color) in enumerate(zip(labels, lows, highs, bar_colors)):",
+            "    fig.add_trace(go.Bar(",
+            "        y=[label], x=[hi - lo], base=[lo], orientation=\"h\",",
+            "        name=label, marker_color=color, opacity=0.8,",
+            '        text=[f"${lo:.0f} - ${hi:.0f}"], textposition="inside",',
+            '        hovertemplate=f"{label}: ${lo:.0f} - ${hi:.0f}<extra></extra>",',
+            "    ))",
+            "",
+            "fig.add_vline(x=current_price, line_dash=\"dash\", line_color=\"black\", line_width=2,",
+            '              annotation_text=f"Current: ${current_price:.0f}", annotation_position="top")',
+            "",
+            "fig.update_layout(",
+            '    title="Scenario-Based Valuation Range",',
+            '    xaxis_title="Price ($)",',
+            '    template="plotly_white",',
+            "    showlegend=False,",
+            "    height=300,",
+            "    margin=dict(l=120),",
+            ")",
+            "fig.show()",
+        ]
+        code = "\n".join(code_lines)
         return ReportVisual(
             visual_type="plotly",
             title="Scenario-Based Valuation Range",

@@ -788,6 +788,707 @@ class ReportRenderer:
             content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps,
         ), len(visuals)
 
+
+    # ==================================================================
+    # TACTICAL report step renderers
+    # ==================================================================
+
+    def _render_tactical_step1(self, step, ctx):
+        """Step 1: Current Setup & Near-Term Context."""
+        profile = ctx["profile"]
+        prices = ctx["prices"]
+        technical = ctx.get("technical")
+        parts = []
+        visuals = []
+        assumptions = []
+        gaps = []
+
+        if profile.description:
+            parts.append(profile.description[:300])
+            parts.append("")
+
+        parts.append(f"**Current Price:** ${prices.current_price:.2f}")
+        if prices.price_52w_high > 0:
+            pct_from_high = (prices.current_price - prices.price_52w_high) / prices.price_52w_high
+            parts.append(f"**52-Week Range:** ${prices.price_52w_low:.2f} - ${prices.price_52w_high:.2f} (currently {pct_from_high:.1%} from high)")
+        if prices.ytd_return:
+            parts.append(f"**YTD Return:** {prices.ytd_return:.1%}")
+        if prices.total_return_1y:
+            parts.append(f"**1Y Total Return:** {prices.total_return_1y:.1%}")
+        parts.append("")
+
+        if technical:
+            regime = getattr(technical, "regime", "")
+            score = getattr(technical, "composite_score", 50)
+            parts.append(f"**Technical Regime:** {regime.upper()} (Score: {score:.0f}/100)")
+
+        table = VisualEngine.table_key_metrics(profile, ctx["financials"], prices.current_price,
+            prices.current_price / ctx["financials"][0].eps_diluted if ctx["financials"] and ctx["financials"][0].eps_diluted and ctx["financials"][0].eps_diluted > 0 else None)
+        visuals.append(table)
+
+        return ReportSection(step_number=step.step_number, title=step.title,
+            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), len(visuals)
+
+    def _render_tactical_step2(self, step, ctx):
+        """Step 2: Technical Analysis & Price Structure."""
+        technical = ctx.get("technical")
+        indicators = ctx.get("technical_indicators")
+        prices = ctx["prices"]
+        parts = []
+        visuals = []
+        assumptions = []
+        gaps = []
+
+        if not technical or not indicators:
+            parts.append("**Data Gap:** Technical analysis not available.")
+            gaps.append("Technical indicators could not be computed.")
+            return ReportSection(step_number=step.step_number, title=step.title,
+                content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), 0
+
+        regime = getattr(technical, "regime", "neutral")
+        composite = getattr(technical, "composite_score", 50.0)
+        parts.append(f"**Technical Regime:** {regime.upper()} (Composite Score: {composite:.0f}/100)")
+        parts.append("")
+
+        ascii_dash = VisualEngine.ascii_technical_dashboard(indicators, composite, regime)
+        visuals.append(ascii_dash)
+
+        signals = getattr(technical, "signals", [])
+        if signals:
+            parts.append("### Signal Summary")
+            for sig in signals:
+                icon = "+" if sig.signal == "bullish" else ("-" if sig.signal == "bearish" else "~")
+                parts.append(f"- [{icon}] **{sig.indicator}:** {sig.description}")
+            parts.append("")
+
+        support = getattr(technical, "nearest_support", None)
+        resistance = getattr(technical, "nearest_resistance", None)
+        if support or resistance:
+            parts.append("### Key Levels")
+            if support:
+                dist = getattr(technical, "support_distance_pct", 0)
+                parts.append(f"- Nearest support: **${support:.2f}** ({dist:.1%} below)")
+            if resistance:
+                dist = getattr(technical, "resistance_distance_pct", 0)
+                parts.append(f"- Nearest resistance: **${resistance:.2f}** ({dist:.1%} above)")
+            parts.append("")
+
+        patterns = getattr(technical, "patterns", [])
+        if patterns:
+            parts.append("### Detected Patterns")
+            for p in patterns:
+                parts.append(f"- {p}")
+
+        tech_assumptions = getattr(technical, "assumptions", [])
+        assumptions.extend(tech_assumptions)
+
+        return ReportSection(step_number=step.step_number, title=step.title,
+            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), len(visuals)
+
+    def _render_tactical_step3(self, step, ctx):
+        """Step 3: Macro & Sector Context."""
+        macro = ctx.get("macro")
+        parts = []
+        visuals = []
+        assumptions = []
+        gaps = []
+
+        if not macro:
+            parts.append("**Data Gap:** Macro analysis not available.")
+            gaps.append("Macro data unavailable.")
+            return ReportSection(step_number=step.step_number, title=step.title,
+                content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), 0
+
+        favorability = getattr(macro, "macro_favorability", "neutral")
+        score = getattr(macro, "macro_score", 50.0)
+        parts.append(f"**Macro Favorability:** {favorability.upper()} (Score: {score:.0f}/100)")
+        parts.append("")
+
+        for attr in ["rate_regime", "inflation_regime", "growth_regime", "volatility_regime"]:
+            val = getattr(macro, attr, "unknown")
+            label = attr.replace("_regime", "").replace("_", " ").title()
+            parts.append(f"- {label}: **{val}**")
+        parts.append("")
+
+        implications = getattr(macro, "implications", [])
+        if implications:
+            macro_table = VisualEngine.table_macro_regime(implications)
+            visuals.append(macro_table)
+
+            for impl in implications:
+                effects = getattr(impl, "second_order_effects", [])
+                if effects:
+                    factor = getattr(impl, "factor", "")
+                    parts.append(f"### Near-Term Impact: {factor}")
+                    for e in effects[:2]:
+                        parts.append(f"- {e}")
+                    parts.append("")
+
+        cycle = getattr(macro, "cycle_description", "")
+        if cycle:
+            parts.append(f"### Cycle Context\n{cycle}")
+
+        macro_assumptions = getattr(macro, "assumptions", [])
+        assumptions.extend(macro_assumptions)
+        macro_gaps = getattr(macro, "data_gaps", [])
+        gaps.extend(macro_gaps)
+
+        return ReportSection(step_number=step.step_number, title=step.title,
+            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), len(visuals)
+
+    def _render_tactical_step4(self, step, ctx):
+        """Step 4: Near-Term Fundamental Catalysts."""
+        fundamental = ctx.get("fundamental")
+        financials = ctx["financials"]
+        profile = ctx["profile"]
+        parts = []
+        visuals = []
+        assumptions = []
+        gaps = []
+
+        if not financials:
+            gaps.append("Financial data unavailable.")
+            parts.append("**Data Gap:** No financial data available.")
+            return ReportSection(step_number=step.step_number, title=step.title,
+                content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), 0
+
+        if fundamental:
+            parts.append("### Earnings Trajectory")
+            rev_growth = getattr(fundamental, "revenue_growth_yoy", None)
+            eps_growth = getattr(fundamental, "eps_growth_yoy", None)
+            eq = getattr(fundamental, "earnings_quality_grade", "")
+            if rev_growth is not None:
+                parts.append(f"- Revenue growth (YoY): **{rev_growth:.1%}**")
+            if eps_growth is not None:
+                parts.append(f"- EPS growth (YoY): **{eps_growth:.1%}**")
+            if eq:
+                parts.append(f"- Earnings quality: **{eq}**")
+            parts.append("")
+
+            om_trend = getattr(fundamental, "operating_margin_trend", "")
+            gm_trend = getattr(fundamental, "gross_margin_trend", "")
+            if om_trend or gm_trend:
+                parts.append("### Margin Trajectory")
+                if gm_trend:
+                    parts.append(f"- Gross margin trend: **{gm_trend}**")
+                if om_trend:
+                    parts.append(f"- Operating margin trend: **{om_trend}**")
+                parts.append("")
+
+        # Financial summary table as visual
+        fin_table = VisualEngine.table_financial_summary(financials)
+        visuals.append(fin_table)
+
+        fund_assumptions = getattr(fundamental, "assumptions", []) if fundamental else []
+        assumptions.extend(fund_assumptions)
+
+        return ReportSection(step_number=step.step_number, title=step.title,
+            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), len(visuals)
+
+    def _render_tactical_step5(self, step, ctx):
+        """Step 5: Near-Term Risk Map."""
+        risk_matrix = ctx.get("risk_matrix")
+        parts = []
+        visuals = []
+        gaps = []
+
+        if not risk_matrix or not risk_matrix.risks:
+            gaps.append("Risk matrix not available.")
+            parts.append("**Data Gap:** Risk assessment not available.")
+            return ReportSection(step_number=step.step_number, title=step.title,
+                content="\n".join(parts), visuals=visuals, data_gaps=gaps), 0
+
+        parts.append(f"**Overall Risk Score:** {risk_matrix.overall_risk_score}/10")
+        parts.append(f"**Key Risks:** {risk_matrix.key_risk_summary}")
+        parts.append("")
+
+        # Filter near-term risks
+        from ..enums import RiskDuration
+        near_term = [r for r in risk_matrix.risks if r.timing == RiskDuration.NEAR_TERM]
+        other = [r for r in risk_matrix.risks if r.timing != RiskDuration.NEAR_TERM]
+
+        if near_term:
+            parts.append("### Near-Term Risks (< 6 months)")
+            for r in near_term[:5]:
+                parts.append(f"\n**{r.title}** ({r.probability} probability, {r.impact} impact)")
+                parts.append(f"- {r.description}")
+                if r.monitoring_triggers:
+                    parts.append(f"- Watch for: {'; '.join(r.monitoring_triggers[:2])}")
+            parts.append("")
+
+        if other:
+            parts.append("### Medium/Long-Term Risks")
+            for r in other[:3]:
+                parts.append(f"- **{r.title}:** {r.probability} probability, {r.impact} impact. {r.nature.value.title()}.")
+
+        risk_table = VisualEngine.table_risk_matrix(risk_matrix.risks)
+        visuals.append(risk_table)
+
+        risk_heatmap = VisualEngine.plotly_risk_heatmap(risk_matrix)
+        if risk_heatmap:
+            visuals.append(risk_heatmap)
+
+        return ReportSection(step_number=step.step_number, title=step.title,
+            content="\n".join(parts), visuals=visuals, data_gaps=gaps), len(visuals)
+
+    def _render_tactical_step6(self, step, ctx):
+        """Step 6: Scenario-Based Valuation Range."""
+        valuation = ctx.get("valuation")
+        parts = []
+        visuals = []
+        assumptions = []
+        gaps = []
+
+        if not valuation or not valuation.scenarios:
+            gaps.append("Valuation not available.")
+            parts.append("**Data Gap:** Valuation range not available.")
+            return ReportSection(step_number=step.step_number, title=step.title,
+                content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), 0
+
+        parts.append(f"**Current Price:** ${valuation.current_price:.2f}")
+        parts.append(f"**Methodology:** {valuation.primary_methodology}")
+        parts.append("")
+
+        ascii_chart = VisualEngine.ascii_scenario_chart(valuation)
+        visuals.append(ascii_chart)
+
+        plotly_chart = VisualEngine.plotly_scenario_valuation(valuation)
+        if plotly_chart:
+            visuals.append(plotly_chart)
+
+        for s in valuation.scenarios:
+            parts.append(f"\n**{s.label}:** ${s.implied_price_low:.0f} - ${s.implied_price_high:.0f}")
+            if s.implied_upside_low is not None and s.implied_upside_high is not None:
+                parts.append(f"  Implied move: {s.implied_upside_low:.1%} to {s.implied_upside_high:.1%}")
+            parts.append(f"  {s.narrative}")
+            for a in s.assumptions:
+                assumptions.append(a)
+
+        vp = valuation.variant_perception
+        if vp:
+            parts.append("\n### Variant Perception")
+            parts.append(f"- **Consensus:** {vp.consensus_view}")
+            parts.append(f"- **Variant View:** {vp.variant_view}")
+            parts.append(f"- **Why It Matters:** {vp.why_it_matters}")
+
+        return ReportSection(step_number=step.step_number, title=step.title,
+            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), len(visuals)
+
+    def _render_tactical_step7(self, step, ctx):
+        """Step 7: Tactical Assessment & Positioning Context."""
+        profile = ctx["profile"]
+        technical = ctx.get("technical")
+        macro = ctx.get("macro")
+        fundamental = ctx.get("fundamental")
+        valuation = ctx.get("valuation")
+        risk_matrix = ctx.get("risk_matrix")
+        parts = []
+        visuals = []
+        gaps = []
+
+        favors = []
+        disfavors = []
+
+        # Technical signals
+        if technical:
+            regime = getattr(technical, "regime", "")
+            if regime == "bullish":
+                favors.append("Bullish technical regime with positive momentum.")
+            elif regime == "bearish":
+                disfavors.append("Bearish technical regime with negative momentum.")
+
+            signals = getattr(technical, "signals", [])
+            for sig in signals:
+                if sig.signal == "bullish" and sig.strength == "strong":
+                    favors.append(f"{sig.indicator}: {sig.description}")
+                elif sig.signal == "bearish" and sig.strength == "strong":
+                    disfavors.append(f"{sig.indicator}: {sig.description}")
+
+        # Macro
+        if macro:
+            fav = getattr(macro, "macro_favorability", "")
+            if fav == "favorable":
+                favors.append("Favorable macro environment for the sector.")
+            elif fav == "unfavorable":
+                disfavors.append("Unfavorable macro environment creates headwinds.")
+
+        # Fundamental momentum
+        if fundamental:
+            rev_growth = getattr(fundamental, "revenue_growth_yoy", None)
+            om_trend = getattr(fundamental, "operating_margin_trend", "")
+            if rev_growth and rev_growth > 0.05:
+                favors.append(f"Revenue growing at {rev_growth:.1%} YoY.")
+            elif rev_growth and rev_growth < -0.05:
+                disfavors.append(f"Revenue declining at {rev_growth:.1%} YoY.")
+            if om_trend == "expanding":
+                favors.append("Operating margins expanding.")
+            elif om_trend == "contracting":
+                disfavors.append("Operating margins contracting.")
+
+        # Valuation
+        if valuation and valuation.scenarios:
+            from ..enums import ScenarioType
+            base = next((s for s in valuation.scenarios if s.scenario_type == ScenarioType.BASE), None)
+            if base and base.implied_upside_low is not None and base.implied_upside_high is not None:
+                avg = (base.implied_upside_low + base.implied_upside_high) / 2
+                if avg > 0.10:
+                    favors.append(f"Base case implies {avg:.1%} upside.")
+                elif avg < -0.10:
+                    disfavors.append(f"Base case implies {abs(avg):.1%} downside.")
+
+        parts.append("### Factors That Favor Near-Term Positioning")
+        for f in (favors or ["No strong favorable signals identified."]):
+            parts.append(f"- {f}")
+        parts.append("")
+
+        parts.append("### Factors That Disfavor Near-Term Positioning")
+        for d in (disfavors or ["No strong unfavorable signals identified."]):
+            parts.append(f"- {d}")
+        parts.append("")
+
+        # Risk context
+        if risk_matrix:
+            parts.append(f"### Risk Context")
+            parts.append(f"Overall risk score: **{risk_matrix.overall_risk_score}/10**")
+            parts.append(f"{risk_matrix.key_risk_summary}")
+            parts.append("")
+
+        parts.append("### Monitoring Triggers")
+        parts.append("- Earnings report and guidance revision")
+        parts.append("- Technical support/resistance breaks")
+        parts.append("- Macro regime shift (rate decision, inflation print)")
+        parts.append("- Volume confirmation of price moves")
+
+        mermaid = VisualEngine.mermaid_decision_framework(
+            profile.ticker, favors[:4], disfavors[:4],
+            ["Earnings report", "Technical breakout/breakdown", "Macro shift"]
+        )
+        visuals.append(mermaid)
+
+        return ReportSection(step_number=step.step_number, title=step.title,
+            content="\n".join(parts), visuals=visuals, data_gaps=gaps), len(visuals)
+
+    # ==================================================================
+    # LONG-TERM report step renderers
+    # ==================================================================
+
+    def _render_long_term_step1(self, step, ctx):
+        """Step 1: Business Overview & Structural Position."""
+        profile = ctx["profile"]
+        parts = []
+        visuals = []
+
+        if profile.description:
+            parts.append(profile.description[:500])
+            parts.append("")
+
+        parts.append(f"**Sector:** {profile.sector}")
+        parts.append(f"**Industry:** {profile.industry}")
+        if profile.market_cap:
+            parts.append(f"**Market Cap:** ${float(profile.market_cap) / 1e9:.1f}B")
+        if profile.employees:
+            parts.append(f"**Employees:** {profile.employees:,}")
+        parts.append("")
+
+        biz_model = VisualEngine.mermaid_business_model(profile)
+        visuals.append(biz_model)
+
+        return ReportSection(step_number=step.step_number, title=step.title,
+            content="\n".join(parts), visuals=visuals), len(visuals)
+
+    def _render_long_term_step2(self, step, ctx):
+        """Step 2: Financial Analysis & Quality of Earnings."""
+        financials = ctx["financials"]
+        fundamental = ctx.get("fundamental")
+        profile = ctx["profile"]
+        parts = []
+        visuals = []
+        assumptions = []
+        gaps = []
+
+        if not financials:
+            gaps.append("No financial statements available.")
+            parts.append("**Data Gap:** No financial data available.")
+            return ReportSection(step_number=step.step_number, title=step.title,
+                content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), 0
+
+        fin_table = VisualEngine.table_financial_summary(financials)
+        visuals.append(fin_table)
+
+        plotly_chart = VisualEngine.plotly_financial_trends(financials, profile.ticker)
+        if plotly_chart:
+            visuals.append(plotly_chart)
+
+        if fundamental:
+            parts.append("### Growth")
+            for attr, label in [("revenue_growth_yoy", "Revenue Growth (YoY)"), ("revenue_cagr_3y", "Revenue CAGR (3Y)"), ("revenue_cagr_5y", "Revenue CAGR (5Y)")]:
+                val = getattr(fundamental, attr, None)
+                if val is not None:
+                    parts.append(f"- {label}: **{val:.1%}**")
+            parts.append("")
+
+            parts.append("### Profitability")
+            for attr, label in [("gross_margin_latest", "Gross Margin"), ("operating_margin_latest", "Operating Margin"), ("net_margin_latest", "Net Margin"), ("fcf_margin_latest", "FCF Margin")]:
+                val = getattr(fundamental, attr, None)
+                if val is not None:
+                    trend = getattr(fundamental, attr.replace("_latest", "_trend"), "")
+                    t = f" ({trend})" if trend else ""
+                    parts.append(f"- {label}: **{val:.1%}**{t}")
+            parts.append("")
+
+            parts.append("### Earnings Quality & Balance Sheet")
+            bs = getattr(fundamental, "balance_sheet_grade", "")
+            eq = getattr(fundamental, "earnings_quality_grade", "")
+            nd = getattr(fundamental, "net_debt_to_ebitda", None)
+            fcf_ni = getattr(fundamental, "fcf_to_net_income", None)
+            if bs:
+                parts.append(f"- Balance sheet: **{bs}**")
+            if eq:
+                parts.append(f"- Earnings quality: **{eq}**")
+            if nd is not None:
+                parts.append(f"- Net Debt / EBITDA: **{nd:.1f}x**")
+            if fcf_ni is not None:
+                parts.append(f"- FCF / Net Income: **{fcf_ni:.2f}x**")
+
+            fund_assumptions = getattr(fundamental, "assumptions", [])
+            assumptions.extend(fund_assumptions)
+
+        return ReportSection(step_number=step.step_number, title=step.title,
+            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), len(visuals)
+
+    def _render_long_term_step3(self, step, ctx):
+        """Step 3: Competitive Landscape & Moat Assessment."""
+        competitive = ctx.get("competitive")
+        profile = ctx["profile"]
+        parts = []
+        visuals = []
+        assumptions = []
+        gaps = []
+
+        if not competitive:
+            gaps.append("Competitive analysis not available.")
+            parts.append("**Data Gap:** No peer data available.")
+            return ReportSection(step_number=step.step_number, title=step.title,
+                content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), 0
+
+        landscape = getattr(competitive, "landscape", None)
+        peers = landscape.peers if landscape else []
+
+        if peers:
+            peer_table = VisualEngine.table_peer_comparison(profile.ticker, peers)
+            visuals.append(peer_table)
+
+        summary = getattr(competitive, "positioning_summary", "")
+        if summary:
+            parts.append(summary)
+            parts.append("")
+
+        advantages = getattr(competitive, "competitive_advantages", [])
+        if advantages:
+            parts.append("### Competitive Advantages")
+            for a in advantages:
+                parts.append(f"- {a}")
+            parts.append("")
+
+        disadvantages = getattr(competitive, "competitive_disadvantages", [])
+        if disadvantages:
+            parts.append("### Competitive Disadvantages")
+            for d in disadvantages:
+                parts.append(f"- {d}")
+            parts.append("")
+
+        moat = getattr(competitive, "competitive_moat_indicators", [])
+        if moat:
+            parts.append("### Moat Indicators")
+            for m in moat:
+                parts.append(f"- {m}")
+
+        comp_assumptions = getattr(competitive, "assumptions", [])
+        assumptions.extend(comp_assumptions)
+
+        return ReportSection(step_number=step.step_number, title=step.title,
+            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), len(visuals)
+
+    def _render_long_term_step4(self, step, ctx):
+        """Step 4: Capital Allocation & Shareholder Returns."""
+        fundamental = ctx.get("fundamental")
+        profile = ctx["profile"]
+        parts = []
+        visuals = []
+        gaps = []
+
+        cap = getattr(fundamental, "capital_allocation", None) if fundamental else None
+
+        if not cap:
+            gaps.append("Capital allocation data insufficient.")
+            parts.append("**Data Gap:** Capital allocation analysis requires more complete financial data.")
+            return ReportSection(step_number=step.step_number, title=step.title,
+                content="\n".join(parts), visuals=visuals, data_gaps=gaps), 0
+
+        roic = getattr(cap, "roic", None)
+        wacc = getattr(cap, "wacc", None)
+        spread = getattr(cap, "roic_minus_wacc", None)
+        assessment = getattr(cap, "assessment", "")
+
+        if roic is not None:
+            parts.append(f"- ROIC: **{roic:.1%}**")
+        if wacc is not None:
+            parts.append(f"- WACC: **{wacc:.1%}**")
+        if spread is not None:
+            label = "above" if spread > 0 else "below"
+            parts.append(f"- ROIC vs WACC: **{abs(spread):.1%} {label}** cost of capital")
+        if assessment:
+            parts.append(f"- {assessment}")
+        parts.append("")
+
+        capex_pct = getattr(cap, "capex_pct_of_fcf", None)
+        buyback_pct = getattr(cap, "buyback_pct_of_fcf", None)
+        div_pct = getattr(cap, "dividend_pct_of_fcf", None)
+
+        mermaid = VisualEngine.mermaid_capital_allocation(profile.ticker, capex_pct, buyback_pct, div_pct)
+        visuals.append(mermaid)
+
+        return ReportSection(step_number=step.step_number, title=step.title,
+            content="\n".join(parts), visuals=visuals, data_gaps=gaps), len(visuals)
+
+    def _render_long_term_step5(self, step, ctx):
+        """Step 5: Risk Assessment."""
+        risk_matrix = ctx.get("risk_matrix")
+        parts = []
+        visuals = []
+        gaps = []
+
+        if not risk_matrix or not risk_matrix.risks:
+            gaps.append("Risk matrix not available.")
+            parts.append("**Data Gap:** Risk assessment not available.")
+            return ReportSection(step_number=step.step_number, title=step.title,
+                content="\n".join(parts), visuals=visuals, data_gaps=gaps), 0
+
+        parts.append(f"**Overall Risk Score:** {risk_matrix.overall_risk_score}/10")
+        parts.append(f"**Summary:** {risk_matrix.key_risk_summary}")
+        parts.append("")
+
+        risk_table = VisualEngine.table_risk_matrix(risk_matrix.risks)
+        visuals.append(risk_table)
+
+        risk_heatmap = VisualEngine.plotly_risk_heatmap(risk_matrix)
+        if risk_heatmap:
+            visuals.append(risk_heatmap)
+
+        # Detail top risks with second-order effects
+        for r in risk_matrix.risks[:4]:
+            parts.append(f"\n**{r.title}** ({r.category.value.title()})")
+            parts.append(f"- Probability: {r.probability} | Impact: {r.impact} | Timing: {r.timing.value.replace('_', ' ').title()} | Nature: {r.nature.value.title()}")
+            parts.append(f"- {r.description}")
+            if r.second_order_effects:
+                parts.append(f"- Second-order: {'; '.join(r.second_order_effects[:2])}")
+            if r.mitigants:
+                parts.append(f"- Mitigants: {'; '.join(r.mitigants[:2])}")
+
+        return ReportSection(step_number=step.step_number, title=step.title,
+            content="\n".join(parts), visuals=visuals, data_gaps=gaps), len(visuals)
+
+    def _render_long_term_step6(self, step, ctx):
+        """Step 6: Scenario-Based Valuation Range."""
+        # Identical logic to tactical step 6 - both need valuation
+        return self._render_tactical_step6(step, ctx)
+
+    def _render_long_term_step7(self, step, ctx):
+        """Step 7: Long-Term Thesis & Decision Framework."""
+        profile = ctx["profile"]
+        fundamental = ctx.get("fundamental")
+        competitive = ctx.get("competitive")
+        macro = ctx.get("macro")
+        valuation = ctx.get("valuation")
+        risk_matrix = ctx.get("risk_matrix")
+        parts = []
+        visuals = []
+        gaps = []
+
+        favors = []
+        disfavors = []
+        catalysts = []
+
+        if fundamental:
+            rev_growth = getattr(fundamental, "revenue_growth_yoy", None)
+            bs = getattr(fundamental, "balance_sheet_grade", "")
+            eq = getattr(fundamental, "earnings_quality_grade", "")
+            om_trend = getattr(fundamental, "operating_margin_trend", "")
+
+            if rev_growth and rev_growth > 0.05:
+                favors.append(f"Revenue growing at {rev_growth:.1%} YoY.")
+            elif rev_growth and rev_growth < -0.05:
+                disfavors.append(f"Revenue declining at {rev_growth:.1%} YoY.")
+            if bs == "Strong":
+                favors.append("Strong balance sheet provides durability.")
+            elif bs == "Weak":
+                disfavors.append("Weak balance sheet limits strategic flexibility.")
+            if eq == "High":
+                favors.append("High earnings quality (strong cash conversion).")
+            elif eq == "Low":
+                disfavors.append("Low earnings quality raises concerns.")
+            if om_trend == "expanding":
+                favors.append("Operating margins expanding over time.")
+            elif om_trend == "contracting":
+                disfavors.append("Operating margins contracting.")
+
+        if competitive:
+            moat = getattr(competitive, "competitive_moat_indicators", [])
+            if moat:
+                favors.append(f"Moat indicators: {'; '.join(moat[:2])}")
+            disadv = getattr(competitive, "competitive_disadvantages", [])
+            if len(disadv) >= 3:
+                disfavors.append("Multiple competitive disadvantages vs peers.")
+
+        if macro:
+            fav = getattr(macro, "macro_favorability", "")
+            if fav == "favorable":
+                favors.append("Favorable macro environment.")
+            elif fav == "unfavorable":
+                disfavors.append("Unfavorable macro environment.")
+
+        catalysts.append("New product cycles or market expansion.")
+        catalysts.append("Margin expansion from operating leverage.")
+        catalysts.append("Capital return acceleration (buybacks, dividends).")
+        catalysts.append("Competitive dynamics shift (M&A, market share).")
+
+        parts.append("### Factors That Favor the Long-Term Thesis")
+        for f in (favors or ["No strong favorable factors identified."]):
+            parts.append(f"- {f}")
+        parts.append("")
+
+        parts.append("### Factors That Disfavor the Long-Term Thesis")
+        for d in (disfavors or ["No strong unfavorable factors identified."]):
+            parts.append(f"- {d}")
+        parts.append("")
+
+        parts.append("### Catalysts")
+        for c in catalysts:
+            parts.append(f"- {c}")
+        parts.append("")
+
+        if risk_matrix:
+            parts.append(f"### Risk-Adjusted View")
+            parts.append(f"Overall risk score: **{risk_matrix.overall_risk_score}/10**")
+            parts.append(f"{risk_matrix.key_risk_summary}")
+            parts.append("")
+
+        parts.append("### What to Monitor")
+        parts.append("- Multi-year revenue growth trajectory")
+        parts.append("- Margin sustainability and expansion")
+        parts.append("- Capital allocation decisions (ROIC vs WACC)")
+        parts.append("- Competitive moat durability")
+        parts.append("- Regulatory environment changes")
+
+        mermaid = VisualEngine.mermaid_decision_framework(
+            profile.ticker, favors[:4], disfavors[:4], catalysts[:3]
+        )
+        visuals.append(mermaid)
+
+        return ReportSection(step_number=step.step_number, title=step.title,
+            content="\n".join(parts), visuals=visuals, data_gaps=gaps), len(visuals)
+
+
     # ------------------------------------------------------------------
     # Generic fallback renderer (used for long_term and tactical steps
     # that don't have specific renderers yet)
