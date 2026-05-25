@@ -2,8 +2,8 @@
 # Research Analyst - Multi-stage production Docker build
 #
 # Stage 1: Install Python dependencies (cached layer)
-# Stage 2: Copy app code, reinstall package, run
-# Result:  Minimal image, non-root user, working entry point
+# Stage 2: Copy app code, set PYTHONPATH, run uvicorn directly
+# Result:  Minimal image, non-root user, works on Fly.io + Render + OCI
 #
 # Build:   docker build -t research-analyst .
 # Run:     docker run -p 8700:8700 research-analyst
@@ -18,9 +18,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends gcc g++ && \
     rm -rf /var/lib/apt/lists/*
 
-# Install only the dependencies (not the package itself)
-# We extract dependency list from pyproject.toml via pip
-COPY pyproject.toml .
+# Install all runtime dependencies (no package install, just deps)
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir \
     "fastapi>=0.115" \
@@ -55,16 +53,16 @@ COPY research_analyst/ ./research_analyst/
 COPY ui/ ./ui/
 COPY pyproject.toml README.md LICENSE ./
 
-# Install the package itself (creates the console script entry point)
-RUN pip install --no-cache-dir --no-deps -e .
-
-# Create cache and output directories
+# Create cache and output directories writable by non-root user
 RUN mkdir -p /app/.cache/market_data /app/output && \
     chown -R analyst:analyst /app
 
 USER analyst
 
-ENV RA_SERVER_HOST=0.0.0.0 \
+# PYTHONPATH ensures 'import research_analyst' works from /app
+# No pip install needed - the source is right here
+ENV PYTHONPATH=/app \
+    RA_SERVER_HOST=0.0.0.0 \
     RA_SERVER_PORT=8700 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
@@ -74,5 +72,6 @@ EXPOSE 8700
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8700/api/health')" || exit 1
 
-# Use uvicorn directly instead of entry point (more reliable in containers)
+# Run uvicorn directly - no entry point scripts, no pip install, no editable mode
+# This is the most reliable approach across all hosting platforms
 CMD ["python", "-m", "uvicorn", "research_analyst.server:app", "--host", "0.0.0.0", "--port", "8700"]
