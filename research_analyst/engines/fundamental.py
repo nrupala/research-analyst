@@ -389,17 +389,24 @@ class FundamentalEngine:
         """
         fcf = stmt.free_cash_flow
 
+        # Calculate as % of total capital deployed (not FCF)
+        # This ensures percentages sum to ~100% on the allocation diagram
+        capex_abs = float(abs(stmt.capex)) if stmt.capex is not None else 0.0
+        buyback_abs = float(abs(stmt.share_buybacks)) if stmt.share_buybacks is not None else 0.0
+        div_abs = float(abs(stmt.dividends_paid)) if stmt.dividends_paid is not None else 0.0
+        total_deployed = capex_abs + buyback_abs + div_abs
+
         capex_pct = None
-        if fcf and fcf != 0 and stmt.capex is not None:
-            capex_pct = float(abs(stmt.capex) / abs(fcf))
-
         buyback_pct = None
-        if fcf and fcf != 0 and stmt.share_buybacks is not None:
-            buyback_pct = float(abs(stmt.share_buybacks) / abs(fcf))
-
         div_pct = None
-        if fcf and fcf != 0 and stmt.dividends_paid is not None:
-            div_pct = float(abs(stmt.dividends_paid) / abs(fcf))
+
+        if total_deployed > 0:
+            if stmt.capex is not None and capex_abs > 0:
+                capex_pct = capex_abs / total_deployed
+            if stmt.share_buybacks is not None and buyback_abs > 0:
+                buyback_pct = buyback_abs / total_deployed
+            if stmt.dividends_paid is not None and div_abs > 0:
+                div_pct = div_abs / total_deployed
 
         # ROIC - WACC spread (WACC from config default if not available)
         roic_wacc = None
