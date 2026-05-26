@@ -225,8 +225,27 @@ class ValuationEngine:
             # Current trailing PE
             current_pe = current_price / eps
 
-            # Scenario PE: use comps median if available, else current PE
-            base_pe = pe_comps if pe_comps and pe_comps > 0 else current_pe
+            # Scenario PE: blend own trailing PE with peer median
+            # If the stock trades at a dramatic premium to peers (>2x peer median),
+            # use a weighted blend: 70% own PE + 30% peer median
+            # This prevents high-growth stocks (TSLA, NVDA) from being valued
+            # at commodity-sector multiples
+            if pe_comps and pe_comps > 0:
+                if current_pe > pe_comps * 2:
+                    # High-premium stock: mostly own PE, slight peer gravity
+                    base_pe = current_pe * 0.7 + pe_comps * 0.3
+                    pe_source = f"blended (70% trailing {current_pe:.1f}x + 30% peer median {pe_comps:.1f}x)"
+                elif current_pe < pe_comps * 0.5:
+                    # Deep discount: mostly peer PE, slight own gravity
+                    base_pe = current_pe * 0.3 + pe_comps * 0.7
+                    pe_source = f"blended (30% trailing {current_pe:.1f}x + 70% peer median {pe_comps:.1f}x)"
+                else:
+                    # Reasonably aligned: use peer median
+                    base_pe = pe_comps
+                    pe_source = f"peer median {pe_comps:.1f}x"
+            else:
+                base_pe = current_pe
+                pe_source = f"trailing {current_pe:.1f}x"
             scenario_pe = base_pe * multiple_adj
 
             # Forward EPS estimate: grow by revenue growth + margin change effect
@@ -242,8 +261,7 @@ class ValuationEngine:
             assumptions.append(Assumption(
                 label="P/E Multiple",
                 value=f"{scenario_pe:.1f}x",
-                source=f"Base: {base_pe:.1f}x ({'peer median' if pe_comps else 'trailing'}), "
-                       f"adjusted {multiple_adj:.0%} for {label}",
+                source=f"Base: {base_pe:.1f}x ({pe_source}), adjusted {multiple_adj:.0%} for {label}",
                 confidence="Medium",
             ))
             assumptions.append(Assumption(

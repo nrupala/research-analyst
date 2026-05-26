@@ -552,10 +552,14 @@ class ReportOutput(BaseModel):
 
             for visual in section.visuals:
                 parts.append(f"\n### {visual.title}")
-                if visual.visual_type == "plotly":
-                    parts.append(f"```python\n{visual.content}\n```")
+                if visual.visual_type == "plotly_json":
+                    parts.append('<div class="plotly-chart-data" data-plotly=\'')
+                    parts.append(visual.content)
+                    parts.append("'></div>")
                 elif visual.visual_type == "mermaid":
-                    parts.append(f"```mermaid\n{visual.content}\n```")
+                    parts.append('<div class="mermaid-raw">')
+                    parts.append(visual.content)
+                    parts.append("</div>")
                 elif visual.visual_type == "table":
                     parts.append(visual.content)
                 else:
