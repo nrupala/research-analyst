@@ -304,8 +304,12 @@ class VisualEngine:
     ) -> ReportVisual:
         """Decision tree as raw Mermaid syntax."""
         # Truncate and sanitize text for Mermaid (no special chars)
-        def clean(s: str, maxlen: int = 45) -> str:
-            return s[:maxlen].replace("[", "(").replace("]", ")").replace('"', "'").replace(">", "").replace("<", "")
+        def clean(s: str, maxlen: int = 40) -> str:
+            """Sanitize text for Mermaid node labels. Strip all special chars."""
+            c = s.replace("[", "").replace("]", "").replace("(", "").replace(")", "")
+            c = c.replace('"', "").replace("'", "").replace(">", "").replace("<", "")
+            c = c.replace("&", "and").replace(";", ",").replace("#", "")
+            return c[:maxlen]
 
         lines = [f"graph TD"]
         lines.append(f"    THESIS[{ticker} Investment Thesis]")
