@@ -8,6 +8,21 @@ dom.btnAbout.addEventListener("click",function(){dom.aboutModal.showModal()});
 dom.btnCloseAbout.addEventListener("click",function(){dom.aboutModal.close()});
 dom.aboutModal.addEventListener("click",function(e){if(e.target===dom.aboutModal)dom.aboutModal.close()});
 
+// Contact dialog + form (vanilla, mailto-based)
+if(dom.btnContact)dom.btnContact.addEventListener("click",function(){if(dom.contactModal&&typeof dom.contactModal.showModal==="function"){dom.contactModal.showModal()}else{var el=document.getElementById("contact-section");if(el)el.scrollIntoView({behavior:"smooth"})}});
+if(dom.btnCloseContact)dom.btnCloseContact.addEventListener("click",function(){dom.contactModal.close()});
+if(dom.contactModal)dom.contactModal.addEventListener("click",function(e){if(e.target===dom.contactModal)dom.contactModal.close()});
+if(dom.contactForm)dom.contactForm.addEventListener("submit",function(e){
+    e.preventDefault();
+    var name=document.getElementById("contact-name").value.trim();
+    var email=document.getElementById("contact-email").value.trim();
+    var msg=document.getElementById("contact-message").value.trim();
+    if(!name||!email||!msg)return;
+    var subject=encodeURIComponent("ra.devinfo.dev contact from "+name);
+    var body=encodeURIComponent("From: "+name+" <"+email+">\n\n"+msg);
+    window.location.href="mailto:nrupalakolkar@gmail.com?subject="+subject+"&body="+body;
+});
+
 async function runResearch(){
     var ticker=dom.ticker.value.trim().toUpperCase();
     if(!ticker){dom.ticker.focus();return}
