@@ -3,7 +3,7 @@
 Every piece of data that flows through the system has a typed model here.
 No dicts, no untyped containers, no guessing.
 """
-# Module: research_analyst/models.py | Version: 0.1.0 | Updated: 2026-05-15
+# Module: research_analyst/models.py | Version: 0.1.1 | Updated: 2026-06-02
 
 from __future__ import annotations
 
@@ -349,6 +349,7 @@ class Competitor(BaseModel):
     roic: float | None = None
     debt_to_equity: float | None = None
     free_cash_flow_yield: float | None = None
+    dividend_yield: float | None = None  # trailing, fraction (v0.1.1)
 
 
 class CompetitiveLandscape(BaseModel):
@@ -440,6 +441,8 @@ class ValuationRange(BaseModel):
     def ascii_chart(self) -> str:
         """Generate mandatory ASCII scenario summary."""
         lines: list[str] = []
+        if not self.scenarios:
+            return ""
         max_price = max(
             (s.implied_price_high or 0) for s in self.scenarios
         ) or 1.0
@@ -496,6 +499,109 @@ class CapitalAllocation(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Dividend & Yield (v0.1.1)
+# ---------------------------------------------------------------------------
+
+class DividendPayment(BaseModel):
+    """A single dividend distribution (per-share, in the security's currency)."""
+
+    ex_date: date
+    amount: float
+
+
+class DividendData(BaseModel):
+    """Raw dividend / yield data from the market-data provider.
+
+    The headline yield is computed downstream from dividend_rate / current_price;
+    the info_* fields are cross-checks only, because yfinance has historically
+    shipped ``dividendYield`` as both a fraction (0.025) and a percent (2.5).
+    """
+
+    ticker: str
+    currency: str = "USD"
+    is_etf: bool = False
+    current_price: float | None = None
+
+    # Annualized per-share rates ($/share)
+    dividend_rate: float | None = None            # forward annual
+    trailing_dividend_rate: float | None = None   # trailing 12 months
+
+    # yfinance .info yield fields (raw, un-normalized) — cross-checks only
+    info_dividend_yield: float | None = None
+    info_payout_ratio: float | None = None
+    five_year_avg_yield: float | None = None      # yfinance reports this as a percent
+    etf_ttm_yield: float | None = None            # ETF distribution yield (fraction)
+
+    # Most recent payment metadata
+    ex_dividend_date: date | None = None
+    last_dividend_value: float | None = None
+    last_dividend_date: date | None = None
+
+    # Full per-share history (chronological)
+    history: list[DividendPayment] = Field(default_factory=list)
+
+
+class DividendAnalysis(BaseModel):
+    """Structured dividend & yield assessment (v0.1.1).
+
+    Every figure is computed and carries an explicit assumption. Non-payers get
+    ``pays_dividend=False`` with ``no_dividend_context`` explaining the policy.
+    All yields are stored as fractions (0.025 == 2.5%).
+    """
+
+    ticker: str
+    pays_dividend: bool = False
+    is_etf: bool = False
+    income_label: str = "Dividend"  # "Dividend" or "Distribution" (ETF)
+
+    # Yield
+    current_yield: float | None = None        # forward, fraction
+    trailing_yield: float | None = None       # trailing 12m, fraction
+    five_year_avg_yield: float | None = None  # fraction
+    annual_dividend_rate: float | None = None  # forward $/share
+    ex_dividend_date: date | None = None
+
+    # Growth
+    dividend_growth_1y: float | None = None
+    dividend_growth_3y_cagr: float | None = None
+    dividend_growth_5y_cagr: float | None = None
+
+    # Payout / coverage (trailing basis)
+    payout_ratio_eps: float | None = None     # dividends paid / net income
+    payout_ratio_fcf: float | None = None     # dividends paid / free cash flow
+    eps_coverage: float | None = None         # net income / dividends paid
+    fcf_coverage: float | None = None         # free cash flow / dividends paid
+
+    # Consistency
+    consecutive_increase_years: int = 0
+    had_cut: bool = False
+    years_since_cut: int | None = None
+    paying_years: int = 0
+
+    # Safety
+    safety_score: float | None = None         # 0-100
+    safety_grade: str = ""                     # Very Safe / Safe / Borderline / At Risk / Unsafe
+
+    # Yield context
+    us_10y_yield: float | None = None
+    yield_vs_treasury_spread: float | None = None  # current_yield - 10Y
+    peer_median_yield: float | None = None
+    yield_vs_peers: str = ""                   # "above" / "below" / "in line"
+    attractiveness_rating: str = ""            # Attractive / Fairly Valued / Unattractive / Yield-Trap Risk
+    attractiveness_rationale: str = ""
+
+    # Non-payers
+    no_dividend_context: str = ""
+
+    # Chart support — calendar-year DPS totals (year -> sum of per-share dividends)
+    annual_dividends: dict[str, float] = Field(default_factory=dict)
+
+    # Traceability
+    assumptions: list[Assumption] = Field(default_factory=list)
+    data_gaps: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
 # Report Output
 # ---------------------------------------------------------------------------
 
@@ -531,6 +637,7 @@ class ReportOutput(BaseModel):
     valuation: ValuationRange | None = None
     risk_matrix: RiskMatrix | None = None
     capital_allocation: CapitalAllocation | None = None
+    dividend: DividendAnalysis | None = None
     disclaimer: str = (
         "**Disclaimer:**\n"
         "This report is for informational and educational purposes only. "

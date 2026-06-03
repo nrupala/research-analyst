@@ -7,9 +7,10 @@ Each engine:
   - Logs data gaps — never silently invents data
   - Is stateless and thread-safe
 """
-# Module: research_analyst/engines/__init__.py | Version: 0.1.0 | Updated: 2026-05-15
+# Module: research_analyst/engines/__init__.py | Version: 0.1.1 | Updated: 2026-06-02
 
 from .competitor import CompetitorEngine
+from .dividend import DividendEngine
 from .fundamental import FundamentalEngine
 from .macro import MacroEngine
 from .risk import RiskEngine
@@ -18,6 +19,7 @@ from .valuation import ValuationEngine
 
 __all__ = [
     "CompetitorEngine",
+    "DividendEngine",
     "FundamentalEngine",
     "MacroEngine",
     "RiskEngine",

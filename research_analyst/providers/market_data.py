@@ -9,7 +9,7 @@ Design:
   - Input sanitized before any external call
   - Graceful degradation: missing fields logged, never crash
 """
-# Module: research_analyst/providers/market_data.py | Version: 0.1.0 | Updated: 2026-05-15
+# Module: research_analyst/providers/market_data.py | Version: 0.1.1 | Updated: 2026-06-02
 
 from __future__ import annotations
 
@@ -32,6 +32,8 @@ from ..models import (
     AnalystEstimates,
     CompanyProfile,
     Competitor,
+    DividendData,
+    DividendPayment,
     FinancialStatement,
     InstitutionalHolder,
     MacroSnapshot,
@@ -513,6 +515,86 @@ class MarketDataProvider:
         return statements
 
     # ------------------------------------------------------------------
+    # Dividend / yield data (v0.1.1)
+    # ------------------------------------------------------------------
+
+    async def get_dividend_data(self, ticker: str) -> DividendData:
+        """Fetch dividend / yield data from yfinance (.info + .dividends).
+
+        Returns raw figures only — the DividendEngine computes the headline
+        yield, payout ratios, safety, and attractiveness from these. Graceful:
+        missing fields are left None and never crash the pipeline.
+        """
+        ticker = _sanitize_ticker(ticker)
+
+        cache_key = f"dividends:{ticker}"
+        cached = self._cache.get(cache_key)
+        if cached:
+            return DividendData.model_validate(cached)
+
+        def _to_date(ts: Any) -> date | None:
+            """yfinance returns ex/last dividend dates as UNIX epoch seconds."""
+            if ts is None:
+                return None
+            try:
+                f = float(ts)
+                if np.isnan(f) or np.isinf(f) or f <= 0:
+                    return None
+                return datetime.utcfromtimestamp(f).date()
+            except (ValueError, TypeError, OverflowError, OSError):
+                return None
+
+        yf_ticker = await self._yf_ticker(ticker)
+        try:
+            info = await asyncio.to_thread(lambda: yf_ticker.info)
+        except Exception as e:
+            logger.warning("Could not fetch dividend info for %s: %s", ticker, e)
+            info = {}
+        info = info or {}
+
+        quote_type = str(info.get("quoteType", "EQUITY")).upper()
+        is_etf = quote_type == "ETF"
+        currency = info.get("currency", "USD")
+        current_price = (
+            _safe_float(info.get("currentPrice"))
+            or _safe_float(info.get("regularMarketPrice"))
+            or _safe_float(info.get("previousClose"))
+        )
+
+        # Full per-share dividend history
+        history: list[DividendPayment] = []
+        try:
+            div_series = await asyncio.to_thread(lambda: yf_ticker.dividends)
+            if div_series is not None and not div_series.empty:
+                for idx, val in div_series.items():
+                    d = idx.date() if hasattr(idx, "date") else idx
+                    amt = _safe_float(val)
+                    if isinstance(d, date) and amt is not None and amt > 0:
+                        history.append(DividendPayment(ex_date=d, amount=amt))
+        except Exception as e:
+            logger.debug("Dividend history unavailable for %s: %s", ticker, e)
+
+        data = DividendData(
+            ticker=ticker,
+            currency=currency,
+            is_etf=is_etf,
+            current_price=current_price,
+            dividend_rate=_safe_float(info.get("dividendRate")),
+            trailing_dividend_rate=_safe_float(info.get("trailingAnnualDividendRate")),
+            info_dividend_yield=_safe_float(info.get("dividendYield")),
+            info_payout_ratio=_safe_float(info.get("payoutRatio")),
+            five_year_avg_yield=_safe_float(info.get("fiveYearAvgDividendYield")),
+            etf_ttm_yield=_safe_float(info.get("yield")),
+            ex_dividend_date=_to_date(info.get("exDividendDate")),
+            last_dividend_value=_safe_float(info.get("lastDividendValue")),
+            last_dividend_date=_to_date(info.get("lastDividendDate")),
+            history=history,
+        )
+
+        self._cache.put(cache_key, data.model_dump(mode="json"))
+        return data
+
+    # ------------------------------------------------------------------
     # Peer / competitor lookup
     # ------------------------------------------------------------------
 
@@ -605,6 +687,7 @@ class MarketDataProvider:
                         revenue_growth_yoy=_safe_float(yf_info.get("revenueGrowth")),
                         roe=_safe_float(yf_info.get("returnOnEquity")),
                         debt_to_equity=_safe_float(yf_info.get("debtToEquity")),
+                        dividend_yield=_safe_float(yf_info.get("trailingAnnualDividendYield")),
                     )
                 except Exception as e:
                     logger.debug("Could not fetch peer %s: %s", pt, e)

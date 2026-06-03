@@ -14,7 +14,7 @@ Design:
   - Data-gap transparent: missing data is explicitly called out, never silently skipped
   - Visual enforcement: at least one visual per report (spec mandate)
 """
-# Module: research_analyst/reports/renderer.py | Version: 0.1.0 | Updated: 2026-05-15
+# Module: research_analyst/reports/renderer.py | Version: 0.1.1 | Updated: 2026-06-02
 
 from __future__ import annotations
 
@@ -79,6 +79,7 @@ class ReportRenderer:
         valuation: ValuationRange | None = None,
         risk_matrix: RiskMatrix | None = None,
         capital_allocation: CapitalAllocation | None = None,
+        dividend: Any = None,
     ) -> ReportOutput:
         """Render a complete report from analysis outputs.
 
@@ -117,6 +118,7 @@ class ReportRenderer:
             "valuation": valuation,
             "risk_matrix": risk_matrix,
             "capital_allocation": capital_allocation,
+            "dividend": dividend,
         }
 
         sections: list[ReportSection] = []
@@ -146,6 +148,7 @@ class ReportRenderer:
             valuation=valuation,
             risk_matrix=risk_matrix,
             capital_allocation=capital_allocation,
+            dividend=dividend,
         )
 
     # ------------------------------------------------------------------
@@ -170,6 +173,105 @@ class ReportRenderer:
 
         # Fallback: generic step renderer
         return self._render_generic_step(step, ctx)
+
+    # ------------------------------------------------------------------
+    # Dividend & yield block — shared across report types (v0.1.1)
+    # ------------------------------------------------------------------
+
+    def _build_dividend_block(
+        self, ctx: dict[str, Any], *, compact: bool = False
+    ) -> tuple[list[str], list[ReportVisual], list[Assumption], list[str]]:
+        """Build the dividend & yield sub-section injected into the relevant step
+        of every report type. Returns (parts, visuals, assumptions, gaps).
+
+        compact=True (tactical) emits an income/event-focused subset: yield,
+        yield vs 10Y Treasury, and the ex-dividend date. Full mode adds growth,
+        payout, consistency, safety, peer comparison, and a history chart.
+        """
+        div = ctx.get("dividend")
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        assumptions: list[Assumption] = []
+        gaps: list[str] = []
+
+        if div is None:
+            return parts, visuals, assumptions, gaps
+
+        label = getattr(div, "income_label", "Dividend")
+        parts.append(f"### {label} & Yield Analysis")
+
+        if not getattr(div, "pays_dividend", False):
+            context = getattr(div, "no_dividend_context", "") or "No dividend currently paid."
+            parts.append(f"- **{label}:** None. {context}")
+            parts.append("")
+            assumptions.extend(getattr(div, "assumptions", []))
+            gaps.extend(getattr(div, "data_gaps", []))
+            return parts, visuals, assumptions, gaps
+
+        if div.current_yield is not None:
+            ylabel = "Distribution yield" if div.is_etf else "Dividend yield"
+            rate = f" forward (${div.annual_dividend_rate:.2f}/share)" if div.annual_dividend_rate else ""
+            parts.append(f"- {ylabel}: **{div.current_yield:.2%}**{rate}")
+        if div.us_10y_yield is not None and div.yield_vs_treasury_spread is not None:
+            rel = "above" if div.yield_vs_treasury_spread > 0 else "below"
+            parts.append(
+                f"- vs 10Y Treasury ({div.us_10y_yield:.2%}): "
+                f"**{abs(div.yield_vs_treasury_spread) * 100:.0f} bps {rel}**"
+            )
+        if compact and div.ex_dividend_date is not None:
+            parts.append(f"- Ex-dividend date: **{div.ex_dividend_date.isoformat()}** (near-term event)")
+
+        if not compact:
+            if div.peer_median_yield is not None:
+                parts.append(
+                    f"- vs peer median ({div.peer_median_yield:.2%}): "
+                    f"**{div.yield_vs_peers or 'n/a'}**"
+                )
+            growth_bits: list[str] = []
+            if div.dividend_growth_1y is not None:
+                growth_bits.append(f"1Y {div.dividend_growth_1y:.1%}")
+            if div.dividend_growth_3y_cagr is not None:
+                growth_bits.append(f"3Y CAGR {div.dividend_growth_3y_cagr:.1%}")
+            if div.dividend_growth_5y_cagr is not None:
+                growth_bits.append(f"5Y CAGR {div.dividend_growth_5y_cagr:.1%}")
+            if growth_bits:
+                parts.append(f"- Dividend growth: **{', '.join(growth_bits)}**")
+            payout_bits: list[str] = []
+            if div.payout_ratio_eps is not None:
+                payout_bits.append(f"{div.payout_ratio_eps:.0%} of EPS")
+            if div.payout_ratio_fcf is not None:
+                payout_bits.append(f"{div.payout_ratio_fcf:.0%} of FCF")
+            if payout_bits:
+                parts.append(f"- Payout ratio: **{' / '.join(payout_bits)}**")
+            if div.consecutive_increase_years:
+                parts.append(
+                    f"- Consecutive annual increases: **{div.consecutive_increase_years} years**"
+                )
+            if div.had_cut:
+                sc = (
+                    f"{div.years_since_cut} years ago"
+                    if div.years_since_cut is not None else "in history"
+                )
+                parts.append(f"- Dividend cut: **{sc}**")
+            if div.safety_score is not None:
+                parts.append(
+                    f"- Safety score: **{div.safety_score:.0f}/100 ({div.safety_grade})**"
+                )
+
+        if div.attractiveness_rating:
+            rationale = f" — {div.attractiveness_rationale}" if div.attractiveness_rationale else ""
+            parts.append(f"- Attractiveness: **{div.attractiveness_rating}**{rationale}")
+        parts.append("")
+
+        visuals.append(VisualEngine.table_dividend_summary(div))
+        if not compact:
+            chart = VisualEngine.plotly_dividend_history(div)
+            if chart:
+                visuals.append(chart)
+
+        assumptions.extend(getattr(div, "assumptions", []))
+        gaps.extend(getattr(div, "data_gaps", []))
+        return parts, visuals, assumptions, gaps
 
     # ------------------------------------------------------------------
     # Comprehensive report step renderers
@@ -342,6 +444,13 @@ class ReportRenderer:
             assumptions.extend(fund_assumptions)
             fund_gaps = getattr(fundamental, "data_gaps", [])
             gaps.extend(fund_gaps)
+
+        # Dividend & yield (v0.1.1)
+        d_parts, d_visuals, d_assumptions, d_gaps = self._build_dividend_block(ctx)
+        parts.extend(d_parts)
+        visuals.extend(d_visuals)
+        assumptions.extend(d_assumptions)
+        gaps.extend(d_gaps)
 
         return ReportSection(
             step_number=step.step_number, title=step.title,
@@ -982,6 +1091,13 @@ class ReportRenderer:
         fund_assumptions = getattr(fundamental, "assumptions", []) if fundamental else []
         assumptions.extend(fund_assumptions)
 
+        # Dividend & yield — compact, income/event focused (v0.1.1)
+        d_parts, d_visuals, d_assumptions, d_gaps = self._build_dividend_block(ctx, compact=True)
+        parts.extend(d_parts)
+        visuals.extend(d_visuals)
+        assumptions.extend(d_assumptions)
+        gaps.extend(d_gaps)
+
         return ReportSection(step_number=step.step_number, title=step.title,
             content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), len(visuals)
 
@@ -1348,8 +1464,14 @@ class ReportRenderer:
         mermaid = VisualEngine.mermaid_capital_allocation(profile.ticker, capex_pct, buyback_pct, div_pct)
         visuals.append(mermaid)
 
+        # Dividend & yield (v0.1.1)
+        d_parts, d_visuals, d_assumptions, d_gaps = self._build_dividend_block(ctx)
+        parts.extend(d_parts)
+        visuals.extend(d_visuals)
+        gaps.extend(d_gaps)
+
         return ReportSection(step_number=step.step_number, title=step.title,
-            content="\n".join(parts), visuals=visuals, data_gaps=gaps), len(visuals)
+            content="\n".join(parts), visuals=visuals, assumptions=d_assumptions, data_gaps=gaps), len(visuals)
 
     def _render_long_term_step5(self, step, ctx):
         """Step 5: Risk Assessment."""

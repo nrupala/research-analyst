@@ -9,7 +9,7 @@ The frontend calls mermaid.render(id, syntax) directly.
 No Python code blocks. No intermediary parsing. No service workers.
 The browser libraries (Plotly.js, Mermaid.js) handle all rendering.
 """
-# Module: research_analyst/reports/visuals.py | Version: 0.1.1 | Updated: 2026-05-25
+# Module: research_analyst/reports/visuals.py | Version: 0.1.1 | Updated: 2026-06-02
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from typing import Any
 from ..models import (
     CompanyProfile,
     Competitor,
+    DividendAnalysis,
     FinancialStatement,
     ReportVisual,
     RiskMatrix,
@@ -558,3 +559,102 @@ class VisualEngine:
             rows.append(f"| {factor} | {current} | {regime} | {impact.title()} | {magnitude.title()} |")
 
         return ReportVisual(visual_type="table", title="Macro Environment", content="\n".join(rows), ties_to="Macro context (Step 5)")
+
+    # ------------------------------------------------------------------
+    # Dividend & yield (v0.1.1)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def table_dividend_summary(div: DividendAnalysis) -> ReportVisual:
+        """Dividend & yield summary table."""
+        label = div.income_label or "Dividend"
+        rows = ["| Metric | Value |", "|--------|-------|"]
+
+        if not div.pays_dividend:
+            rows.append(f"| **{label}** | None |")
+            if div.no_dividend_context:
+                rows.append(f"| **Policy** | {div.no_dividend_context} |")
+            return ReportVisual(
+                visual_type="table",
+                title=f"{label} & Yield Summary",
+                content="\n".join(rows),
+                ties_to="Dividend & yield analysis",
+                caption="No dividend currently paid.",
+            )
+
+        def pct(v: float | None) -> str:
+            return f"{v:.2%}" if v is not None else "N/A"
+
+        yield_label = "Current Yield (TTM)" if div.is_etf else "Current Yield (fwd)"
+        if div.current_yield is not None:
+            rows.append(f"| **{yield_label}** | {pct(div.current_yield)} |")
+        if div.trailing_yield is not None:
+            rows.append(f"| **Trailing Yield (12m)** | {pct(div.trailing_yield)} |")
+        if div.five_year_avg_yield is not None:
+            rows.append(f"| **5Y Avg Yield** | {pct(div.five_year_avg_yield)} |")
+        if div.annual_dividend_rate is not None:
+            rows.append(f"| **Annual Rate** | ${div.annual_dividend_rate:.2f}/share |")
+        if div.dividend_growth_1y is not None:
+            rows.append(f"| **Growth (1Y)** | {pct(div.dividend_growth_1y)} |")
+        if div.dividend_growth_3y_cagr is not None:
+            rows.append(f"| **Growth (3Y CAGR)** | {pct(div.dividend_growth_3y_cagr)} |")
+        if div.dividend_growth_5y_cagr is not None:
+            rows.append(f"| **Growth (5Y CAGR)** | {pct(div.dividend_growth_5y_cagr)} |")
+        if div.payout_ratio_eps is not None:
+            rows.append(f"| **Payout (EPS)** | {div.payout_ratio_eps:.0%} |")
+        if div.payout_ratio_fcf is not None:
+            rows.append(f"| **Payout (FCF)** | {div.payout_ratio_fcf:.0%} |")
+        if div.fcf_coverage is not None:
+            rows.append(f"| **FCF Coverage** | {div.fcf_coverage:.2f}x |")
+        if div.consecutive_increase_years:
+            rows.append(f"| **Consecutive Increases** | {div.consecutive_increase_years} yrs |")
+        if div.had_cut:
+            sc = f"{div.years_since_cut} yrs ago" if div.years_since_cut is not None else "yes"
+            rows.append(f"| **Dividend Cut** | {sc} |")
+        if div.safety_score is not None:
+            rows.append(f"| **Safety Score** | {div.safety_score:.0f}/100 ({div.safety_grade}) |")
+        if div.peer_median_yield is not None:
+            rows.append(f"| **Peer Median Yield** | {pct(div.peer_median_yield)} ({div.yield_vs_peers or 'n/a'}) |")
+        if div.us_10y_yield is not None:
+            spread = div.yield_vs_treasury_spread
+            sp = f" ({spread * 100:+.0f} bps)" if spread is not None else ""
+            rows.append(f"| **vs 10Y Treasury** | {pct(div.us_10y_yield)}{sp} |")
+        if div.attractiveness_rating:
+            rows.append(f"| **Attractiveness** | {div.attractiveness_rating} |")
+
+        return ReportVisual(
+            visual_type="table",
+            title=f"{label} & Yield Summary",
+            content="\n".join(rows),
+            ties_to="Dividend & yield analysis",
+            caption=div.attractiveness_rationale or "Yields shown as annual percentages.",
+        )
+
+    @staticmethod
+    def plotly_dividend_history(div: DividendAnalysis) -> ReportVisual | None:
+        """Annual dividend-per-share history as a Plotly.js bar chart."""
+        annual = div.annual_dividends or {}
+        if len(annual) < 3:
+            return None
+
+        years = sorted(annual.keys(), key=lambda y: int(y))[-10:]
+        values = [round(annual[y], 4) for y in years]
+
+        traces = [{
+            "x": years, "y": values, "type": "bar", "name": "DPS",
+            "marker": {"color": "#16a34a", "opacity": 0.85},
+        }]
+        layout = {
+            "title": f"{div.ticker} — Dividend Per Share by Year",
+            "template": "plotly_white", "height": 320,
+            "yaxis": {"title": "DPS ($)"},
+            "xaxis": {"title": "Year", "type": "category"},
+            "margin": {"t": 50, "b": 50, "l": 60, "r": 30},
+        }
+        return ReportVisual(
+            visual_type="plotly_json",
+            title=f"{div.ticker} — Dividend History",
+            content=json.dumps({"traces": traces, "layout": layout}),
+            ties_to="Dividend growth & consistency",
+            caption="Annual dividends per share (calendar-year sums). The most recent year may be partial.",
+        )
