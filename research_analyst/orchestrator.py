@@ -17,7 +17,7 @@ Design:
 Architecture:
   Request → Validate → Fetch (parallel) → Analyze → Render → Response
 """
-# Module: research_analyst/orchestrator.py | Version: 0.1.0 | Updated: 2026-05-15
+# Module: research_analyst/orchestrator.py | Version: 0.1.1 | Updated: 2026-06-02
 
 from __future__ import annotations
 
@@ -29,6 +29,7 @@ from typing import Any
 
 from .config import settings
 from .engines.competitor import CompetitorEngine
+from .engines.dividend import DividendEngine
 from .engines.fundamental import FundamentalEngine
 from .engines.macro import MacroEngine
 from .engines.risk import RiskEngine
@@ -38,6 +39,7 @@ from .enums import ReportType, SecurityType
 from .models import (
     AnalystEstimates,
     CompanyProfile,
+    DividendData,
     FundamentalData,
     PriceSeries,
     ReportOutput,
@@ -68,6 +70,7 @@ class ResearchOrchestrator:
         self._market = MarketDataProvider()
         self._technical_provider = TechnicalProvider()
         self._fundamental_engine = FundamentalEngine()
+        self._dividend_engine = DividendEngine()
         self._technical_engine = TechnicalEngine()
         self._macro_engine = MacroEngine()
         self._competitor_engine = CompetitorEngine()
@@ -137,6 +140,7 @@ class ResearchOrchestrator:
         peers_task = self._fetch_peers(ticker)
         macro_task = self._fetch_macro()
         holders_task = self._fetch_holders(ticker)
+        dividends_task = self._fetch_dividends(ticker)
 
         results = await asyncio.gather(
             price_task,
@@ -146,6 +150,7 @@ class ResearchOrchestrator:
             peers_task,
             macro_task,
             holders_task,
+            dividends_task,
             return_exceptions=True,
         )
 
@@ -182,6 +187,12 @@ class ResearchOrchestrator:
 
         holders = self._safe_result(results[6], [], "institutional holders", warnings)
 
+        dividend_data = self._safe_result(
+            results[7], DividendData(ticker=ticker), "dividend data", warnings
+        )
+        if dividend_data and (dividend_data.history or dividend_data.dividend_rate):
+            data_sources.append("yfinance (dividends)")
+
         # ================================================================
         # PHASE 2: Analysis Engines
         # ================================================================
@@ -212,6 +223,17 @@ class ResearchOrchestrator:
         if peers:
             competitive_analysis = self._competitor_engine.analyze(profile, peers)
             all_assumptions.extend(competitive_analysis.assumptions)
+
+        # --- Dividend & Yield (v0.1.1) ---
+        dividend_analysis = self._dividend_engine.analyze(
+            dividend_data,
+            financials,
+            macro=macro_snapshot,
+            peers=peers,
+            fundamental=fundamental_analysis,
+            current_price=prices.current_price,
+        )
+        all_assumptions.extend(dividend_analysis.assumptions)
 
         # --- Valuation ---
         pe_comps_median = None
@@ -265,6 +287,7 @@ class ResearchOrchestrator:
                     valuation=valuation,
                     risk_matrix=risk_matrix,
                     capital_allocation=fundamental_analysis.capital_allocation,
+                    dividend=dividend_analysis,
                 )
                 reports.append(report)
             except Exception as e:
@@ -351,6 +374,9 @@ class ResearchOrchestrator:
             return await self._market.get_institutional_holders(ticker)
         except Exception:
             return []
+
+    async def _fetch_dividends(self, ticker: str) -> Any:
+        return await self._market.get_dividend_data(ticker)
 
     # ------------------------------------------------------------------
     # Utility

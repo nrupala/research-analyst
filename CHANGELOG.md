@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.1] - 2026-06-02
+
+### Added
+
+- **Dividend & Yield Analysis** (all three report types)
+  - New `DividendEngine` (engines/dividend.py): current (forward) + trailing yield, 1Y / 3Y CAGR / 5Y CAGR dividend growth, payout ratios (dividend / EPS and dividend / FCF), EPS and FCF coverage, consecutive-increase streak and dividend-cut detection, a 0-100 dividend safety score with letter grade, yield vs the 10Y Treasury and vs peer median, a yield attractiveness rating (including a yield-trap screen), and explicit non-payer context (buyback-focused vs growth reinvestment)
+  - ETF support: distribution-yield labelling; EPS payout skipped for funds
+  - New models: `DividendData`, `DividendPayment`, `DividendAnalysis`; `DividendAnalysis` attached to `ReportOutput` for API consumers
+  - `MarketDataProvider.get_dividend_data()` (yfinance `.info` + `.dividends`, disk-cached, graceful); peer `dividend_yield` added to competitor discovery
+  - Rendered in Comprehensive (Step 2), Long-Term (Step 4 — Capital Allocation & Shareholder Returns), and Tactical (Step 4, compact/event-focused with ex-dividend date) reports
+  - New visuals: dividend & yield summary table + dividend-per-share history bar chart
+  - Tests: `tests/test_dividend.py` (offline synthetic fixtures)
+
+### Changed
+
+- The headline yield is now computed in-engine (annual dividend rate / price) rather than trusting yfinance's inconsistently-scaled `dividendYield`; info fields are retained as cross-checks with a normalization guard
+
+---
+
 ## [0.1.0] - 2026-05-15
 
 ### Added
