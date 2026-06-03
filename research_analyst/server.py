@@ -14,7 +14,7 @@ Endpoints:
   GET  /api/health           - Health check
   GET  /                     - Serve browser UI (static files)
 """
-# Module: research_analyst/server.py | Version: 0.1.0 | Updated: 2026-05-25
+# Module: research_analyst/server.py | Version: 0.1.1 | Updated: 2026-06-03
 
 from __future__ import annotations
 
@@ -33,6 +33,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from . import __version__
 from .config import settings
 from .enums import ReportType
 from .models import ResearchRequest
@@ -102,7 +103,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Research Analyst",
         description="Institutional-grade equity and ETF research agent.",
-        version="0.1.0",
+        version=__version__,
         docs_url="/api/docs",
         redoc_url="/api/redoc",
     )
@@ -154,7 +155,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health")
     async def health_check() -> dict[str, str]:
-        return {"status": "ok", "service": "research-analyst", "version": "0.1.0"}
+        return {"status": "ok", "service": "research-analyst", "version": __version__}
 
     @app.post("/api/research", response_model=ResearchAPIResponse)
     async def run_research(body: ResearchAPIRequest, request: Request) -> ResearchAPIResponse:
