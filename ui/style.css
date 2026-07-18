@@ -1,4 +1,4 @@
-/* Research Analyst - Institutional UI v0.1.0 */
+/* Research Analyst - Institutional UI v0.1.2 */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -253,4 +253,25 @@ body {
     .header, .footer, .card--form, .status, .tabs, .header__nav { display: none; }
     .report { border: none; box-shadow: none; padding: 0; }
     body { background: #fff; }
+}
+
+/* === v0.2.0: multi-format export toolbar, BMC link, export footer === */
+.export-toolbar { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-4); }
+.header__nav .bmc-link { text-decoration: none; }
+
+.export-footer {
+    margin-top: var(--sp-6); padding-top: var(--sp-4);
+    border-top: 1px solid var(--c-border);
+    font-size: var(--fs-xs); color: var(--c-text-2); line-height: 1.7;
+}
+.export-footer a { color: var(--c-primary); text-decoration: none; }
+.export-footer a:hover { text-decoration: underline; }
+
+/* The live export footer is a print-only artifact on screen; downloaded HTML uses its own .export-footer (class, not id) which stays visible. */
+#export-footer { display: none; }
+
+@media print {
+    #export-footer { display: block; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; color: #475569; }
+    .export-toolbar { display: none; }
+    .meta-bar { display: none; }
 }

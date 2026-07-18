@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.2] - 2026-07-18
+
+### Added
+
+- **Multi-format report export** (browser UI)
+  - Export toolbar on every rendered report with three one-click downloads: Markdown (.md), self-contained HTML (.html), and PDF (via the browser print dialog)
+  - HTML export is fully self-contained: inlined stylesheet and rendered charts, no external assets and no server round-trip; opens standalone and offline
+  - All export generation runs client-side, with zero additional server processing
+  - A report footer is appended to every format: "Report prepared on https://ra.devinfo.dev" with the generation date, plus a Buy Me a Coffee link (no page numbers, by design)
+  - Buy Me a Coffee link added to the header navigation and the site footer
+
+### Changed
+
+- Service worker CACHE_VERSION bumped from ra-v1 to ra-v2 so returning PWA users receive the updated UI instead of a stale cached shell
+- UI footer version label updated to v0.1.2
+
+---
+
 ## [0.1.1] - 2026-06-02
 
 ### Added
@@ -97,7 +115,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - FRED API integration for official macro data
 - Quarterly (10-Q) financial statement support
 - Interactive Plotly rendering in browser UI
-- PDF export of research reports
 - Multi-ticker comparative reports
 - WebSocket for real-time research progress
 - Background task queue for long-running research
@@ -105,4 +122,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 [0.1.0]: https://github.com/nrupala/research-analyst/releases/tag/v0.1.0
-[Unreleased]: https://github.com/nrupala/research-analyst/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/nrupala/research-analyst/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/nrupala/research-analyst/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/nrupala/research-analyst/compare/v0.1.0...v0.1.1
