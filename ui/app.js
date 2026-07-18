@@ -85,7 +85,8 @@ async function renderReport(idx){
     await new Promise(function(r){requestAnimationFrame(r)});
     renderPlotlyCharts();
     await renderMermaidDiagrams();
-    addDownloadButton()
+    addExportToolbar();
+    updateExportFooter()
 }
 
 function renderPlotlyCharts(){
@@ -132,22 +133,75 @@ async function renderMermaidDiagrams(){
     }
 }
 
-function addDownloadButton(){
-    var existing=document.getElementById("btn-download-report");
-    if(existing)existing.remove();
+// ---- v0.2.0 export: MD / HTML / PDF (client-side, no server) ----
+var BMC_URL="https://buymeacoffee.com/nrupalakolt";
+var PREPARED_URL="https://ra.devinfo.dev";
+
+function reportDateStr(){
+    try{return new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}
+    catch(e){return new Date().toISOString().slice(0,10)}
+}
+function tickerSlug(){return(dom.ticker.value.trim().toUpperCase()||"report").replace(/[^A-Z0-9.\-]/g,"")}
+
+function footerMarkdown(){
+    return"\n\n---\n\nReport prepared on "+PREPARED_URL+" \u00b7 "+reportDateStr()+"\n\n[Buy Me a Coffee]("+BMC_URL+")\n"
+}
+function footerHTML(){
+    return'<div class="export-footer">'+
+        '<div>Report prepared on <a href="'+PREPARED_URL+'">'+PREPARED_URL+'</a> \u00b7 '+esc(reportDateStr())+'</div>'+
+        '<div><a href="'+BMC_URL+'" target="_blank" rel="noopener noreferrer">Buy Me a Coffee</a></div>'+
+    '</div>'
+}
+function updateExportFooter(){
+    var ef=document.getElementById("export-footer");
+    if(ef)ef.innerHTML=footerHTML()
+}
+function downloadBlob(content,type,filename){
+    var blob=new Blob([content],{type:type});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement("a");a.href=url;a.download=filename;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(function(){URL.revokeObjectURL(url)},1500)
+}
+function exportMD(){
     var md=currentReports[activeTabIndex];
     if(!md)return;
-    var btn=document.createElement("button");
-    btn.id="btn-download-report";btn.className="btn btn--secondary";
-    btn.textContent="Download Report (.md)";btn.style.marginBottom="1rem";
-    btn.addEventListener("click",function(){
-        var blob=new Blob([md],{type:"text/markdown;charset=utf-8"});
-        var url=URL.createObjectURL(blob);
-        var a=document.createElement("a");a.href=url;
-        a.download=(dom.ticker.value.trim().toUpperCase()||"report")+"_research_report.md";
-        document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url)
+    downloadBlob(md+footerMarkdown(),"text/markdown;charset=utf-8",tickerSlug()+"_research_report.md")
+}
+async function exportHTML(){
+    var src=dom.reportContent;
+    if(!src)return;
+    var clone=src.cloneNode(true);
+    clone.querySelectorAll(".plotly-chart-data,.mermaid-data,.modebar,.modebar-container,script").forEach(function(n){n.remove()});
+    var cssText="";
+    try{var r=await fetch("/style.css");if(r.ok)cssText=await r.text()}catch(e){}
+    var doc="<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n"+
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n"+
+        "<title>"+esc(tickerSlug())+" Research Report</title>\n"+
+        "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n"+
+        "<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap\">\n"+
+        "<style>\n"+cssText+"\nbody{background:#fff;color:#0f172a;max-width:960px;margin:0 auto;padding:24px;}\n.report{border:none;box-shadow:none;padding:0;}\n</style>\n"+
+        "</head>\n<body>\n<div class=\"report\">"+clone.innerHTML+"</div>\n"+footerHTML()+"\n</body>\n</html>\n";
+    downloadBlob(doc,"text/html;charset=utf-8",tickerSlug()+"_research_report.html")
+}
+function exportPDF(){
+    updateExportFooter();
+    setTimeout(function(){window.print()},60)
+}
+function addExportToolbar(){
+    var existing=document.getElementById("export-toolbar");
+    if(existing)existing.remove();
+    if(!currentReports[activeTabIndex])return;
+    var bar=document.createElement("div");
+    bar.id="export-toolbar";bar.className="export-toolbar";
+    var defs=[["Download MD",exportMD],["Download HTML",exportHTML],["Download PDF",exportPDF]];
+    defs.forEach(function(d){
+        var b=document.createElement("button");
+        b.type="button";b.className="btn btn--secondary";b.textContent=d[0];
+        b.addEventListener("click",d[1]);
+        bar.appendChild(b)
     });
-    dom.reportContent.parentNode.insertBefore(btn,dom.reportContent)
+    dom.reportContent.parentNode.insertBefore(bar,dom.reportContent)
 }
 
 function mdToHTML(md){
