@@ -110,12 +110,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Multi-ticker comparative reports — backend (v0.2.0, in progress; UI + version bump to follow)**
+  - New `ComparativeReport` model and cross-ticker comparison layer (`research_analyst/comparative.py`): runs the existing single-ticker orchestrator once per ticker (2-5 tickers, bounded concurrency, reusing `competitor.py` peer context), aligns the structured metrics across Valuation, Growth & Margins, Profitability & Capital Quality, Dividend & Income, and Risk, and computes a per-metric percentile rank, a min-max normalized 0-100 score, and winner flags, plus an equal-weighted scorecard roll-up
+  - `ComparativeOrchestrator`: an invalid or unresolvable ticker is skipped with a recorded error instead of crashing the whole request (no-lockout rule)
+  - New `POST /api/compare` route (`server.py`): accepts `{ "tickers": [...] }`, validates 2-5 distinct tickers (clear 400 otherwise), and returns the `ComparativeReport` as JSON plus rendered Markdown and self-contained HTML. Mirrors the `/api/research` conventions (rate limiting, structured JSON errors). The single-ticker `/api/research` path is left completely untouched
+  - New comparative renderer (`research_analyst/reports/comparative_renderer.py`): a top scorecard (normalized 0-100 per metric) plus one side-by-side table per dimension, in Markdown and fully self-contained HTML (inline styles, no external assets, opens offline). Every rendered report carries the disclaimer and a compliance line (the tool ranks numbers; the user decides). Framing is "how they rank and what would have to be true," never buy / sell / hold
+  - Provenance: every displayed number is traceable to the exact per-ticker report field it was carried from, plus each ticker's declared data sources
+  - Tests: `tests/test_comparative.py` — ranking/alignment logic, the `/api/compare` endpoint for 2 and 5 tickers, an invalid ticker in the set (graceful skip), and a non-dividend name in the set
+  - Deferred to the full v0.2.0 slice (kept out of this backend increment): the comparative browser UI, the package version bump, and structured technical/momentum + macro/sector cross-ticker metrics (still narrative-only in the per-ticker reports)
+
 ### Planned
 
 - FRED API integration for official macro data
 - Quarterly (10-Q) financial statement support
 - Interactive Plotly rendering in browser UI
-- Multi-ticker comparative reports
+- Comparative reports UI (multi-ticker input + side-by-side render)
 - WebSocket for real-time research progress
 - Background task queue for long-running research
 

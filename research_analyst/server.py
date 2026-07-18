@@ -26,7 +26,7 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
@@ -38,6 +38,8 @@ from .config import settings
 from .enums import ReportType
 from .models import ResearchRequest
 from .orchestrator import ResearchOrchestrator
+from .comparative import MAX_TICKERS, MIN_TICKERS, ComparativeOrchestrator
+from .reports.comparative_renderer import render_html, render_markdown
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +95,32 @@ class ResearchAPIResponse(BaseModel):
     reports: list[dict[str, Any]]
     metadata: dict[str, Any]
     reports_markdown: list[str]
+
+
+class CompareAPIRequest(BaseModel):
+    tickers: list[str] = Field(..., min_length=1, max_length=10)
+    timeframe: str = Field(default="1Y")
+
+
+class CompareAPIResponse(BaseModel):
+    request_id: str
+    tickers: list[str]
+    report: dict[str, Any]
+    report_markdown: str
+    report_html: str
+
+
+# Lazily-built singleton so the endpoint stays cheap to import and tests can
+# override it via FastAPI dependency_overrides.
+_comparative_orchestrator: ComparativeOrchestrator | None = None
+
+
+def get_comparative_orchestrator() -> ComparativeOrchestrator:
+    """FastAPI dependency returning a shared ComparativeOrchestrator."""
+    global _comparative_orchestrator
+    if _comparative_orchestrator is None:
+        _comparative_orchestrator = ComparativeOrchestrator()
+    return _comparative_orchestrator
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +251,48 @@ def create_app() -> FastAPI:
         report_cache[ck] = api_response
 
         return api_response
+
+    @app.post("/api/compare", response_model=CompareAPIResponse)
+    async def run_compare(
+        body: CompareAPIRequest,
+        request: Request,
+        comparative: ComparativeOrchestrator = Depends(get_comparative_orchestrator),
+    ) -> CompareAPIResponse:
+        client_ip = request.client.host if request.client else "unknown"
+        if not rate_limiter.allow(client_ip):
+            raise HTTPException(status_code=429, detail="Rate limit exceeded.")
+
+        request_id = str(uuid.uuid4())[:8]
+
+        # Validate the ticker count up front with a clear message (2-5 distinct).
+        distinct = ComparativeOrchestrator.normalize_tickers(body.tickers)
+        if not (MIN_TICKERS <= len(distinct) <= MAX_TICKERS):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Provide between {MIN_TICKERS} and {MAX_TICKERS} distinct tickers "
+                    f"(received {len(distinct)})."
+                ),
+            )
+
+        try:
+            report = await comparative.run(distinct, timeframe=body.timeframe)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except Exception as e:
+            logger.error("Comparative pipeline error for %s: %s", distinct, e, exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Comparative pipeline failed: {type(e).__name__}",
+            ) from e
+
+        return CompareAPIResponse(
+            request_id=request_id,
+            tickers=report.tickers,
+            report=report.model_dump(mode="json"),
+            report_markdown=render_markdown(report),
+            report_html=render_html(report),
+        )
 
     # ================================================================
     # Static file serving - ALL UI files served from root /
