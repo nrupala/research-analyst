@@ -115,13 +115,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - FRED API integration for official macro data
 - Quarterly (10-Q) financial statement support
 - Interactive Plotly rendering in browser UI
-- Multi-ticker comparative reports
+- Comparative reports UI (multi-ticker input + side-by-side render)
 - WebSocket for real-time research progress
 - Background task queue for long-running research
+
+## [0.2.0] - 2026-07-19
+
+### Added
+
+- **Multi-ticker comparative reports — backend (v0.2.0, in progress; UI + version bump to follow)**
+  - New `ComparativeReport` model and cross-ticker comparison layer (`research_analyst/comparative.py`): runs the existing single-ticker orchestrator once per ticker (2-5 tickers, bounded concurrency, reusing `competitor.py` peer context), aligns the structured metrics across Valuation, Growth & Margins, Profitability & Capital Quality, Dividend & Income, and Risk, and computes a per-metric percentile rank, a min-max normalized 0-100 score, and winner flags, plus an equal-weighted scorecard roll-up
+  - `ComparativeOrchestrator`: an invalid or unresolvable ticker is skipped with a recorded error instead of crashing the whole request (no-lockout rule)
+  - New `POST /api/compare` route (`server.py`): accepts `{ "tickers": [...] }`, validates 2-5 distinct tickers (clear 400 otherwise), and returns the `ComparativeReport` as JSON plus rendered Markdown and self-contained HTML. Mirrors the `/api/research` conventions (rate limiting, structured JSON errors). The single-ticker `/api/research` path is left completely untouched
+  - New comparative renderer (`research_analyst/reports/comparative_renderer.py`): a top scorecard (normalized 0-100 per metric) plus one side-by-side table per dimension, in Markdown and fully self-contained HTML (inline styles, no external assets, opens offline). Every rendered report carries the disclaimer and a compliance line (the tool ranks numbers; the user decides). Framing is "how they rank and what would have to be true," never buy / sell / hold
+  - Provenance: every displayed number is traceable to the exact per-ticker report field it was carried from, plus each ticker's declared data sources
+  - Tests: `tests/test_comparative.py` — ranking/alignment logic, the `/api/compare` endpoint for 2 and 5 tickers, an invalid ticker in the set (graceful skip), and a non-dividend name in the set
+- **Multi-ticker comparative reports — browser UI (v0.2.0, in progress; version bump to follow)**
+  - New Single / Compare mode toggle in the request card; the single-ticker `/api/research` flow is left fully intact (its own form, submit button, and render path are unchanged)
+  - Compare mode accepts 2-5 tickers (comma- or space-separated, de-duplicated) and validates the count client-side with a clear inline error; no `/api/compare` request is fired on an invalid count (1 or 6+)
+  - Calls `POST /api/compare` with `{ tickers, timeframe }` and renders the returned comparative report — top scorecard plus one side-by-side table per dimension — carrying the disclaimer and compliance line
+  - Reuses the v0.1.2 export toolbar unchanged (Markdown / self-contained HTML / PDF). The comparative HTML export is self-contained (inlined stylesheet) and carries the same footer, "prepared on https://ra.devinfo.dev", and Buy Me a Coffee link as single-ticker exports (the server markdown's own prepared-on trailer is stripped so the shared UI footer is applied exactly once)
+  - Side-by-side tables degrade to horizontal scroll on narrow screens; the mode toggle and compare form reuse the existing responsive patterns
+  - Tests: `ui/tests/compare.test.mjs` — headless (Node `vm` + minimal DOM shim, no external deps) coverage of 2- and 5-ticker compare (scorecard + per-dimension tables + 3-button toolbar + self-contained MD/HTML exports), invalid counts (no request fired), and a single-ticker regression
+  - Deferred to the full v0.2.0 slice: the package version bump and `sw.js` CACHE_VERSION bump (handled at the gated release/merge step), and structured technical/momentum + macro/sector cross-ticker metrics (still narrative-only in the per-ticker reports)
+
+### Changed
+
+- Version bump 0.1.2 -> 0.2.0; service worker CACHE_VERSION ra-v2 -> ra-v3 (forces a fresh asset cache so the comparative UI ships cleanly).
+- Fixed the Buy Me a Coffee handle in the comparative server-side report footer (www.buymeacoffee.com/nrupala -> /nrupalakolt), matching the browser UI footer.
 
 ---
 
 [0.1.0]: https://github.com/nrupala/research-analyst/releases/tag/v0.1.0
-[Unreleased]: https://github.com/nrupala/research-analyst/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/nrupala/research-analyst/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/nrupala/research-analyst/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/nrupala/research-analyst/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/nrupala/research-analyst/compare/v0.1.0...v0.1.1

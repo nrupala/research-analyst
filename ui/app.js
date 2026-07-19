@@ -1,12 +1,26 @@
 "use strict";
-var dom={form:document.getElementById("research-form"),ticker:document.getElementById("ticker"),reportType:document.getElementById("report-type"),timeframe:document.getElementById("timeframe"),btnSubmit:document.getElementById("btn-submit"),btnText:document.getElementById("btn-text"),btnSpinner:document.getElementById("btn-spinner"),status:document.getElementById("status"),statusText:document.getElementById("status-text"),progressBar:document.getElementById("progress-bar"),errorPanel:document.getElementById("error-panel"),errorMessage:document.getElementById("error-message"),btnRetry:document.getElementById("btn-retry"),results:document.getElementById("results"),metaBar:document.getElementById("meta-bar"),reportTabs:document.getElementById("report-tabs"),reportContent:document.getElementById("report-content"),btnAbout:document.getElementById("btn-about"),aboutModal:document.getElementById("about-modal"),btnCloseAbout:document.getElementById("btn-close-about")};
-var currentReports=[],activeTabIndex=0,isLoading=false;
+var dom={form:document.getElementById("research-form"),ticker:document.getElementById("ticker"),reportType:document.getElementById("report-type"),timeframe:document.getElementById("timeframe"),btnSubmit:document.getElementById("btn-submit"),btnText:document.getElementById("btn-text"),btnSpinner:document.getElementById("btn-spinner"),status:document.getElementById("status"),statusText:document.getElementById("status-text"),progressBar:document.getElementById("progress-bar"),errorPanel:document.getElementById("error-panel"),errorMessage:document.getElementById("error-message"),btnRetry:document.getElementById("btn-retry"),results:document.getElementById("results"),metaBar:document.getElementById("meta-bar"),reportTabs:document.getElementById("report-tabs"),reportContent:document.getElementById("report-content"),btnAbout:document.getElementById("btn-about"),aboutModal:document.getElementById("about-modal"),btnCloseAbout:document.getElementById("btn-close-about"),modeSingle:document.getElementById("mode-single"),modeCompare:document.getElementById("mode-compare"),compareForm:document.getElementById("compare-form"),compareTickers:document.getElementById("compare-tickers"),compareTimeframe:document.getElementById("compare-timeframe"),compareError:document.getElementById("compare-error"),btnCompare:document.getElementById("btn-compare"),btnCompareText:document.getElementById("btn-compare-text"),btnCompareSpinner:document.getElementById("btn-compare-spinner")};
+var currentReports=[],activeTabIndex=0,isLoading=false,currentMode="single";
 document.addEventListener("DOMContentLoaded",function(){if(typeof mermaid!=="undefined"){mermaid.initialize({startOnLoad:false,theme:"neutral",securityLevel:"strict"})}});
 dom.form.addEventListener("submit",function(e){e.preventDefault();if(!isLoading)runResearch()});
 dom.btnRetry.addEventListener("click",function(){if(!isLoading)runResearch()});
 dom.btnAbout.addEventListener("click",function(){dom.aboutModal.showModal()});
 dom.btnCloseAbout.addEventListener("click",function(){dom.aboutModal.close()});
 dom.aboutModal.addEventListener("click",function(e){if(e.target===dom.aboutModal)dom.aboutModal.close()});
+
+// ---- v0.2.0 comparative: mode toggle (Single vs Compare) ----
+function setMode(mode){
+    currentMode=mode==="compare"?"compare":"single";
+    var compare=currentMode==="compare";
+    if(dom.form)dom.form.hidden=compare;
+    if(dom.compareForm)dom.compareForm.hidden=!compare;
+    if(dom.modeSingle){dom.modeSingle.classList.toggle("mode-btn--active",!compare);dom.modeSingle.setAttribute("aria-selected",compare?"false":"true")}
+    if(dom.modeCompare){dom.modeCompare.classList.toggle("mode-btn--active",compare);dom.modeCompare.setAttribute("aria-selected",compare?"true":"false")}
+    hideError();hideResults();hideCompareError()
+}
+if(dom.modeSingle)dom.modeSingle.addEventListener("click",function(){setMode("single")});
+if(dom.modeCompare)dom.modeCompare.addEventListener("click",function(){setMode("compare")});
+if(dom.compareForm)dom.compareForm.addEventListener("submit",function(e){e.preventDefault();if(!isLoading)runCompare()});
 
 // Contact dialog + form (vanilla, mailto-based)
 if(dom.btnContact)dom.btnContact.addEventListener("click",function(){if(dom.contactModal&&typeof dom.contactModal.showModal==="function"){dom.contactModal.showModal()}else{var el=document.getElementById("contact-section");if(el)el.scrollIntoView({behavior:"smooth"})}});
@@ -24,6 +38,7 @@ if(dom.contactForm)dom.contactForm.addEventListener("submit",function(e){
 });
 
 async function runResearch(){
+    currentMode="single";
     var ticker=dom.ticker.value.trim().toUpperCase();
     if(!ticker){dom.ticker.focus();return}
     if(!/^[A-Z0-9.\-]{1,10}$/.test(ticker)){showError("Invalid ticker.");return}
@@ -141,7 +156,14 @@ function reportDateStr(){
     try{return new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}
     catch(e){return new Date().toISOString().slice(0,10)}
 }
-function tickerSlug(){return(dom.ticker.value.trim().toUpperCase()||"report").replace(/[^A-Z0-9.\-]/g,"")}
+function tickerSlug(){
+    if(currentMode==="compare"){
+        var ts=parseTickers(dom.compareTickers?dom.compareTickers.value:"");
+        return(ts.join("-").replace(/[^A-Z0-9.\-]/g,""))||"comparison"
+    }
+    return(dom.ticker.value.trim().toUpperCase()||"report").replace(/[^A-Z0-9.\-]/g,"")
+}
+function reportFileBase(){return tickerSlug()+(currentMode==="compare"?"_comparative_report":"_research_report")}
 
 function footerMarkdown(){
     return"\n\n---\n\nReport prepared on "+PREPARED_URL+" \u00b7 "+reportDateStr()+"\n\n[Buy Me a Coffee]("+BMC_URL+")\n"
@@ -166,7 +188,7 @@ function downloadBlob(content,type,filename){
 function exportMD(){
     var md=currentReports[activeTabIndex];
     if(!md)return;
-    downloadBlob(md+footerMarkdown(),"text/markdown;charset=utf-8",tickerSlug()+"_research_report.md")
+    downloadBlob(md+footerMarkdown(),"text/markdown;charset=utf-8",reportFileBase()+".md")
 }
 async function exportHTML(){
     var src=dom.reportContent;
@@ -182,7 +204,7 @@ async function exportHTML(){
         "<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap\">\n"+
         "<style>\n"+cssText+"\nbody{background:#fff;color:#0f172a;max-width:960px;margin:0 auto;padding:24px;}\n.report{border:none;box-shadow:none;padding:0;}\n</style>\n"+
         "</head>\n<body>\n<div class=\"report\">"+clone.innerHTML+"</div>\n"+footerHTML()+"\n</body>\n</html>\n";
-    downloadBlob(doc,"text/html;charset=utf-8",tickerSlug()+"_research_report.html")
+    downloadBlob(doc,"text/html;charset=utf-8",reportFileBase()+".html")
 }
 function exportPDF(){
     updateExportFooter();
@@ -202,6 +224,91 @@ function addExportToolbar(){
         bar.appendChild(b)
     });
     dom.reportContent.parentNode.insertBefore(bar,dom.reportContent)
+}
+
+// ---- v0.2.0 comparative: multi-ticker input, validation, /api/compare ----
+var COMPARE_MIN=2,COMPARE_MAX=5;
+
+function parseTickers(raw){
+    var seen={},out=[];
+    (raw||"").split(/[\s,]+/).forEach(function(t){
+        var u=t.trim().toUpperCase();
+        if(u&&!Object.prototype.hasOwnProperty.call(seen,u)){seen[u]=1;out.push(u)}
+    });
+    return out
+}
+function showCompareError(msg){if(dom.compareError){dom.compareError.hidden=false;dom.compareError.textContent=msg}}
+function hideCompareError(){if(dom.compareError){dom.compareError.hidden=true;dom.compareError.textContent=""}}
+function setCompareLoading(v){
+    isLoading=v;
+    if(dom.btnCompare)dom.btnCompare.disabled=v;
+    if(dom.btnCompareText)dom.btnCompareText.hidden=v;
+    if(dom.btnCompareSpinner)dom.btnCompareSpinner.hidden=!v;
+    if(v)dom.status.hidden=false
+}
+// The server markdown is a standalone artifact ending with its own
+// "Report prepared on ..." line. Strip that trailer so the shared UI export
+// footer (footerMarkdown/footerHTML) is appended exactly once, identical to
+// the single-ticker exports. Disclaimer + compliance lines are kept.
+function stripPreparedOnTrailer(md){
+    if(!md)return"";
+    var lines=md.split("\n");
+    while(lines.length){
+        var last=lines[lines.length-1].trim();
+        if(last===""||last==="---"||/^\*?report prepared on/i.test(last)){lines.pop()}
+        else break
+    }
+    return lines.join("\n")
+}
+async function runCompare(){
+    hideCompareError();
+    var tickers=parseTickers(dom.compareTickers?dom.compareTickers.value:"");
+    if(tickers.length<COMPARE_MIN||tickers.length>COMPARE_MAX){
+        showCompareError("Enter between "+COMPARE_MIN+" and "+COMPARE_MAX+" distinct tickers (you entered "+tickers.length+").");
+        return
+    }
+    var bad=tickers.filter(function(t){return!/^[A-Z0-9.\-]{1,10}$/.test(t)});
+    if(bad.length){showCompareError("Invalid ticker(s): "+bad.join(", ")+".");return}
+    currentMode="compare";
+    setCompareLoading(true);hideError();hideResults();
+    currentReports=[];activeTabIndex=0;
+    var tf=(dom.compareTimeframe&&dom.compareTimeframe.value)||"1Y";
+    showStatus("Comparing "+tickers.join(", ")+"...",15);
+    try{
+        showStatus("Running per-ticker analysis...",40);
+        var resp=await fetch("/api/compare",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tickers:tickers,timeframe:tf})});
+        showStatus("Ranking & aligning metrics...",75);
+        if(!resp.ok){var err=await resp.json().catch(function(){return{detail:resp.statusText}});throw new Error(err.detail||"HTTP "+resp.status)}
+        var data=await resp.json();
+        showStatus("Rendering comparison...",90);
+        currentReports=[stripPreparedOnTrailer(data.report_markdown||"")];
+        renderCompareMetaBar(data);
+        renderCompareTabs(data);
+        await renderReport(0);
+        showResults();
+        showStatus("Complete",100);
+        setTimeout(function(){dom.status.hidden=true},1500)
+    }catch(err){showError(err.message||"Comparative pipeline failed.")}finally{setCompareLoading(false)}
+}
+function renderCompareMetaBar(data){
+    data=data||{};
+    var rep=data.report||{};
+    var analyzed=data.tickers||rep.tickers||[];
+    var requested=rep.requested_tickers||analyzed;
+    var errs=rep.errors||[];
+    var items=[["Mode","Comparison"],["Tickers",analyzed.join(", ")||"none"],["Count",analyzed.length]];
+    if(requested.length!==analyzed.length)items.push(["Requested",requested.join(", ")]);
+    if(errs.length)items.push(["Excluded",errs.length]);
+    dom.metaBar.innerHTML=items.map(function(p){return'<div class="meta-bar__item"><span class="meta-bar__label">'+esc(p[0])+':</span> '+esc(String(p[1]))+'</div>'}).join("")
+}
+function renderCompareTabs(data){
+    dom.reportTabs.innerHTML="";
+    data=data||{};
+    var analyzed=data.tickers||(data.report&&data.report.tickers)||[];
+    var btn=document.createElement("button");
+    btn.className="tab tab--active";btn.type="button";btn.setAttribute("role","tab");
+    btn.textContent=analyzed.length?"Comparison — "+analyzed.join(" vs "):"Comparison";
+    dom.reportTabs.appendChild(btn)
 }
 
 function mdToHTML(md){

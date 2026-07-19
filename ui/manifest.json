@@ -2,7 +2,7 @@
     "name": "Research Analyst",
     "short_name": "ResearchAnalyst",
     "description": "Institutional-grade equity and ETF research agent.",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "start_url": "/",
     "scope": "/",
     "display": "standalone",

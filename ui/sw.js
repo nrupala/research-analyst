@@ -1,8 +1,8 @@
 "use strict";
 
-// Research Analyst - Service Worker v0.1.2
+// Research Analyst - Service Worker v0.2.0
 
-var CACHE_VERSION = "ra-v2";
+var CACHE_VERSION = "ra-v3";
 var STATIC_CACHE = CACHE_VERSION + "-static";
 var DATA_CACHE = CACHE_VERSION + "-data";
 var CDN_CACHE = CACHE_VERSION + "-cdn";
