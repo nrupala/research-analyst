@@ -50,6 +50,10 @@
 
     <main id="main" class="main">
         <section class="card card--form" aria-label="Research request">
+            <div class="mode-toggle" role="tablist" aria-label="Research mode">
+                <button type="button" id="mode-single" class="mode-btn mode-btn--active" role="tab" aria-selected="true">Single Ticker</button>
+                <button type="button" id="mode-compare" class="mode-btn" role="tab" aria-selected="false">Compare (2&ndash;5)</button>
+            </div>
             <form id="research-form" autocomplete="off" novalidate>
                 <div class="form-row">
                     <div class="form-group form-group--ticker">
@@ -84,6 +88,35 @@
                     <button type="submit" id="btn-submit" class="btn btn--primary">
                         <span id="btn-text">Run Research</span>
                         <span id="btn-spinner" class="spinner" hidden aria-hidden="true"></span>
+                    </button>
+                </div>
+            </form>
+
+            <form id="compare-form" autocomplete="off" novalidate hidden>
+                <div class="form-row form-row--compare">
+                    <div class="form-group form-group--ticker">
+                        <label for="compare-tickers" class="form-label">Tickers to Compare</label>
+                        <input type="text" id="compare-tickers" name="compare_tickers" class="form-input"
+                               placeholder="e.g. AAPL, MSFT, GOOG" autocapitalize="characters"
+                               spellcheck="false" aria-describedby="compare-help">
+                        <small id="compare-help" class="form-help">Enter 2 to 5 tickers, separated by commas or spaces</small>
+                        <small id="compare-error" class="form-error" role="alert" hidden></small>
+                    </div>
+                    <div class="form-group">
+                        <label for="compare-timeframe" class="form-label">Timeframe</label>
+                        <select id="compare-timeframe" name="compare_timeframe" class="form-select">
+                            <option value="3M">3 Months</option>
+                            <option value="6M">6 Months</option>
+                            <option value="1Y" selected>1 Year</option>
+                            <option value="3Y">3 Years</option>
+                            <option value="5Y">5 Years</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" id="btn-compare" class="btn btn--primary">
+                        <span id="btn-compare-text">Compare</span>
+                        <span id="btn-compare-spinner" class="spinner" hidden aria-hidden="true"></span>
                     </button>
                 </div>
             </form>

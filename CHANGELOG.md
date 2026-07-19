@@ -119,7 +119,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New comparative renderer (`research_analyst/reports/comparative_renderer.py`): a top scorecard (normalized 0-100 per metric) plus one side-by-side table per dimension, in Markdown and fully self-contained HTML (inline styles, no external assets, opens offline). Every rendered report carries the disclaimer and a compliance line (the tool ranks numbers; the user decides). Framing is "how they rank and what would have to be true," never buy / sell / hold
   - Provenance: every displayed number is traceable to the exact per-ticker report field it was carried from, plus each ticker's declared data sources
   - Tests: `tests/test_comparative.py` — ranking/alignment logic, the `/api/compare` endpoint for 2 and 5 tickers, an invalid ticker in the set (graceful skip), and a non-dividend name in the set
-  - Deferred to the full v0.2.0 slice (kept out of this backend increment): the comparative browser UI, the package version bump, and structured technical/momentum + macro/sector cross-ticker metrics (still narrative-only in the per-ticker reports)
+- **Multi-ticker comparative reports — browser UI (v0.2.0, in progress; version bump to follow)**
+  - New Single / Compare mode toggle in the request card; the single-ticker `/api/research` flow is left fully intact (its own form, submit button, and render path are unchanged)
+  - Compare mode accepts 2-5 tickers (comma- or space-separated, de-duplicated) and validates the count client-side with a clear inline error; no `/api/compare` request is fired on an invalid count (1 or 6+)
+  - Calls `POST /api/compare` with `{ tickers, timeframe }` and renders the returned comparative report — top scorecard plus one side-by-side table per dimension — carrying the disclaimer and compliance line
+  - Reuses the v0.1.2 export toolbar unchanged (Markdown / self-contained HTML / PDF). The comparative HTML export is self-contained (inlined stylesheet) and carries the same footer, "prepared on https://ra.devinfo.dev", and Buy Me a Coffee link as single-ticker exports (the server markdown's own prepared-on trailer is stripped so the shared UI footer is applied exactly once)
+  - Side-by-side tables degrade to horizontal scroll on narrow screens; the mode toggle and compare form reuse the existing responsive patterns
+  - Tests: `ui/tests/compare.test.mjs` — headless (Node `vm` + minimal DOM shim, no external deps) coverage of 2- and 5-ticker compare (scorecard + per-dimension tables + 3-button toolbar + self-contained MD/HTML exports), invalid counts (no request fired), and a single-ticker regression
+  - Deferred to the full v0.2.0 slice: the package version bump and `sw.js` CACHE_VERSION bump (handled at the gated release/merge step), and structured technical/momentum + macro/sector cross-ticker metrics (still narrative-only in the per-ticker reports)
 
 ### Planned
 
