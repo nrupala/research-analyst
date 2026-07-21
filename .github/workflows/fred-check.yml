@@ -1,0 +1,15 @@
+name: FRED Key Check
+on: workflow_dispatch
+jobs:
+  fred-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test FRED API key
+        env:
+          FRED_KEY: ${{ secrets.RA_MARKET_FRED_API_KEY }}
+        run: |
+          if [ -z "$FRED_KEY" ]; then echo "FAIL: secret not set"; exit 1; fi
+          code=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://api.stlouisfed.org/fred/series/observations?series_id=T10Y2Y&file_type=json&sort_order=desc&limit=1&api_key=$FRED_KEY")
+          echo "HTTP $code"
+          [ "$code" = "200" ] && echo "PASS: key valid" || { echo "FAIL: HTTP $code"; exit 1; }
