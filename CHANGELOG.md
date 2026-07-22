@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.1] - 2026-07-21
+
+### Fixed (Slice 0 - data integrity)
+- **Competitive/Moat step was blank.** Peer discovery no longer depends on the
+  fragile yfinance funds_data.top_holdings lookup (empty from datacenter IPs);
+  it now uses a curated, deterministic sector -> peers map, with yfinance used
+  only to enrich per-peer metrics (retry/backoff + per-peer graceful skip).
+- **Target had no comparable metrics** (root cause of empty rankings):
+  fundamental analysis is now wired into the competitor engine and the target's
+  margins, ROE, ROIC, revenue growth, and D/E are populated so rankings and moat
+  indicators compute. Peer debt_to_equity normalized to a ratio.
+- **Macro step returned "unknown".** Added a stdlib-urllib FRED client
+  (CPIAUCSL, A191RL1Q225SBEA, BAMLH0A0HYM2, T10Y2Y) that populates inflation,
+  real GDP, HY credit spread, and the yield-curve signal, and derives the cycle
+  phase. No-op when RA_MARKET_FRED_API_KEY is unset.
+
+### Changed
+- Graceful degradation: missing data renders honest "assumption used" notes
+  instead of blank sections.
+
 ## [0.1.2] - 2026-07-18
 
 ### Added

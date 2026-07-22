@@ -21,7 +21,12 @@ import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
 
+from typing import TYPE_CHECKING
+
 from ..models import Assumption, CompanyProfile, Competitor, CompetitiveLandscape
+
+if TYPE_CHECKING:
+    from .fundamental import FundamentalAnalysis
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +96,7 @@ class CompetitorEngine:
         self,
         profile: CompanyProfile,
         peers: list[Competitor],
+        fundamental: "FundamentalAnalysis | None" = None,
     ) -> CompetitiveAnalysis:
         """Run competitive analysis.
 
@@ -108,11 +114,16 @@ class CompetitorEngine:
         )
 
         if not peers:
-            result.data_gaps.append("No peer data available for competitive analysis.")
+            result.data_gaps.append(
+                "Competitive analysis unavailable: no peer set could be resolved "
+                f"for sector '{profile.sector or 'unknown'}'. Assumption used: none - "
+                "section omitted rather than shown with fabricated peers."
+            )
             return result
 
-        # Build target Competitor shell (we'll fill from profile + peers context)
-        target = self._target_from_profile(profile, peers)
+        # Build target Competitor and populate its own comparable metrics from
+        # fundamental analysis (RC2 fix) so rankings and moat actually compute.
+        target = self._target_from_profile(profile, peers, fundamental)
 
         result.landscape = CompetitiveLandscape(
             target=target,
@@ -220,13 +231,21 @@ class CompetitorEngine:
                 f"{total_ranked} metrics ranked against {len(peers)} peers."
             )
 
+        # Fix D: honest note when the comparison rests on very few metrics.
+        if total_ranked and total_ranked < 3:
+            result.data_gaps.append(
+                f"Competitive ranking is based on only {total_ranked} metric(s); "
+                "peer metric coverage was thin. Assumption used: rankings shown are "
+                "directional, not comprehensive."
+            )
+
         # ---- Assumptions ----
         result.assumptions.append(Assumption(
             label="Peer Universe",
             value=f"{len(peers)} peers from {profile.sector} sector",
-            source="yfinance sector ETF constituents",
+            source="Curated sector peer map (deterministic); metrics enriched via yfinance",
             confidence="Medium",
-            note="Peers selected by sector ETF holdings; may not capture all direct competitors.",
+            note="Peers selected from a curated large-cap sector map; may not capture all direct competitors.",
         ))
 
         return result
@@ -295,17 +314,34 @@ class CompetitorEngine:
         )
 
     @staticmethod
-    def _target_from_profile(profile: CompanyProfile, peers: list[Competitor]) -> Competitor:
-        """Create a Competitor object for the target from its profile.
+    def _target_from_profile(
+        profile: CompanyProfile,
+        peers: list[Competitor],
+        fundamental: "FundamentalAnalysis | None" = None,
+    ) -> Competitor:
+        """Create a Competitor for the target, populated with its own
+        comparable metrics from fundamental analysis.
 
-        This is a shell — some metrics will be None until populated
-        from fundamental analysis.
+        Without these metrics the target has no values to rank, so every
+        ranking returns None and the Competitive/Moat step renders empty
+        (RC2). Populating margins, ROE, ROIC, revenue growth, and D/E here is
+        what makes the section compute.
         """
-        return Competitor(
+        kwargs: dict = dict(
             ticker=profile.ticker,
             name=profile.name,
             market_cap=profile.market_cap,
         )
+        if fundamental is not None:
+            kwargs.update(
+                gross_margin=fundamental.gross_margin_latest,
+                operating_margin=fundamental.operating_margin_latest,
+                roe=fundamental.roe_latest,
+                roic=fundamental.roic_latest,
+                revenue_growth_yoy=fundamental.revenue_growth_yoy,
+                debt_to_equity=fundamental.debt_to_equity,
+            )
+        return Competitor(**kwargs)
 
     @staticmethod
     def _assess_moat(
