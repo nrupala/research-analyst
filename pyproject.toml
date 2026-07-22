@@ -1,3 +1,6 @@
+[tool.setuptools.packages.find]
+include = ["research_analyst", "research_analyst.*"]
+
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
