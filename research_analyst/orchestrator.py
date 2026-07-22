@@ -221,7 +221,9 @@ class ResearchOrchestrator:
         # --- Competitive ---
         competitive_analysis = None
         if peers:
-            competitive_analysis = self._competitor_engine.analyze(profile, peers)
+            competitive_analysis = self._competitor_engine.analyze(
+                profile, peers, fundamental=fundamental_analysis
+            )
             all_assumptions.extend(competitive_analysis.assumptions)
 
         # --- Dividend & Yield (v0.1.1) ---

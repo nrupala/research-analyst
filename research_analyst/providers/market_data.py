@@ -91,6 +91,67 @@ def _safe_int(val: Any) -> int | None:
 # Disk cache — avoids hammering yfinance on repeat requests
 # ---------------------------------------------------------------------------
 
+
+# ---------------------------------------------------------------------------
+# Slice 0 (data-integrity): curated peer universe + FRED client
+# ---------------------------------------------------------------------------
+
+# Deterministic sector -> representative large-cap peers. Replaces the fragile
+# yfinance funds_data.top_holdings lookup (empty from datacenter IPs). yfinance
+# is still used to ENRICH per-peer metrics, but discovery no longer depends on it.
+_SECTOR_PEERS: dict[str, list[str]] = {
+    "Technology": ["AAPL", "MSFT", "NVDA", "AVGO", "ORCL", "CRM", "ADBE", "AMD", "CSCO", "ACN", "INTC", "QCOM", "TXN", "IBM", "NOW", "INTU", "AMAT", "LRCX", "MU", "ADI"],
+    "Communication Services": ["GOOGL", "META", "NFLX", "DIS", "CMCSA", "T", "VZ", "TMUS", "CHTR", "EA"],
+    "Consumer Cyclical": ["AMZN", "TSLA", "HD", "MCD", "NKE", "LOW", "SBUX", "BKNG", "TJX", "GM", "F"],
+    "Consumer Defensive": ["WMT", "PG", "KO", "PEP", "COST", "MDLZ", "CL", "MO", "PM", "TGT"],
+    "Financial Services": ["JPM", "BAC", "WFC", "GS", "MS", "C", "BLK", "SCHW", "AXP", "SPGI", "V", "MA"],
+    "Financials": ["JPM", "BAC", "WFC", "GS", "MS", "C", "BLK", "SCHW", "AXP", "SPGI"],
+    "Healthcare": ["UNH", "JNJ", "LLY", "PFE", "MRK", "ABBV", "TMO", "ABT", "DHR", "BMY", "AMGN", "GILD"],
+    "Industrials": ["CAT", "BA", "HON", "UPS", "GE", "RTX", "UNP", "DE", "LMT", "MMM", "EMR", "ETN"],
+    "Energy": ["XOM", "CVX", "COP", "SLB", "EOG", "MPC", "PSX", "VLO", "OXY", "WMB"],
+    "Utilities": ["NEE", "DUK", "SO", "D", "AEP", "EXC", "SRE", "XEL", "ED", "PEG"],
+    "Real Estate": ["PLD", "AMT", "EQIX", "CCI", "PSA", "O", "SPG", "WELL", "DLR", "VICI"],
+    "Basic Materials": ["LIN", "SHW", "APD", "ECL", "FCX", "NEM", "DOW", "DD", "NUE", "CTVA"],
+}
+
+
+def _sector_peer_candidates(sector: str, industry: str = "") -> list[str]:
+    """Return a deterministic peer universe for a sector (no network call)."""
+    return list(_SECTOR_PEERS.get(sector or "", []))
+
+
+def _fred_observations(series_id: str, api_key: str, base_url: str, limit: int = 14) -> list[tuple[str, float]]:
+    """Fetch recent FRED observations as (date, value), newest first. Stdlib only.
+
+    Missing values (a literal dot) are skipped. Raises on transport/HTTP
+    errors so the caller can degrade gracefully.
+    """
+    import json
+    import urllib.parse
+    import urllib.request
+
+    params = urllib.parse.urlencode({
+        "series_id": series_id,
+        "api_key": api_key,
+        "file_type": "json",
+        "sort_order": "desc",
+        "limit": limit,
+    })
+    url = f"{base_url.rstrip('/')}/series/observations?{params}"
+    with urllib.request.urlopen(url, timeout=15) as resp:
+        payload = json.loads(resp.read().decode())
+    out: list[tuple[str, float]] = []
+    for obs in payload.get("observations", []):
+        val = obs.get("value")
+        if val in (None, ".", ""):
+            continue
+        try:
+            out.append((obs.get("date", ""), float(val)))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 class _DiskCache:
     """Simple TTL-based disk cache using JSON files.
 
@@ -599,15 +660,13 @@ class MarketDataProvider:
     # ------------------------------------------------------------------
 
     async def get_sector_peers(self, ticker: str, max_peers: int = 8) -> list[Competitor]:
-        """Discover sector peers using yfinance sector/industry data.
+        """Discover sector peers via a curated sector -> peers map.
 
-        Strategy:
-          1. Get target's sector + industry from profile
-          2. Use a curated sector-to-ETF mapping to find constituents
-          3. Filter by market cap proximity
-          4. Return top peers sorted by market cap
-
-        This is a heuristic — competitor engine will refine further.
+        Discovery is deterministic (no network) — it replaces the fragile
+        yfinance funds_data.top_holdings lookup that returned empty from
+        datacenter IPs (Fly/Render) and left the Competitive/Moat step blank.
+        yfinance is used ONLY to enrich each peer's metrics, with retry +
+        backoff and per-peer graceful skip.
         """
         ticker = _sanitize_ticker(ticker)
 
@@ -616,82 +675,53 @@ class MarketDataProvider:
             logger.warning("No sector data for %s; cannot discover peers.", ticker)
             return []
 
-        # Sector ETF mapping for peer discovery
-        sector_etfs: dict[str, str] = {
-            "Technology": "XLK",
-            "Healthcare": "XLV",
-            "Financial Services": "XLF",
-            "Financials": "XLF",
-            "Consumer Cyclical": "XLY",
-            "Consumer Defensive": "XLP",
-            "Communication Services": "XLC",
-            "Industrials": "XLI",
-            "Energy": "XLE",
-            "Utilities": "XLU",
-            "Real Estate": "XLRE",
-            "Basic Materials": "XLB",
-        }
-
-        etf_ticker = sector_etfs.get(profile.sector)
-        if not etf_ticker:
-            logger.info("No sector ETF mapping for '%s'", profile.sector)
-            return []
-
-        try:
-            import yfinance as yf
-            etf = await asyncio.to_thread(lambda: yf.Ticker(etf_ticker))
-            # Get top holdings which serve as sector peers
-            holdings = await asyncio.to_thread(lambda: getattr(etf, "funds_data", None))
-
-            if holdings is None:
-                return []
-
-            top_holdings = await asyncio.to_thread(
-                lambda: holdings.top_holdings if hasattr(holdings, "top_holdings") else pd.DataFrame()
-            )
-
-            if top_holdings is None or (isinstance(top_holdings, pd.DataFrame) and top_holdings.empty):
-                return []
-
-        except Exception as e:
-            logger.warning("Peer discovery via ETF failed for %s: %s", ticker, e)
+        peer_tickers = [
+            t for t in _sector_peer_candidates(profile.sector, profile.industry)
+            if t != ticker
+        ]
+        if not peer_tickers:
+            logger.info("No curated peer set for sector '%s'", profile.sector)
             return []
 
         peers: list[Competitor] = []
-        peer_tickers: list[str] = []
 
-        if isinstance(top_holdings, pd.DataFrame):
-            peer_tickers = [str(idx).strip().upper() for idx in top_holdings.index if str(idx).strip().upper() != ticker]
-        elif isinstance(top_holdings, dict):
-            peer_tickers = [k.strip().upper() for k in top_holdings.keys() if k.strip().upper() != ticker]
-
-        # Fetch peer profiles in parallel — bounded concurrency
+        # Enrich peers in parallel — bounded concurrency, retry + graceful skip.
         sem = asyncio.Semaphore(4)
 
         async def _fetch_peer(pt: str) -> Competitor | None:
             async with sem:
-                try:
-                    pp = await self.get_company_profile(pt)
-                    info = (await self._yf_ticker(pt))
-                    yf_info = await asyncio.to_thread(lambda: info.info)
+                for attempt in range(3):
+                    try:
+                        pp = await self.get_company_profile(pt)
+                        info = await self._yf_ticker(pt)
+                        yf_info = await asyncio.to_thread(lambda: info.info)
 
-                    return Competitor(
-                        ticker=pt,
-                        name=pp.name,
-                        market_cap=pp.market_cap,
-                        revenue=_safe_decimal(yf_info.get("totalRevenue")),
-                        gross_margin=_safe_float(yf_info.get("grossMargins")),
-                        operating_margin=_safe_float(yf_info.get("operatingMargins")),
-                        pe_ratio=_safe_float(yf_info.get("trailingPE")),
-                        ev_ebitda=_safe_float(yf_info.get("enterpriseToEbitda")),
-                        revenue_growth_yoy=_safe_float(yf_info.get("revenueGrowth")),
-                        roe=_safe_float(yf_info.get("returnOnEquity")),
-                        debt_to_equity=_safe_float(yf_info.get("debtToEquity")),
-                        dividend_yield=_safe_float(yf_info.get("trailingAnnualDividendYield")),
-                    )
-                except Exception as e:
-                    logger.debug("Could not fetch peer %s: %s", pt, e)
-                    return None
+                        # yfinance reports debtToEquity as a percent (e.g. 152.3);
+                        # normalize to a ratio so it is comparable to the target's
+                        # fundamental debt_to_equity (populated as a ratio by Fix B).
+                        de = _safe_float(yf_info.get("debtToEquity"))
+                        de_ratio = (de / 100.0) if de is not None else None
+
+                        return Competitor(
+                            ticker=pt,
+                            name=pp.name,
+                            market_cap=pp.market_cap,
+                            revenue=_safe_decimal(yf_info.get("totalRevenue")),
+                            gross_margin=_safe_float(yf_info.get("grossMargins")),
+                            operating_margin=_safe_float(yf_info.get("operatingMargins")),
+                            pe_ratio=_safe_float(yf_info.get("trailingPE")),
+                            ev_ebitda=_safe_float(yf_info.get("enterpriseToEbitda")),
+                            revenue_growth_yoy=_safe_float(yf_info.get("revenueGrowth")),
+                            roe=_safe_float(yf_info.get("returnOnEquity")),
+                            debt_to_equity=de_ratio,
+                            dividend_yield=_safe_float(yf_info.get("trailingAnnualDividendYield")),
+                        )
+                    except Exception as e:
+                        if attempt == 2:
+                            logger.debug("Could not fetch peer %s after retries: %s", pt, e)
+                            return None
+                        await asyncio.sleep(0.5 * (attempt + 1))
+                return None
 
         tasks = [_fetch_peer(pt) for pt in peer_tickers[:max_peers * 2]]
         results = await asyncio.gather(*tasks)
@@ -700,7 +730,6 @@ class MarketDataProvider:
             if r is not None and len(peers) < max_peers:
                 peers.append(r)
 
-        # Sort by market cap descending
         peers.sort(key=lambda p: float(p.market_cap or 0), reverse=True)
         return peers[:max_peers]
 
@@ -708,16 +737,81 @@ class MarketDataProvider:
     # Macro snapshot
     # ------------------------------------------------------------------
 
+    async def _populate_fred(self, snapshot: MacroSnapshot) -> bool:
+        """Populate the macro snapshot from FRED (official data).
+
+        Returns True if at least one field was set. Graceful no-op when the
+        key is missing. Series:
+          - CPIAUCSL        -> cpi_yoy (YoY from 13 monthly points)
+          - A191RL1Q225SBEA -> gdp_growth_latest (real GDP, annualized %)
+          - BAMLH0A0HYM2    -> credit_spread_hy (HY OAS %)
+          - T10Y2Y          -> yield_curve_spread / signal
+        cycle_phase is derived from growth + curve.
+        """
+        api_key = settings.market.fred_api_key
+        if not api_key:
+            return False
+        base = settings.market.fred_base_url
+        got = False
+
+        try:
+            cpi = await asyncio.to_thread(_fred_observations, "CPIAUCSL", api_key, base, 14)
+            if len(cpi) >= 13 and cpi[12][1]:
+                snapshot.cpi_yoy = (cpi[0][1] / cpi[12][1]) - 1.0
+                got = True
+        except Exception as e:  # pragma: no cover - network
+            logger.debug("FRED CPIAUCSL failed: %s", e)
+
+        try:
+            gdp = await asyncio.to_thread(_fred_observations, "A191RL1Q225SBEA", api_key, base, 2)
+            if gdp:
+                snapshot.gdp_growth_latest = gdp[0][1] / 100.0
+                got = True
+        except Exception as e:  # pragma: no cover - network
+            logger.debug("FRED GDP failed: %s", e)
+
+        try:
+            hy = await asyncio.to_thread(_fred_observations, "BAMLH0A0HYM2", api_key, base, 5)
+            if hy:
+                snapshot.credit_spread_hy = hy[0][1] / 100.0
+                got = True
+        except Exception as e:  # pragma: no cover - network
+            logger.debug("FRED HY OAS failed: %s", e)
+
+        try:
+            curve = await asyncio.to_thread(_fred_observations, "T10Y2Y", api_key, base, 5)
+            if curve:
+                spread = curve[0][1] / 100.0
+                snapshot.yield_curve_spread = spread
+                snapshot.yield_curve_signal = (
+                    "inverted" if spread < 0 else ("flat" if spread < 0.002 else "normal")
+                )
+                got = True
+        except Exception as e:  # pragma: no cover - network
+            logger.debug("FRED T10Y2Y failed: %s", e)
+
+        if snapshot.gdp_growth_latest is not None:
+            g = snapshot.gdp_growth_latest
+            inverted = (
+                snapshot.yield_curve_spread is not None and snapshot.yield_curve_spread < 0
+            )
+            if g <= 0:
+                snapshot.cycle_phase = "contraction"
+            elif inverted:
+                snapshot.cycle_phase = "peak"
+            else:
+                snapshot.cycle_phase = "expansion"
+            got = True
+
+        return got
+
     async def get_macro_snapshot(self) -> MacroSnapshot:
-        """Fetch current macro environment data.
+        """Fetch the current macro environment.
 
-        Uses market ETFs/indices as proxies:
-          - ^TNX: 10Y Treasury yield
-          - ^IRX: 13-week T-Bill (proxy for short rates)
-          - ^VIX: Volatility index
-          - ^GSPC: S&P 500 for market valuation
-
-        This is supplementary — FRED API would provide official data.
+        Layered sources:
+          - yfinance proxies: ^TNX (10Y yield), ^VIX (volatility)
+          - FRED (official): CPI YoY, real GDP, HY credit spread, 10Y-2Y curve
+            + derived cycle phase (see _populate_fred; no-op without a key).
         """
         cache_key = "macro_snapshot"
         cached = self._cache.get(cache_key)
@@ -726,22 +820,11 @@ class MarketDataProvider:
 
         snapshot = MacroSnapshot(as_of_date=date.today())
 
-        # Fetch macro tickers in parallel
         macro_tickers = {
             "^TNX": "us_10y_yield",
             "^VIX": "vix",
         }
 
-        async def _fetch_macro(symbol: str, field: str) -> tuple[str, float | None]:
-            try:
-                series = await self.get_price_series(symbol.replace("^", "%5E"), period="5d")
-                if series.data:
-                    return field, series.current_price
-            except Exception as e:
-                logger.debug("Macro fetch failed for %s: %s", symbol, e)
-            return field, None
-
-        # Note: yfinance handles ^-prefixed symbols directly
         try:
             import yfinance as yf
 
@@ -761,5 +844,13 @@ class MarketDataProvider:
         except ImportError:
             logger.warning("yfinance not available for macro data")
 
+        # Official macro data from FRED. No-op when RA_MARKET_FRED_API_KEY is
+        # unset; the ^TNX/^VIX proxies above still apply. Never raises.
+        try:
+            await self._populate_fred(snapshot)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("FRED population failed: %s", e)
+
         self._cache.put(cache_key, snapshot.model_dump(mode="json"))
         return snapshot
+
