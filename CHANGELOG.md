@@ -26,6 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Graceful degradation: missing data renders honest "assumption used" notes
   instead of blank sections.
+- **Launch coherence (2026-08-04).** UI/PWA version strings synced to 0.2.1
+  (footer, `manifest.json`, `package.json`, service worker); the backend
+  already reported 0.2.1 via `/api/health`.
+- **Service worker now registered in the UI.** `sw.js` shipped since 0.2.0 but
+  was never registered, so the PWA was not installable/offline-capable. Added
+  registration in `index.html` and bumped `CACHE_VERSION` ra-v3 -> ra-v4.
+- Worker origin config (`workers/api-proxy/wrangler.toml`) repointed from the
+  retired Fly/Render origins to the sovereign box origin
+  `ra-origin.nrupalakolkar.com` (takes effect on `wrangler deploy`).
 
 ## [0.1.2] - 2026-07-18
 
