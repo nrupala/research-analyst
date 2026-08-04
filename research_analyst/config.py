@@ -104,6 +104,20 @@ class ServerConfig(BaseSettings):
     model_config = {"env_prefix": "RA_SERVER_"}
 
 
+class EntitlementsConfig(BaseSettings):
+    """Per-email API-key entitlements (see research_analyst/entitlements.py).
+
+    Enforcement ships OFF (shadow mode). Turn on only after a clean soak.
+    """
+
+    # Master switch. False = shadow mode: resolve tier + log, never block.
+    enforce: bool = False
+    # Optional SQLite key-store path. Empty = in-memory empty store (all FREE).
+    db_path: str = ""
+
+    model_config = {"env_prefix": "RA_ENTITLEMENTS_"}
+
+
 class Settings(BaseSettings):
     """Root settings — aggregates all sub-configs."""
 
@@ -111,6 +125,7 @@ class Settings(BaseSettings):
     market: MarketDataConfig = Field(default_factory=MarketDataConfig)
     analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
+    entitlements: EntitlementsConfig = Field(default_factory=EntitlementsConfig)
 
     # Global
     debug: bool = False

@@ -40,8 +40,13 @@ from .models import ResearchRequest
 from .orchestrator import ResearchOrchestrator
 from .comparative import MAX_TICKERS, MIN_TICKERS, ComparativeOrchestrator
 from .reports.comparative_renderer import render_html, render_markdown
+from .entitlements import Tier, build_store, evaluate, extract_key, resolve_tier
 
 logger = logging.getLogger(__name__)
+
+# Entitlement key store, chosen from settings (SQLite path or in-memory
+# empty). Built once at import; stateless for the in-memory default.
+_ENTITLEMENT_STORE = build_store(settings.entitlements)
 
 
 # ---------------------------------------------------------------------------
@@ -263,6 +268,23 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=429, detail="Rate limit exceeded.")
 
         request_id = str(uuid.uuid4())[:8]
+
+        # --- Entitlement gate (Slice 1): comparative is a Pro feature. ---
+        # Enforcement ships OFF (shadow mode): resolve the tier and log what
+        # enforcement WOULD do, but do not block until RA_ENTITLEMENTS_ENFORCE.
+        _ent_key = extract_key(request.headers.get)
+        _ent_tier = resolve_tier(_ent_key, _ENTITLEMENT_STORE)
+        _ent_gate = evaluate(Tier.PRO, _ent_tier, settings.entitlements.enforce)
+        if _ent_gate.would_block:
+            if settings.entitlements.enforce:
+                logger.info("entitlement: /api/compare blocked (tier=%s)", _ent_tier.value)
+            else:
+                logger.info(
+                    "entitlement shadow: /api/compare would require PRO (tier=%s, enforce=off)",
+                    _ent_tier.value,
+                )
+        if _ent_gate.allowed is False:
+            raise HTTPException(status_code=402, detail=_ent_gate.reason)
 
         # Validate the ticker count up front with a clear message (2-5 distinct).
         distinct = ComparativeOrchestrator.normalize_tickers(body.tickers)
