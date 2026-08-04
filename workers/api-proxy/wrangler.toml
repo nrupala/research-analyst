@@ -1,5 +1,6 @@
 # Research Analyst - Cloudflare Worker API Proxy
-# Routes /api/* from Cloudflare Pages to the Python backend on Fly.io
+# Routes /api/* from Cloudflare Pages to the sovereign Python backend.
+# Mirror origins: ra.devinfo.dev and ra.aimlds.org (same worker + Pages).
 #
 # Deploy: cd workers/api-proxy && npx wrangler deploy
 # Docs: https://developers.cloudflare.com/workers/wrangler/configuration/
@@ -18,9 +19,22 @@ BACKEND_PRIMARY = "https://ra-origin.nrupalakolkar.com"
 BACKEND_FALLBACK = "https://ra-origin.nrupalakolkar.com"
 # Failover timeout (ms) - if primary doesn't respond in 10s, try fallback
 FAILOVER_TIMEOUT = "10000"
+# CORS allow-list: comma-separated mirror origins. The worker echoes the
+# caller's Origin back when it matches this list.
+CORS_ORIGINS = "https://ra.devinfo.dev,https://ra.aimlds.org"
 
 # Routes: attach to your Pages custom domain
 # Uncomment and set your domain after Pages deploy
 # [[routes]]
 # pattern = "ra.devinfo.dev/api/*"
 # zone_name = "devinfo.dev"
+
+# Active routes: bind the worker to both mirror domains. Attaching
+# happens on `wrangler deploy` (verify no duplicate dashboard routes).
+[[routes]]
+pattern = "ra.devinfo.dev/api/*"
+zone_name = "devinfo.dev"
+
+[[routes]]
+pattern = "ra.aimlds.org/api/*"
+zone_name = "aimlds.org"
