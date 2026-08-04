@@ -372,6 +372,27 @@ class MarketDataProvider:
         if not info:
             raise ValueError(f"No data returned from yfinance for '{ticker}'")
 
+        # Resolution guard: reject symbols that do not map to a real listed
+        # security. yfinance returns a sparse dict for unknown tickers (no
+        # name, no price), which previously fell through to a *fabricated*
+        # report (name defaulted to the raw ticker). A real equity/ETF —
+        # including international listings such as RY.TO — always has at least
+        # a name or a market price, so require one before proceeding.
+        _name = info.get("longName") or info.get("shortName")
+        _price_fields = (
+            "regularMarketPrice", "currentPrice", "previousClose",
+            "regularMarketPreviousClose", "open", "navPrice", "bid", "ask",
+        )
+        _has_price = any(
+            _safe_float(info.get(f)) not in (None, 0) for f in _price_fields
+        )
+        if not _name and not _has_price:
+            raise ValueError(
+                f"Could not resolve ticker '{ticker}' to a listed security "
+                f"(no company name or market price returned). "
+                f"Check the symbol and try again."
+            )
+
         # Determine security type
         quote_type = info.get("quoteType", "EQUITY").upper()
         is_etf = quote_type == "ETF"
