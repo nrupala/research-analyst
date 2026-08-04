@@ -107,3 +107,23 @@ No TWA equivalent on iOS. Use the scaffolded **Capacitor** wrapper (WKWebView) t
    WKWebView shell.
 
 Fix `capacitor.config.ts` `server.url` before any native build. Keep `ui/` as the single codebase.
+
+---
+
+## Decisions locked (2026-08-04)
+
+- **Domains: both `devinfo.dev` and `aimlds.org`, as co-equal true mirrors.** RA ships on
+  `ra.devinfo.dev` **and** `ra.aimlds.org` from the same Pages/Worker projects (`.dev` corporate
+  flagging is the reason aimlds.org exists). See `MIRROR-aimlds.md`.
+- **Android stores: Play + F-Droid + site install page + direct APK.**
+  - **Two build flavors from the same `ui/`:** **Play = TWA** (Chrome engine, best UX);
+    **F-Droid = Capacitor / system-WebView** build. Rationale: a TWA depends on Chrome, which F-Droid
+    flags as a proprietary dependency (`NonFreeDep` anti-feature); the self-contained WebView build
+    avoids that and passes F-Droid's inclusion policy. AGPL core is F-Droid-friendly.
+  - **Direct APK** hosted on **GitHub Releases**, linked from the site install page — for
+    corporate/sovereign users who can't use Play.
+  - F-Droid needs a reproducible build + `fdroiddata` metadata + fully-FOSS deps.
+- **iOS / macOS: PWA only** (no Apple Developer Program) — unchanged.
+- **Entitlement / paid unlock: API key per email** (not full accounts) — see `MONETIZATION.md`
+  (Entitlement model). The app/PWA merely accepts a key, so purchase stays on the web across every
+  channel: **zero Apple/Google cut, no store-billing conflict.**
