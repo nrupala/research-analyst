@@ -198,11 +198,20 @@
     </dialog>
 
     <footer class="footer" role="contentinfo">
-        <p>Research Analyst v0.2.0 - For informational and educational purposes only. Not financial advice.</p>
+        <p>Research Analyst v0.2.1 - For informational and educational purposes only. Not financial advice.</p>
         <p><a href="https://devinfo.dev" style="color: var(--c-primary);">&larr; Back to devinfo.dev</a> &middot; <a href="https://buymeacoffee.com/nrupalakolt" target="_blank" rel="noopener noreferrer" style="color: var(--c-primary);">Buy Me a Coffee</a></p>
     </footer>
 
     <script src="/app.js" defer></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", function () {
+          navigator.serviceWorker.register("/sw.js").catch(function (err) {
+            console.warn("SW registration failed:", err);
+          });
+        });
+      }
+    </script>
     <!-- Cloudflare Web Analytics --><script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "c3a8bac2d6bc49989508e48bb6757287"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>
