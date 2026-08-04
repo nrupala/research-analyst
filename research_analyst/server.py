@@ -142,7 +142,7 @@ def create_app() -> FastAPI:
         allow_origins=["*"],
         allow_credentials=False,
         allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Content-Type"],
+        allow_headers=["Content-Type", "Authorization", "X-RA-Key"],
     )
     app.add_middleware(GZipMiddleware, minimum_size=500)
 
@@ -159,7 +159,7 @@ def create_app() -> FastAPI:
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data:; "
-            "connect-src 'self' https://research-analyst.fly.dev https://research-analyst.onrender.com https://ra.devinfo.dev"
+            "connect-src 'self' https://ra.devinfo.dev https://ra.aimlds.org"
         )
         return response
 

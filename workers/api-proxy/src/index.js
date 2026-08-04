@@ -1,22 +1,25 @@
 /**
  * Research Analyst - Cloudflare Worker API Proxy
- * Routes /api/* requests from Cloudflare Pages to the Python backend.
+ * Routes /api/* requests from Cloudflare Pages to the sovereign Python backend.
  *
  * Architecture:
- *   Browser (ra.devinfo.dev) -> Cloudflare Pages (static UI)
- *   Browser /api/* -> This Worker -> Fly.io (primary) or Render (fallback)
+ *   Browser (ra.devinfo.dev | ra.aimlds.org) -> Cloudflare Pages (static UI)
+ *   Browser /api/* -> This Worker -> sovereign origin (ra-origin.nrupalakolkar.com)
  *
  * Failover logic:
- *   1. Try primary backend (Fly.io)
- *   2. If primary fails or times out, try fallback (Render)
+ *   1. Try primary backend
+ *   2. If primary fails or times out, try fallback
  *   3. If both fail, return structured error JSON
  *
  * Security:
- *   - CORS headers for ra.devinfo.dev only
+ *   - CORS restricted to an allow-list of mirror origins (devinfo.dev + aimlds.org)
  *   - Request size limit (1MB)
- *   - No credentials forwarded to backend
+ *   - Authorization / X-RA-Key forwarded to the origin (per-email API key
+ *     entitlement; validated at the origin, never in the worker)
  *   - Rate limiting via Cloudflare's built-in protection
  */
+
+const DEFAULT_ALLOWED_ORIGINS = "https://ra.devinfo.dev,https://ra.aimlds.org";
 
 export default {
     async fetch(request, env) {
@@ -29,18 +32,18 @@ export default {
 
         // CORS preflight
         if (request.method === "OPTIONS") {
-            return handleCORS(env);
+            return handleCORS(request, env);
         }
 
         // Request size guard (1MB max)
         var contentLength = request.headers.get("content-length");
         if (contentLength && parseInt(contentLength, 10) > 1048576) {
-            return jsonResponse({ error: "Request too large", detail: "Max 1MB" }, 413, env);
+            return jsonResponse({ error: "Request too large", detail: "Max 1MB" }, 413, request, env);
         }
 
-        // Backend URLs from environment
-        var primary = (env.BACKEND_PRIMARY || "https://research-analyst.fly.dev").replace(/\/$/, "");
-        var fallback = (env.BACKEND_FALLBACK || "https://research-analyst.onrender.com").replace(/\/$/, "");
+        // Backend URLs from environment (sovereign origin by default)
+        var primary = (env.BACKEND_PRIMARY || "https://ra-origin.nrupalakolkar.com").replace(/\/$/, "");
+        var fallback = (env.BACKEND_FALLBACK || "https://ra-origin.nrupalakolkar.com").replace(/\/$/, "");
         var timeout = parseInt(env.FAILOVER_TIMEOUT || "10000", 10);
 
         // Build backend request
@@ -60,17 +63,13 @@ export default {
         var response = await tryBackend(primary + backendPath, requestInit, timeout);
 
         if (response) {
-            return addCORS(response, env);
+            return addCORS(response, request, env);
         }
 
         // Primary failed - try fallback
         console.log("Primary backend failed, trying fallback...");
 
-        // Need to re-clone body for second attempt
-        // For POST with body, we need to read and replay
         if (request.method !== "GET" && request.method !== "HEAD") {
-            // Re-read body from original request clone is not possible after consumption
-            // So we use a different approach: make a new request from scratch
             var bodyText = null;
             try {
                 var clonedReq = request.clone();
@@ -84,17 +83,16 @@ export default {
         response = await tryBackend(fallback + backendPath, requestInit, timeout);
 
         if (response) {
-            // Add header indicating fallback was used
             var fallbackResp = new Response(response.body, response);
             fallbackResp.headers.set("X-RA-Backend", "fallback");
-            return addCORS(fallbackResp, env);
+            return addCORS(fallbackResp, request, env);
         }
 
         // Both backends failed
         return jsonResponse({
             error: "service_unavailable",
-            detail: "Both primary and fallback backends are unreachable. The research service may be starting up (cold start can take 30-60 seconds on free tier). Please retry in a moment."
-        }, 503, env);
+            detail: "Both primary and fallback backends are unreachable. The research service may be starting up (cold start can take 30-60 seconds). Please retry in a moment."
+        }, 503, request, env);
     }
 };
 
@@ -117,21 +115,37 @@ async function tryBackend(url, init, timeoutMs) {
 }
 
 /**
+ * Resolve Access-Control-Allow-Origin by matching the request Origin against
+ * the configured allow-list. Falls back to the first allowed origin.
+ */
+function resolveAllowedOrigin(request, env) {
+    var allowList = (env.CORS_ORIGINS || DEFAULT_ALLOWED_ORIGINS)
+        .split(",")
+        .map(function (s) { return s.trim(); })
+        .filter(Boolean);
+    var origin = request.headers.get("Origin");
+    if (origin && allowList.indexOf(origin) > -1) {
+        return origin;
+    }
+    return allowList[0];
+}
+
+/**
  * CORS preflight response.
  */
-function handleCORS(env) {
+function handleCORS(request, env) {
     return new Response(null, {
         status: 204,
-        headers: corsHeaders(env)
+        headers: corsHeaders(request, env)
     });
 }
 
 /**
  * Add CORS headers to an existing response.
  */
-function addCORS(response, env) {
+function addCORS(response, request, env) {
     var newResp = new Response(response.body, response);
-    var cors = corsHeaders(env);
+    var cors = corsHeaders(request, env);
     for (var key of cors.keys()) {
         newResp.headers.set(key, cors.get(key));
     }
@@ -139,14 +153,14 @@ function addCORS(response, env) {
 }
 
 /**
- * CORS headers - restricted to allowed origins.
+ * CORS headers - restricted to the mirror-origin allow-list.
  */
-function corsHeaders(env) {
-    var allowed = env.CORS_ORIGIN || "https://ra.devinfo.dev";
+function corsHeaders(request, env) {
     var headers = new Headers();
-    headers.set("Access-Control-Allow-Origin", allowed);
+    headers.set("Access-Control-Allow-Origin", resolveAllowedOrigin(request, env));
+    headers.set("Vary", "Origin");
     headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    headers.set("Access-Control-Allow-Headers", "Content-Type");
+    headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-RA-Key");
     headers.set("Access-Control-Max-Age", "86400");
     return headers;
 }
@@ -154,10 +168,10 @@ function corsHeaders(env) {
 /**
  * Structured JSON error response with CORS.
  */
-function jsonResponse(body, status, env) {
+function jsonResponse(body, status, request, env) {
     var resp = new Response(JSON.stringify(body), {
         status: status,
         headers: { "Content-Type": "application/json" }
     });
-    return addCORS(resp, env);
+    return addCORS(resp, request, env);
 }
