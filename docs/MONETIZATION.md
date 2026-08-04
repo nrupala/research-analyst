@@ -140,3 +140,38 @@ Comparative/international/export already ship. The net-new work to actually char
 3. Saved watchlists + report history (storage; box-native, no Docker).
 4. Scheduled/emailed reports (a small scheduler on the box + email send) — also the iOS-review unlock.
 Each is a separate phased plan; none is started. This doc is the "what to sell," not the build order.
+
+---
+
+## Entitlement model (LOCKED 2026-08-04): API key per email
+
+Paid unlock is a **per-email API key**, not full accounts/OAuth.
+
+**Flow:** user enters email on the site → pays (LemonSqueezy/Stripe) → the payment webhook **generates a
+Pro API key bound to that email** → the key is emailed (magic-link style) → the user pastes it into the
+PWA/app once → the API validates the key on each request and unlocks Pro (multi-ticker comparative,
+international, PDF/HTML export, saved watchlists, scheduled/emailed reports). **Free tier = no key** (or a
+free-tier key): rate-limited single-ticker.
+
+**Why this is the right call:**
+- **No auth infra** — no OAuth, sessions, or password reset to build and secure.
+- **Identical across every channel** — PWA, Play (TWA), F-Droid (WebView), direct APK all just accept a
+  key; no per-store login.
+- **Purchase stays on the web** → **zero Apple/Google cut and no store-billing-policy conflict** (the app
+  never shows an in-app purchase).
+- **Device-agnostic, portable, revocable/rotatable**; matches the sovereign ethos.
+- **Clean AGPL open-core boundary** — the key + entitlement service is the paid hosted layer; the engine
+  stays AGPL and self-hostable.
+
+**Design / security:**
+- Keys are secrets: HTTPS only; store **hashed** server-side; per-key tier + rate limit; one active key
+  per email (rotatable); key-gen endpoint gated behind the payment webhook; **never committed or logged**.
+- Transport: `Authorization: Bearer <key>` (or `X-RA-Key`) forwarded by the worker to the origin; origin
+  middleware checks entitlement before running the pipeline.
+- Storage on the box: a small key store (**SQLite/file, no Docker**) + validation middleware — box-native,
+  fits the existing systemd `ra.service`.
+
+**Build order (future, phased — not started):** (1) key store + validation middleware on the origin;
+(2) key-gen endpoint + payment webhook; (3) UI "enter your key" + gated feature flags; (4) key email
+delivery. Each is a separate branch + PR; box-side pieces go live via the box redeploy. Keys never pass
+through the assistant.
