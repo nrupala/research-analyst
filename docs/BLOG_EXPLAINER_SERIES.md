@@ -74,7 +74,10 @@ posts publish).
    reports; Pages for the UI).
 3. Any publish (`/run`) — stays manual and reviewed.
 
-## Open decisions for you
-1. **Linking depth:** Option A (per-step "How this is computed" links) or Option B (single umbrella link)?
-2. **Series scope:** all 10, or start with the core 7 engines + the umbrella (skip data-sources/comparative for v1)?
-3. **Canonical RA domain** in the CTA — waits on the aimlds.org mirror decision from the packaging thread.
+## Decisions locked (2026-08-04)
+1. **Linking depth: deep — Option A.** Per-step **"ⓘ How this is computed"** links on each report step
+   (not a shallow umbrella-only link), 404-gated so a report never links an unpublished post.
+2. **Series scope: all 10.**
+3. **Hosting / canonical: both domains.** Posts live on `blog.thinkwithfinance.com` and **may also be
+   surfaced on the canonical domain**; `devinfo.dev` and `aimlds.org` are co-equal mirrors, so CTAs
+   reference the canonical mirror pair. See `MIRROR-aimlds.md`.
