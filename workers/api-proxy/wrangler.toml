@@ -1,3 +1,13 @@
+# WARNING (2026-08-04): the LIVE worker `research-analyst-api` is currently
+# DASHBOARD-MANAGED (last deploy source: dash, 2026-07-22, message
+# "Replaced Fly by personal cloud"). Its code could NOT be read via API
+# (workers /content is blocked: 10405). This file is reconciled to the live
+# worker's SETTINGS (name, compat 2024-12-01, nodejs_compat, AI binding) so a
+# deploy is non-destructive to CONFIG, but CODE parity with src/index.js is
+# UNVERIFIED. Do NOT `wrangler deploy` over the live worker until you diff
+# src/index.js against the dashboard version, or this proxy will replace
+# whatever the dashboard version currently serves.
+#
 # Research Analyst - Cloudflare Worker API Proxy
 # Routes /api/* from Cloudflare Pages to the sovereign Python backend.
 # Mirror origins: ra.devinfo.dev and ra.aimlds.org (same worker + Pages).
@@ -5,9 +15,13 @@
 # Deploy: cd workers/api-proxy && npx wrangler deploy
 # Docs: https://developers.cloudflare.com/workers/wrangler/configuration/
 
-name = "ra-api-proxy"
+# Name MUST match the deployed worker that owns the ra.*/api/* routes
+# (research-analyst-api), so `wrangler deploy` updates it in place rather
+# than creating a divergent ra-api-proxy worker.
+name = "research-analyst-api"
 main = "src/index.js"
-compatibility_date = "2024-09-01"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
 
 [vars]
 # Primary backend: sovereign OCI-native origin (systemd ra.service on the
@@ -28,6 +42,9 @@ CORS_ORIGINS = "https://ra.devinfo.dev,https://ra.aimlds.org"
 # [[routes]]
 # pattern = "ra.devinfo.dev/api/*"
 # zone_name = "devinfo.dev"
+
+[ai]
+binding = "AI"
 
 # Active routes: bind the worker to both mirror domains. Attaching
 # happens on `wrangler deploy` (verify no duplicate dashboard routes).
