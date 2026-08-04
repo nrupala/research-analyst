@@ -1,0 +1,20 @@
+# Faithful mirror of the LIVE research-analyst-api Worker (captured 2026-07-22).
+# Route: ra.devinfo.dev/api/*  (devinfo.dev zone). Proxies to the OCI origin.
+#
+# This is a BACKUP snapshot of what is deployed today. The git auto-deploy link
+# was intentionally REMOVED — do NOT wire CI to deploy this without a controlled
+# reconciliation slice (see README.md). Deploying blindly could change behavior.
+
+name = "research-analyst-api"
+main = "src/index.js"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Workers AI binding is present on the live worker but is UNUSED by the current
+# fetch handler (dead leftover). Kept here to mirror live exactly.
+[ai]
+binding = "AI"
+
+[[routes]]
+pattern = "ra.devinfo.dev/api/*"
+zone_name = "devinfo.dev"
