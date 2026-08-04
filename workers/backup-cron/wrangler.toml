@@ -1,0 +1,24 @@
+# Fallback runner for the Workers backup (primary = GitHub Actions at 03:00 MDT).
+# Fires 30 min later so that, if the primary run is missing, the day is still captured.
+# Independent of GitHub's Actions scheduler, so a GHA outage does not lose a backup.
+name = "backup-cron"
+main = "src/index.js"
+compatibility_date = "2025-07-01"
+
+[triggers]
+crons = ["30 9 * * *"]   # 09:30 UTC = 03:30 MDT
+
+# Non-secret config (safe to commit):
+[vars]
+GITHUB_REPO   = "nrupala/research-analyst"
+GITHUB_BRANCH = "backup"
+CF_ACCOUNT_ID = "2edd59d09fd816187b47afbb9ea43af1"
+
+# Secrets — set with `wrangler secret put`, NEVER committed:
+#   CF_API_TOKEN   Cloudflare token, scope Account > Workers Scripts > Read
+#   GITHUB_TOKEN   GitHub fine-grained PAT, contents:write on nrupala/research-analyst ONLY
+#
+# Storage choice: this fallback pushes to the same `backup` branch as the primary
+# (faithful "backups live in the repo"). If you'd rather avoid the extra GitHub PAT,
+# the push function in src/index.js is isolated and can be swapped to write the same
+# snapshot to R2 instead (sovereign, no PAT) — one function changes, nothing else.
