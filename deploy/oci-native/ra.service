@@ -1,0 +1,28 @@
+[Unit]
+Description=Research Analyst (FastAPI/uvicorn) — sovereign origin
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ra
+Group=ra
+WorkingDirectory=/opt/research-analyst
+EnvironmentFile=/etc/research-analyst/ra.env
+ExecStart=/opt/research-analyst/.venv/bin/uvicorn research_analyst.server:app --host 127.0.0.1 --port 8700
+Restart=on-failure
+RestartSec=3
+# Resource caps — RA co-locates with Ollama/OPA/Chroma on oracle-aetheris and must never starve them.
+MemoryHigh=3G
+MemoryMax=4G
+CPUQuota=200%
+OOMPolicy=stop
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/research-analyst
+
+[Install]
+WantedBy=multi-user.target
