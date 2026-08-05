@@ -43,6 +43,8 @@
                 <a href="https://devinfo.dev" class="btn btn--ghost back-link" aria-label="Back to devinfo.dev">&larr; devinfo.dev</a>
                 <button id="btn-about" class="btn btn--ghost" type="button">About</button>
                 <button id="btn-contact" class="btn btn--ghost" type="button">Contact</button>
+                <button id="btn-getapp" class="btn btn--ghost" type="button">Get the App</button>
+                <a href="/help.html" class="btn btn--ghost help-link">Help</a>
                 <a href="https://buymeacoffee.com/nrupalakolt" class="btn btn--ghost bmc-link" target="_blank" rel="noopener noreferrer">Buy Me a Coffee</a>
             </nav>
         </div>
@@ -163,6 +165,26 @@
             </ul>
             <p class="modal__disclaimer"><strong>Disclaimer:</strong> For informational and educational purposes only. Not financial advice or a recommendation to buy or sell any security.</p>
             <button class="btn btn--secondary" id="btn-close-about" type="button">Close</button>
+        </div>
+    </dialog>
+
+    <dialog id="getapp-modal" class="modal" aria-labelledby="getapp-title">
+        <div class="modal__content">
+            <h2 id="getapp-title" class="modal__title">Get the App</h2>
+            <p>Research Analyst runs on every device from one web codebase. Pick whatever suits you.</p>
+            <h3>Android</h3>
+            <ul>
+                <li><strong>Download APK</strong> (sideload): <a href="https://github.com/nrupala/research-analyst/releases/latest" target="_blank" rel="noopener noreferrer">latest release</a> &mdash; grab <code>research-analyst-debug.apk</code>. Allow &ldquo;Install unknown apps&rdquo; for your browser, then open the file.</li>
+                <li><strong>F-Droid:</strong> coming soon (fully open-source build).</li>
+            </ul>
+            <h3>Install as an app (PWA)</h3>
+            <ul>
+                <li><strong>Android (Chrome):</strong> menu &rarr; &ldquo;Install app&rdquo; / &ldquo;Add to Home screen&rdquo;.</li>
+                <li><strong>iPhone / iPad (Safari):</strong> Share &rarr; &ldquo;Add to Home Screen&rdquo;.</li>
+                <li><strong>macOS:</strong> Safari &rarr; Share &rarr; &ldquo;Add to Dock&rdquo;, or Chrome/Edge &rarr; Install.</li>
+            </ul>
+            <p class="modal__disclaimer">Installs a home-screen app that works offline. For informational and educational purposes only. Not financial advice.</p>
+            <button class="btn btn--secondary" id="btn-close-getapp" type="button">Close</button>
         </div>
     </dialog>
 

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <meta name="description" content="Research Analyst - Help &amp; User Guide">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Research Analyst">
+    <title>Help - Research Analyst</title>
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <a href="#main" class="sr-only">Skip to main content</a>
+
+    <header class="header" role="banner">
+        <div class="header__inner">
+            <div class="header__brand">
+                <div class="header__logo" aria-hidden="true">RA</div>
+                <div>
+                    <h1 class="header__title">Research Analyst</h1>
+                    <p class="header__subtitle">Help &amp; User Guide</p>
+                </div>
+            </div>
+            <nav class="header__nav" aria-label="Primary">
+                <a href="/" class="btn btn--ghost back-link" aria-label="Back to the app">&larr; Back to app</a>
+            </nav>
+        </div>
+    </header>
+
+    <main id="main" class="main">
+        <section class="card">
+            <h2>What Research Analyst does</h2>
+            <p>Research Analyst is an institutional-grade equity and ETF research agent. Enter a ticker and it produces a structured, decision-intelligence report - fundamentals, technicals, macro context, competitor dynamics, and valuation - in the style of a top-tier sell-side or buy-side analyst.</p>
+
+            <h2>Running a report</h2>
+            <h3>Single ticker</h3>
+            <ol>
+                <li>Make sure <strong>Single Ticker</strong> is selected.</li>
+                <li>Enter an equity or ETF symbol (e.g. <code>AAPL</code>, <code>MSFT</code>, <code>SPY</code>).</li>
+                <li>Pick a <strong>Report Type</strong> (Comprehensive, Long-Term, Tactical, or All) and a <strong>Timeframe</strong>.</li>
+                <li>Click <strong>Run Research</strong>. Results appear as tabs you can switch between.</li>
+            </ol>
+            <h3>Compare (2 to 5 tickers)</h3>
+            <ol>
+                <li>Select <strong>Compare</strong>.</li>
+                <li>Enter 2 to 5 distinct tickers separated by commas or spaces.</li>
+                <li>Choose a timeframe and click <strong>Compare</strong>.</li>
+            </ol>
+
+            <h2>Report types</h2>
+            <ul>
+                <li><strong>Comprehensive</strong> - hybrid long-term + tactical synthesis (default).</li>
+                <li><strong>Long-Term</strong> - deep structural analysis.</li>
+                <li><strong>Tactical / Near-Term</strong> - short-horizon, market-driven insights.</li>
+            </ul>
+
+            <h2>Exporting a report</h2>
+            <p>Every report has a toolbar to download as <strong>Markdown</strong>, <strong>HTML</strong>, or <strong>PDF</strong> (via your browser's print dialog). Exports run entirely in your browser - nothing is uploaded.</p>
+
+            <h2>Installing on your device</h2>
+            <ul>
+                <li><strong>Android APK / F-Droid:</strong> use <strong>Get the App</strong> in the top bar to download the APK (F-Droid coming soon).</li>
+                <li><strong>Install as a PWA:</strong> Android Chrome &rarr; menu &rarr; "Install app"; iPhone/iPad Safari &rarr; Share &rarr; "Add to Home Screen"; macOS Safari &rarr; Share &rarr; "Add to Dock". Works offline once installed.</li>
+            </ul>
+
+            <h2>Data sources</h2>
+            <ul>
+                <li>SEC EDGAR (filings, XBRL financials)</li>
+                <li>Market data (prices, estimates, holdings)</li>
+                <li>Technical indicators (computed from price data)</li>
+                <li>Macro proxies (yields, VIX, indices)</li>
+            </ul>
+
+            <h2>Troubleshooting</h2>
+            <ul>
+                <li><strong>"Invalid ticker"</strong> - use letters, numbers, dot or hyphen, up to 10 characters.</li>
+                <li><strong>A report fails</strong> - click Retry; some thinly-covered or non-US symbols may lack full data.</li>
+                <li><strong>Charts do not render</strong> - refresh the page; charts load from a CDN on first visit.</li>
+            </ul>
+
+            <h2>Contact</h2>
+            <p>Questions, bugs, or feedback: <a href="mailto:nrupalakolkar@gmail.com?subject=ra.devinfo.dev%20help">nrupalakolkar@gmail.com</a>.</p>
+
+            <p class="modal__disclaimer"><strong>Disclaimer:</strong> For informational and educational purposes only. Not financial advice or a recommendation to buy or sell any security.</p>
+        </section>
+    </main>
+
+    <footer class="footer" role="contentinfo">
+        <p>Research Analyst - Help &middot; <a href="/" style="color: var(--c-primary);">Back to app</a> &middot; <a href="https://devinfo.dev" style="color: var(--c-primary);">devinfo.dev</a></p>
+    </footer>
+</body>
+</html>
