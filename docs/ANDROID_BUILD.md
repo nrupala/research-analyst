@@ -36,8 +36,14 @@ adb install android/app/build/outputs/apk/debug/app-debug.apk
 2. Open the APK link on the phone and tap Install (or `adb install research-analyst-debug.apk`).
 
 ## What this APK does
-A thin Capacitor WebView that loads **https://ra.devinfo.dev** (set in `capacitor.config.ts`
+A thin Capacitor WebView that loads **https://ra.devinfo.dev** (set in `capacitor.config.js`
 `server.url`). The PWA service worker still caches the shell for offline use.
+
+> The Capacitor config is intentionally `capacitor.config.js` (plain JS), **not** `.ts`. A `.ts`
+> config makes the Capacitor CLI require a resolvable TypeScript install at `cap add`/`cap sync`
+> time; in CI that failed with "Could not find installation of TypeScript" even with `typescript`
+> in devDependencies. A `.js` config needs no TypeScript at all. Do not reintroduce a `.ts`
+> Capacitor config.
 
 ## F-Droid submission — follow-up (NOT done yet)
 F-Droid requires a self-contained, reproducible build with fully-FOSS deps:
