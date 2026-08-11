@@ -299,3 +299,43 @@ body {
     .export-toolbar { display: none; }
     .meta-bar { display: none; }
 }
+
+/* === v0.2.1: fluid, resolution-aware sizing so components are never oversized === */
+/* One dial for the whole UI: the root font flexes gently with viewport width, capped
+   so it never balloons on a 4K display nor oversizes on a phone / APK WebView. All
+   spacing and type below are rem-based, so they scale with it. Plotly uses px, so
+   charts are unaffected here and are handled separately in app.js. */
+html { font-size: clamp(14px, 13.3px + 0.22vw, 17px); }
+
+/* Header + brand scale fluidly */
+.header { padding: clamp(0.55rem, 0.4rem + 0.7vw, 1rem) clamp(0.85rem, 0.5rem + 1.1vw, 1.5rem); }
+.header__logo {
+    width: clamp(32px, 26px + 1.3vw, 40px);
+    height: clamp(32px, 26px + 1.3vw, 40px);
+    font-size: clamp(0.95rem, 0.82rem + 0.45vw, 1.125rem);
+}
+.header__title { font-size: clamp(1.02rem, 0.86rem + 0.7vw, 1.25rem); }
+.header__subtitle { font-size: clamp(0.66rem, 0.6rem + 0.2vw, 0.75rem); }
+
+/* Top-nav buttons: fluid size, wrap as a group, align right, never oversized */
+.header__nav { gap: clamp(4px, 0.15rem + 0.3vw, 8px); row-gap: clamp(4px, 0.3vw, 8px); flex-wrap: wrap; justify-content: flex-end; }
+.btn {
+    font-size: clamp(0.75rem, 0.68rem + 0.3vw, 0.875rem);
+    padding: clamp(0.3rem, 0.18rem + 0.4vw, 0.5rem) clamp(0.55rem, 0.32rem + 0.7vw, 1rem);
+}
+.btn--primary {
+    font-size: clamp(0.9rem, 0.8rem + 0.35vw, 1rem);
+    padding: clamp(0.5rem, 0.36rem + 0.5vw, 0.75rem) clamp(1.1rem, 0.7rem + 1.3vw, 2rem);
+}
+
+/* Charts + maps: fill their column, never force horizontal overflow */
+.js-plotly-plot, .plotly, .plot-container, .ra-chart { width: 100% !important; max-width: 100%; }
+.js-plotly-plot .svg-container { width: 100% !important; }
+.mermaid-diagram svg { max-width: 100%; width: 100%; height: auto; }
+
+@media (max-width: 640px) {
+    .header__nav { justify-content: flex-start; }
+    /* Full-width primary CTA reads intentional instead of an oversized pill */
+    .form-actions { justify-content: stretch; }
+    .form-actions .btn--primary { width: 100%; justify-content: center; }
+}

@@ -1,7 +1,7 @@
 "use strict";
 var dom={form:document.getElementById("research-form"),ticker:document.getElementById("ticker"),reportType:document.getElementById("report-type"),timeframe:document.getElementById("timeframe"),btnSubmit:document.getElementById("btn-submit"),btnText:document.getElementById("btn-text"),btnSpinner:document.getElementById("btn-spinner"),status:document.getElementById("status"),statusText:document.getElementById("status-text"),progressBar:document.getElementById("progress-bar"),errorPanel:document.getElementById("error-panel"),errorMessage:document.getElementById("error-message"),btnRetry:document.getElementById("btn-retry"),results:document.getElementById("results"),metaBar:document.getElementById("meta-bar"),reportTabs:document.getElementById("report-tabs"),reportContent:document.getElementById("report-content"),btnAbout:document.getElementById("btn-about"),aboutModal:document.getElementById("about-modal"),btnCloseAbout:document.getElementById("btn-close-about"),modeSingle:document.getElementById("mode-single"),modeCompare:document.getElementById("mode-compare"),compareForm:document.getElementById("compare-form"),compareTickers:document.getElementById("compare-tickers"),compareTimeframe:document.getElementById("compare-timeframe"),compareError:document.getElementById("compare-error"),btnCompare:document.getElementById("btn-compare"),btnCompareText:document.getElementById("btn-compare-text"),btnCompareSpinner:document.getElementById("btn-compare-spinner"),btnGetApp:document.getElementById("btn-getapp"),getappModal:document.getElementById("getapp-modal"),btnCloseGetapp:document.getElementById("btn-close-getapp")};
 var currentReports=[],activeTabIndex=0,isLoading=false,currentMode="single";
-document.addEventListener("DOMContentLoaded",function(){if(typeof mermaid!=="undefined"){mermaid.initialize({startOnLoad:false,theme:"neutral",securityLevel:"strict"})}});
+document.addEventListener("DOMContentLoaded",function(){if(typeof mermaid!=="undefined"){mermaid.initialize({startOnLoad:false,theme:"neutral",securityLevel:"strict",flowchart:{useMaxWidth:true,htmlLabels:true},sequence:{useMaxWidth:true},gantt:{useMaxWidth:true}})}});
 dom.form.addEventListener("submit",function(e){e.preventDefault();if(!isLoading)runResearch()});
 dom.btnRetry.addEventListener("click",function(){if(!isLoading)runResearch()});
 dom.btnAbout.addEventListener("click",function(){dom.aboutModal.showModal()});
@@ -109,17 +109,30 @@ async function renderReport(idx){
 
 function renderPlotlyCharts(){
     if(typeof Plotly==="undefined")return;
+    var isMobile=window.matchMedia&&window.matchMedia("(max-width: 640px)").matches;
     var divs=document.querySelectorAll(".plotly-chart-data");
     divs.forEach(function(div,i){
         var raw=div.getAttribute("data-plotly");
         if(!raw)return;
         try{
             var data=JSON.parse(raw);
+            var layout=data.layout||{};
+            // Fluid charts/maps: fill the column and let Plotly own sizing rather
+            // than honoring any fixed width/height the server baked in.
+            layout.autosize=true;delete layout.width;
+            if(!layout.height)layout.height=isMobile?300:420;
+            layout.margin=layout.margin||(isMobile?{l:40,r:12,t:30,b:34}:{l:52,r:18,t:38,b:42});
+            layout.font=layout.font||{family:"Inter, system-ui, -apple-system, sans-serif"};
+            if(isMobile&&layout.legend)layout.legend.orientation="h";
             var chartId="plotly-r-"+Date.now()+"-"+i;
             var chartDiv=document.createElement("div");
-            chartDiv.id=chartId;chartDiv.style.width="100%";chartDiv.style.marginBottom="1rem";
+            chartDiv.id=chartId;chartDiv.className="ra-chart";chartDiv.style.width="100%";chartDiv.style.marginBottom="1rem";
             div.parentNode.insertBefore(chartDiv,div);
-            Plotly.newPlot(chartId,data.traces,data.layout,{responsive:true,displayModeBar:true});
+            var config={responsive:true,displayModeBar:true,displaylogo:false,scrollZoom:false,modeBarButtonsToRemove:["lasso2d","select2d"],toImageButtonOptions:{format:"png",scale:2}};
+            Plotly.newPlot(chartId,data.traces,layout,config);
+            // Container width can change without a window resize (tab switches,
+            // orientation, dialogs). ResizeObserver keeps charts/maps crisp and fitted.
+            if(typeof ResizeObserver!=="undefined"){var ro=new ResizeObserver(function(){try{Plotly.Plots.resize(chartDiv)}catch(e){}});ro.observe(chartDiv)}
             div.style.display="none"
         }catch(e){console.warn("Plotly render failed:",e);div.textContent="Chart could not be rendered.";div.style.color="#94a3b8";div.style.display="block"}
     })
