@@ -141,6 +141,9 @@ class ResearchOrchestrator:
                 f"Cannot resolve ticker '{ticker}'. Market data returned no profile" + hint
             )
 
+        # Reporting/quote currency: prefer the profile's own (yfinance), else registry.
+        reporting_currency = profile.currency or market.currency
+
         # --- Parallel data fetching ---
         price_task = self._fetch_prices(ticker, request)
         financials_yf_task = self._fetch_yf_financials(ticker)
@@ -267,6 +270,8 @@ class ResearchOrchestrator:
             analyst_target_high=estimates.target_price_high if estimates else None,
             custom_assumptions=request.custom_assumptions,
         )
+        valuation.currency = reporting_currency
+        await self._attach_usd_equivalent(valuation, reporting_currency)
 
         # --- Risk ---
         risk_matrix = self._risk_engine.assess(
@@ -312,11 +317,6 @@ class ResearchOrchestrator:
 
         elapsed = time.monotonic() - start_time
 
-        # Reporting currency: prefer the profile's own currency (from yfinance),
-        # fall back to the market registry default. International (v0.3.0).
-        reporting_currency = (
-            (profile.currency or market.currency) if profile else market.currency
-        )
         # Explicit data-gap: a non-US listing with no fundamentals from either source.
         if market.code != "US" and not financials:
             warnings.append(
@@ -409,6 +409,29 @@ class ResearchOrchestrator:
 
     async def _fetch_dividends(self, ticker: str) -> Any:
         return await self._market.get_dividend_data(ticker)
+
+    async def _attach_usd_equivalent(self, valuation: Any, currency: str) -> None:
+        """Best-effort USD-equivalent of the current price via an FX pair.
+
+        Skips when already USD or when the quote currency is a minor unit
+        (e.g. GBp pence), where a naive conversion would be off by ~100x.
+        """
+        if not currency or currency.upper() == "USD":
+            return
+        if currency in {"GBp", "GBX", "ZAc", "ILA"}:
+            logger.debug("USD-equivalent skipped: minor-unit quote currency %s", currency)
+            return
+        pair = markets.fx_pair(currency)
+        if not pair or valuation.current_price <= 0:
+            return
+        try:
+            fx = await self._market.get_price_series(pair, period="5d")
+            rate = fx.current_price
+            if rate and rate > 0:
+                valuation.fx_rate_to_usd = round(rate, 6)
+                valuation.current_price_usd = round(valuation.current_price * rate, 2)
+        except Exception as e:
+            logger.debug("FX fetch failed for %s: %s", pair, e)
 
     # ------------------------------------------------------------------
     # Utility

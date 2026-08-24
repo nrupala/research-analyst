@@ -32,6 +32,7 @@ from ..models import (
     ValuationRange,
     ValuationScenario,
     VariantPerception,
+    currency_symbol,
 )
 
 logger = logging.getLogger(__name__)
@@ -84,11 +85,14 @@ class ValuationEngine:
             ValuationRange with all three scenarios populated.
         """
         current_price = prices.current_price
+        currency = profile.currency or "USD"
+        sym = currency_symbol(currency)
         if current_price <= 0:
             logger.warning("Current price is zero or negative for %s", profile.ticker)
             return ValuationRange(
                 ticker=profile.ticker,
                 current_price=0.0,
+                currency=currency,
                 primary_methodology="Insufficient Data",
             )
 
@@ -132,6 +136,7 @@ class ValuationEngine:
             scenario = self._build_scenario(
                 label=label,
                 scenario_type=stype,
+                sym=sym,
                 eps=eps,
                 revenue=revenue,
                 ebitda=ebitda,
@@ -151,12 +156,14 @@ class ValuationEngine:
 
         # ---- Variant Perception ----
         variant = self._build_variant_perception(
-            scenarios, analyst_target_mean, analyst_target_low, analyst_target_high, current_price
+            scenarios, analyst_target_mean, analyst_target_low, analyst_target_high,
+            current_price, sym,
         )
 
         return ValuationRange(
             ticker=profile.ticker,
             current_price=current_price,
+            currency=currency,
             scenarios=scenarios,
             primary_methodology=methodology,
             variant_perception=variant,
@@ -170,6 +177,7 @@ class ValuationEngine:
         self,
         label: str,
         scenario_type: ScenarioType,
+        sym: str,
         eps: float | None,
         revenue: Decimal | None,
         ebitda: Decimal | None,
@@ -266,8 +274,8 @@ class ValuationEngine:
             ))
             assumptions.append(Assumption(
                 label="Forward EPS Estimate",
-                value=f"${forward_eps:.2f}",
-                source=f"Trailing EPS ${eps:.2f} * (1 + {scenario_rev_growth:.1%} growth) * margin effect",
+                value=f"{sym}{forward_eps:.2f}",
+                source=f"Trailing EPS {sym}{eps:.2f} * (1 + {scenario_rev_growth:.1%} growth) * margin effect",
                 confidence="Medium" if rev_growth is not None else "Low",
             ))
 
@@ -339,7 +347,7 @@ class ValuationEngine:
             price_high = current_price * (1.1 if scenario_type == ScenarioType.BEAR else 1.3)
             assumptions.append(Assumption(
                 label="Price Range",
-                value=f"${price_low:.0f}-${price_high:.0f}",
+                value=f"{sym}{price_low:.0f}-{sym}{price_high:.0f}",
                 source="Insufficient data for fundamental valuation; band estimated from current price",
                 confidence="Low",
             ))
@@ -349,7 +357,7 @@ class ValuationEngine:
 
         # ---- Narrative ----
         narrative = self._scenario_narrative(
-            label, scenario_rev_growth, scenario_margin, price_low, price_high, current_price
+            label, scenario_rev_growth, scenario_margin, price_low, price_high, current_price, sym
         )
 
         return ValuationScenario(
@@ -378,6 +386,7 @@ class ValuationEngine:
         analyst_low: float | None,
         analyst_high: float | None,
         current_price: float,
+        sym: str,
     ) -> VariantPerception:
         """Build the mandatory variant perception section.
 
@@ -396,9 +405,9 @@ class ValuationEngine:
 
             if abs(diff_pct) < 5:
                 consensus = (
-                    f"Analyst consensus target: ${analyst_mean:.0f} "
-                    f"(range: ${analyst_low:.0f}-${analyst_high:.0f}). "
-                    f"Our base case (${base_mid:.0f}) is closely aligned."
+                    f"Analyst consensus target: {sym}{analyst_mean:.0f} "
+                    f"(range: {sym}{analyst_low:.0f}-{sym}{analyst_high:.0f}). "
+                    f"Our base case ({sym}{base_mid:.0f}) is closely aligned."
                 )
                 variant = (
                     "No significant variant perception vs consensus. "
@@ -411,8 +420,8 @@ class ValuationEngine:
                 )
             elif diff_pct > 5:
                 consensus = (
-                    f"Analyst consensus target: ${analyst_mean:.0f}. "
-                    f"Our base case (${base_mid:.0f}) is {diff_pct:.1f}% above consensus."
+                    f"Analyst consensus target: {sym}{analyst_mean:.0f}. "
+                    f"Our base case ({sym}{base_mid:.0f}) is {diff_pct:.1f}% above consensus."
                 )
                 variant = (
                     f"Our assumptions imply more favorable outcomes than the street. "
@@ -421,13 +430,13 @@ class ValuationEngine:
                 )
                 why = (
                     f"If our assumptions prove correct, the current price "
-                    f"(${current_price:.0f}) may undervalue the security. "
+                    f"({sym}{current_price:.0f}) may undervalue the security. "
                     f"However, if consensus is right, we are overestimating."
                 )
             else:
                 consensus = (
-                    f"Analyst consensus target: ${analyst_mean:.0f}. "
-                    f"Our base case (${base_mid:.0f}) is {abs(diff_pct):.1f}% below consensus."
+                    f"Analyst consensus target: {sym}{analyst_mean:.0f}. "
+                    f"Our base case ({sym}{base_mid:.0f}) is {abs(diff_pct):.1f}% below consensus."
                 )
                 variant = (
                     "Our assumptions imply less favorable outcomes than the street. "
@@ -460,6 +469,7 @@ class ValuationEngine:
         price_low: float,
         price_high: float,
         current: float,
+        sym: str,
     ) -> str:
         """Generate scenario narrative text."""
         upside_mid = ((price_low + price_high) / 2 - current) / current * 100
@@ -468,6 +478,6 @@ class ValuationEngine:
         return (
             f"{label} assumes {rev_growth:.1%} revenue growth and "
             f"{op_margin:.1%} operating margin, implying a "
-            f"${price_low:.0f}-${price_high:.0f} range "
-            f"({abs(upside_mid):.1f}% {direction} from current ${current:.0f})."
+            f"{sym}{price_low:.0f}-{sym}{price_high:.0f} range "
+            f"({abs(upside_mid):.1f}% {direction} from current {sym}{current:.0f})."
         )
