@@ -28,6 +28,8 @@ import numpy as np
 import pandas as pd
 
 from ..config import settings
+from . import markets
+from ..models import SymbolMatch
 from ..models import (
     AnalystEstimates,
     CompanyProfile,
@@ -415,6 +417,55 @@ class MarketDataProvider:
 
         self._cache.put(cache_key, profile.model_dump(mode="json"))
         return profile
+
+    # ------------------------------------------------------------------
+    # Symbol / name search (v0.3.0 Slice A.4)
+    # ------------------------------------------------------------------
+
+    async def search_symbols(self, query: str, max_results: int = 8) -> list[SymbolMatch]:
+        """Resolve a name or symbol to candidate listings via yfinance search.
+
+        Thin wrapper over yfinance's Search; the safe-confirm disambiguation lives
+        in research_analyst.resolver. Returns [] on any lookup failure (no silent
+        exception leaks). Each match's market/currency is enriched from the ticker
+        suffix via the market registry. v0.3.0 Slice A.4.
+        """
+        q = (query or "").strip()
+        if not q:
+            return []
+
+        def _search() -> list[dict]:
+            import yfinance as yf
+            try:
+                s = yf.Search(q, max_results=max_results, enable_fuzzy_query=True)
+            except TypeError:
+                s = yf.Search(q)
+            except Exception:
+                return []
+            try:
+                return list(getattr(s, "quotes", []) or [])
+            except Exception:
+                return []
+
+        raw = await asyncio.to_thread(_search)
+        out: list[SymbolMatch] = []
+        for r in raw:
+            sym = str(r.get("symbol") or "").strip().upper()
+            if not sym:
+                continue
+            mkt = markets.resolve(sym)
+            out.append(SymbolMatch(
+                symbol=sym,
+                name=r.get("longname") or r.get("shortname")
+                     or r.get("longName") or r.get("shortName") or "",
+                exchange=r.get("exchDisp") or r.get("exchange") or "",
+                quote_type=str(r.get("quoteType") or r.get("typeDisp") or "").upper(),
+                market=mkt.code,
+                market_name=mkt.name,
+                currency=mkt.currency,
+                score=float(r.get("score") or 0.0),
+            ))
+        return out
 
     # ------------------------------------------------------------------
     # Analyst estimates

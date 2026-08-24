@@ -38,6 +38,7 @@ from .config import settings
 from .enums import ReportType
 from .models import ResearchRequest
 from .orchestrator import ResearchOrchestrator
+from .providers.market_data import MarketDataProvider
 from .comparative import MAX_TICKERS, MIN_TICKERS, ComparativeOrchestrator
 from .reports.comparative_renderer import render_html, render_markdown
 
@@ -80,7 +81,9 @@ class _IPRateLimiter:
 # ---------------------------------------------------------------------------
 
 class ResearchAPIRequest(BaseModel):
-    ticker: str = Field(..., min_length=1, max_length=10)
+    # max_length 20 to admit suffixed international tickers (e.g. RELIANCE.NS);
+    # mirrors models.ResearchRequest.ticker (v0.3.0 international).
+    ticker: str = Field(..., min_length=1, max_length=20)
     report_type: str | None = Field(default=None)
     compare_tickers: list[str] = Field(default_factory=list, max_length=5)
     timeframe: str = Field(default="1Y")
@@ -108,6 +111,18 @@ class CompareAPIResponse(BaseModel):
     report: dict[str, Any]
     report_markdown: str
     report_html: str
+
+
+class ResolveAPIRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=64)
+
+
+class ResolveAPIResponse(BaseModel):
+    query: str
+    status: str
+    resolved: dict[str, Any] | None = None
+    candidates: list[dict[str, Any]] = Field(default_factory=list)
+    note: str = ""
 
 
 # Lazily-built singleton so the endpoint stays cheap to import and tests can
@@ -169,6 +184,9 @@ def create_app() -> FastAPI:
     # --- Orchestrator ---
     orchestrator = ResearchOrchestrator()
 
+    # --- Market data (symbol/name resolution) ---
+    market_provider = MarketDataProvider()
+
     # --- Report cache ---
     report_cache: OrderedDict[str, ResearchAPIResponse] = OrderedDict()
     cache_max = 100
@@ -184,6 +202,22 @@ def create_app() -> FastAPI:
     @app.get("/api/health")
     async def health_check() -> dict[str, str]:
         return {"status": "ok", "service": "research-analyst", "version": __version__}
+
+    @app.post("/api/resolve", response_model=ResolveAPIResponse)
+    async def resolve_subject_endpoint(body: ResolveAPIRequest, request: Request) -> ResolveAPIResponse:
+        client_ip = request.client.host if request.client else "unknown"
+        if not rate_limiter.allow(client_ip):
+            raise HTTPException(status_code=429, detail="Rate limit exceeded.")
+        from .resolver import resolve_subject
+        matches = await market_provider.search_symbols(body.query)
+        res = resolve_subject(body.query, matches)
+        return ResolveAPIResponse(
+            query=res.query,
+            status=res.status,
+            resolved=res.resolved.model_dump() if res.resolved else None,
+            candidates=[c.model_dump() for c in res.candidates],
+            note=res.note,
+        )
 
     @app.post("/api/research", response_model=ResearchAPIResponse)
     async def run_research(body: ResearchAPIRequest, request: Request) -> ResearchAPIResponse:
