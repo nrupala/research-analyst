@@ -189,6 +189,55 @@ class ReportRenderer:
         yield vs 10Y Treasury, and the ex-dividend date. Full mode adds growth,
         payout, consistency, safety, peer comparison, and a history chart.
         """
+        
+    # ------------------------------------------------------------------
+    # ETF block — shared across report types (v0.3.0)
+    # ------------------------------------------------------------------
+
+    def _build_etf_block(
+        self, ctx: dict[str, Any]
+    ) -> tuple[list[str], list[ReportVisual], list[Assumption], list[str]]:
+        """Build the ETF-specific sub-section for ETF report subjects.
+        Returns (parts, visuals, assumptions, gaps).
+        """
+        profile = ctx["profile"]
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        assumptions: list[Assumption] = []
+        gaps: list[str] = []
+        
+        if profile.security_type != "ETF":
+            return parts, visuals, assumptions, gaps
+            
+        parts.append("### ETF Overview")
+        
+        # Fund description
+        if hasattr(profile, "description") and profile.description:
+            parts.append(f"**Strategy:** {profile.description}")
+        else:
+            gaps.append("No ETF strategy description available.")
+        
+        # Expense ratio
+        if "expense_ratio" in ctx.get("etf", {}):
+            er = ctx["etf"]["expense_ratio"]
+            parts.append(f"**Expense Ratio:** {er:.2%}")
+        else:
+            gaps.append("Expense ratio data unavailable.")
+            
+        # AUM
+        if hasattr(profile, "market_cap") and profile.market_cap:
+            parts.append(
+                f"**Assets Under Management:** "
+                f"{money(profile.market_cap, profile.currency)}"
+            )
+        else:
+            gaps.append("AUM data unavailable.")
+            
+        # Add assumptions and visuals if available
+        if "etf" in ctx:
+            assumptions.extend(ctx["etf"].get("assumptions", []))
+            
+        return parts, visuals, assumptions, gaps
         div = ctx.get("dividend")
         parts: list[str] = []
         visuals: list[ReportVisual] = []
