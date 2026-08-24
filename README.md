@@ -43,6 +43,44 @@ Research Analyst produces **decision-intelligence research** comparable to top-t
 
 ---
 
+## Inputs — What to Enter
+
+Research Analyst researches **one subject at a time** — a single stock or ETF. Identify it either way:
+
+### 1. Ticker (canonical)
+
+The unambiguous input. For **US** listings the bare symbol is enough (`AAPL`, `MSFT`, `SPY`). For **non-US** listings, append the exchange suffix (yfinance convention):
+
+| Market | Suffix | Example |
+|--------|--------|---------|
+| United States | *(none)* | `AAPL` |
+| Canada — TSX | `.TO` | `RY.TO` |
+| United Kingdom — LSE | `.L` | `SHEL.L` |
+| Germany — XETRA | `.DE` | `SAP.DE` |
+| France — Euronext Paris | `.PA` | `AIR.PA` |
+| Japan — TSE | `.T` | `7203.T` |
+| Australia — ASX | `.AX` | `BHP.AX` |
+| India — NSE / BSE | `.NS` / `.BO` | `RELIANCE.NS` |
+| Hong Kong — HKEX | `.HK` | `0700.HK` |
+
+Reports render in the security's **native currency**, with a USD-equivalent reference for non-USD names.
+
+### 2. Company name (convenience)
+
+Don't know the ticker? Enter a **company name** and Research Analyst resolves it to a listing, echoing exactly which one it used (e.g. `Reliance Industries` → `RELIANCE.NS`, NSE, INR).
+
+Resolution is **safe-confirm**: an unambiguous name resolves automatically, but a name that maps to **multiple listings** (an NSE vs BSE line, or a name shared across companies) returns candidates for you to choose — it never silently guesses, because a correct report on the *wrong* listing is worse than asking.
+
+- **Web UI** — type a name in the search box and confirm the match.
+- **CLI** — `research-analyst resolve "Reliance Industries"`
+- **API** — `POST /api/resolve {"query": "..."}` → `{ status, resolved, candidates }`
+
+### ETFs
+
+ETFs are valid research subjects, not just peer-discovery tools — enter an ETF ticker (`SPY`, `INDA`, `EWU`) exactly as you would a stock.
+
+---
+
 ## Architecture
 
 ```
@@ -161,6 +199,12 @@ research-analyst research GOOG --output goog_report.md
 
 # JSON output
 research-analyst research AMZN --json --output amzn.json
+
+# International listing (append the exchange suffix)
+research-analyst research RELIANCE.NS
+
+# Don't know the ticker? Resolve a company name first
+research-analyst resolve "Reliance Industries"
 ```
 
 ### Run (Docker)
@@ -196,6 +240,17 @@ Run the research pipeline.
 - `"all"` — all three reports
 
 **Response:** Structured JSON with `reports` (typed data), `reports_markdown` (rendered Markdown), and `metadata` (data sources, assumptions, processing time, warnings).
+
+### `POST /api/resolve`
+
+Resolve a company name or symbol to a listing (safe-confirm).
+
+**Request:**
+```json
+{ "query": "Reliance Industries" }
+```
+
+**Response:** `{ "query", "status", "resolved", "candidates", "note" }`. `status` is one of `resolved` (use `resolved.symbol`), `ambiguous` (present `candidates` for the user to pick — never auto-selected), or `not_found`.
 
 ### `GET /api/health`
 
