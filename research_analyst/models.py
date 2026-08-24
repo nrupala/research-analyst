@@ -25,6 +25,28 @@ from .enums import (
 )
 
 
+# --- Currency display helpers (v0.3.0 international) ---------------------------
+_CURRENCY_SYMBOLS: dict[str, str] = {
+    "USD": "$", "CAD": "C$", "AUD": "A$", "HKD": "HK$",
+    "GBP": "\u00a3", "EUR": "\u20ac", "JPY": "\u00a5", "INR": "\u20b9",
+}
+# Quote currencies expressed in a minor unit (price is in cents/pence).
+_MINOR_UNIT_CURRENCIES = {"GBp", "GBX", "ZAc", "ILA"}
+
+
+def currency_symbol(code: str | None) -> str:
+    """Display prefix for a currency code; falls back to '<CODE> ' when unknown.
+
+    Minor-unit quote currencies (e.g. GBp = pence) are returned as-is with a
+    trailing space so amounts are never mislabeled with a major-unit symbol.
+    """
+    if not code:
+        return "$"
+    if code in _MINOR_UNIT_CURRENCIES:
+        return f"{code} "
+    return _CURRENCY_SYMBOLS.get(code.upper(), f"{code.upper()} ")
+
+
 # ---------------------------------------------------------------------------
 # Request / Response
 # ---------------------------------------------------------------------------
@@ -32,7 +54,8 @@ from .enums import (
 class ResearchRequest(BaseModel):
     """Inbound research request from user or API."""
 
-    ticker: str = Field(..., min_length=1, max_length=10, description="Equity or ETF ticker symbol")
+    ticker: str = Field(..., min_length=1, max_length=20,
+                        description="Equity or ETF ticker symbol (incl. exchange suffix, e.g. RELIANCE.NS)")
     report_types: list[ReportType] = Field(
         default_factory=lambda: [ReportType.COMPREHENSIVE],
         description="Which report(s) to generate. Default: comprehensive.",
@@ -436,6 +459,9 @@ class ValuationRange(BaseModel):
 
     ticker: str
     current_price: float
+    currency: str = "USD"                    # reporting/quote currency (v0.3.0)
+    current_price_usd: float | None = None   # USD-equivalent of current_price (via FX)
+    fx_rate_to_usd: float | None = None       # 1 unit of `currency` in USD
     scenarios: list[ValuationScenario] = Field(default_factory=list)
     primary_methodology: str = ""  # "DCF" / "Relative" / "Sum-of-Parts" / "Hybrid"
     variant_perception: VariantPerception | None = None
@@ -448,13 +474,14 @@ class ValuationRange(BaseModel):
         max_price = max(
             (s.implied_price_high or 0) for s in self.scenarios
         ) or 1.0
+        sym = currency_symbol(self.currency)
         for s in self.scenarios:
             if s.implied_price_low is not None and s.implied_price_high is not None:
                 bar_len = int((s.implied_price_high / max_price) * 20)
                 bar = "\u2588" * max(bar_len, 1)
                 lines.append(
                     f"    {s.label:<12} {bar:<20}  "
-                    f"${s.implied_price_low:.0f}\u2013${s.implied_price_high:.0f}"
+                    f"{sym}{s.implied_price_low:.0f}\u2013{sym}{s.implied_price_high:.0f}"
                 )
         return "\n".join(lines)
 
@@ -691,8 +718,12 @@ class ReportOutput(BaseModel):
 
         # Valuation ASCII chart — mandatory
         if self.valuation:
+            _sym = currency_symbol(self.valuation.currency)
             parts.append("## Scenario-Based Valuation Range\n")
-            parts.append(f"**Current Price:** ${self.valuation.current_price:.2f}\n")
+            _cp = f"**Current Price:** {_sym}{self.valuation.current_price:.2f}"
+            if self.valuation.current_price_usd is not None and self.valuation.currency.upper() != "USD":
+                _cp += f"  (~${self.valuation.current_price_usd:,.2f} USD)"
+            parts.append(_cp + "\n")
             parts.append(f"```\n{self.valuation.ascii_chart()}\n```\n")
 
             if self.valuation.variant_perception:
