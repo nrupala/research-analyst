@@ -81,7 +81,9 @@ class _IPRateLimiter:
 # ---------------------------------------------------------------------------
 
 class ResearchAPIRequest(BaseModel):
-    ticker: str = Field(..., min_length=1, max_length=10)
+    # max_length 20 to admit suffixed international tickers (e.g. RELIANCE.NS);
+    # mirrors models.ResearchRequest.ticker (v0.3.0 international).
+    ticker: str = Field(..., min_length=1, max_length=20)
     report_type: str | None = Field(default=None)
     compare_tickers: list[str] = Field(default_factory=list, max_length=5)
     timeframe: str = Field(default="1Y")
