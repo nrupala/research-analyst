@@ -711,3 +711,34 @@ class ReportOutput(BaseModel):
 
 ResearchResponse.model_rebuild()
 FundamentalData.model_rebuild()
+
+
+# --- Symbol / name resolution (v0.3.0 Slice A.4) ------------------------------
+class SymbolMatch(BaseModel):
+    """A candidate security returned by symbol/name lookup."""
+
+    symbol: str
+    name: str = ""
+    exchange: str = ""          # yfinance exchange code / display
+    quote_type: str = ""        # EQUITY / ETF / MUTUALFUND / INDEX / CURRENCY ...
+    market: str = ""            # registry market code (US / UK / IN ...)
+    market_name: str = ""       # human-readable market
+    currency: str = ""          # registry currency for the market
+    score: float = 0.0          # relevance score from the search provider
+
+
+class SubjectResolution(BaseModel):
+    """Result of resolving a free-text subject (a ticker or a company name).
+
+    status:
+      - "resolved"  -> `resolved` is the single confident match; run research on it.
+      - "ambiguous" -> multiple plausible listings in `candidates`; the user picks.
+                       Never a silent guess.
+      - "not_found" -> nothing usable matched.
+    """
+
+    query: str
+    status: str
+    resolved: SymbolMatch | None = None
+    candidates: list[SymbolMatch] = Field(default_factory=list)
+    note: str = ""

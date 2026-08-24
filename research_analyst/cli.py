@@ -63,6 +63,14 @@ def main() -> None:
         "--json", action="store_true", help="Output as JSON instead of Markdown.",
     )
 
+    # --- resolve ---
+    resolve_parser = subparsers.add_parser(
+        "resolve", help="Resolve a company name or symbol to a ticker."
+    )
+    resolve_parser.add_argument(
+        "query", help=('Company name or symbol (e.g., "Reliance Industries" or RELIANCE.NS).')
+    )
+
     # --- health ---
     subparsers.add_parser("health", help="Check system health.")
 
@@ -84,6 +92,8 @@ def main() -> None:
         _cmd_serve(args)
     elif args.command == "research":
         asyncio.run(_cmd_research(args))
+    elif args.command == "resolve":
+        asyncio.run(_cmd_resolve(args))
     elif args.command == "health":
         _cmd_health()
     else:
@@ -179,6 +189,30 @@ async def _cmd_research(args: argparse.Namespace) -> None:
         print(f"Warnings: {len(meta.warnings)}")
         for w in meta.warnings:
             print(f"  - {w}")
+
+
+async def _cmd_resolve(args: argparse.Namespace) -> None:
+    """Resolve a company name or symbol to a ticker (safe-confirm)."""
+    from .providers.market_data import MarketDataProvider
+    from .resolver import resolve_subject
+
+    provider = MarketDataProvider()
+    matches = await provider.search_symbols(args.query)
+    res = resolve_subject(args.query, matches)
+
+    if res.status == "resolved" and res.resolved:
+        r = res.resolved
+        label = " - ".join(x for x in (r.name, r.market_name, r.currency) if x)
+        print(f"Resolved: {r.symbol}" + (f"  ({label})" if label else ""))
+        print(f"Run: research-analyst research {r.symbol}")
+    elif res.status == "ambiguous":
+        print(f"Multiple listings match '{args.query}' -- pick one and re-run with its symbol:")
+        for c in res.candidates:
+            meta = " - ".join(x for x in (c.market_name, c.currency, c.quote_type) if x)
+            print(f"  {c.symbol:<14} {c.name}" + (f"  [{meta}]" if meta else ""))
+    else:
+        print(f"No listed equity or ETF found for '{args.query}'.", file=sys.stderr)
+        sys.exit(1)
 
 
 def _cmd_health() -> None:
