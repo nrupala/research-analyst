@@ -1,56 +1,29 @@
-# ETF-as-Subject Report Path Plan (Slice B)
+# Slice B - ETF-as-subject report path
 
-## Overview
-When the report subject's `SecurityType == ETF`, we will render an ETF-focused block containing:
-- Fund overview (description, strategy)
-- Expense ratio
-- AUM/net assets
-- Distribution/yield (current and trailing)
-- Tracking index
-- Top holdings/sectors (if available in the data model)
+## Status
+Option A (minimal) shipped this slice. Option B (full ETF metadata) is a
+separate follow-up slice.
 
-Missing fields will be gracefully skipped without breaking the report generation.
+## Problem
+When the report subject is an ETF (security_type == ETF), the equity-oriented
+report should surface ETF-relevant context rather than treating it purely as a
+stock.
 
-## Data Model Review
-From `models.py`:
-- **CompanyProfile** contains ETF-specific fields:
-  - `description` (fund strategy)
-  - `currency` (for monetary formatting)
-  - `security_type` (identifies as ETF)
-- **DividendData** has ETF-specific fields:
-  - `is_etf` flag
-  - `etf_ttm_yield` (distribution yield)
+## Option A (this slice) - from fields we already have
+- `engines/etf.py::ETFEngine.analyze(profile)` returns a typed dict:
+  fund_overview (description), aum (market_cap as an AUM proxy), assumptions,
+  and explicit data_gaps for everything deferred.
+- `reports/renderer.py::_build_etf_block(ctx)` renders an "ETF Overview" block
+  (Strategy + Assets Under Management, currency-aware via money()), gated
+  strictly on SecurityType.ETF and wired into comprehensive Step 1.
+- Equity path is byte-identical: the block returns empty for non-ETF subjects.
 
-## Implementation Approach
-1. **Engine**: Create `etf.py` mirroring `dividend.py`:
-   - Takes ETF-specific data as input
-   - Outputs structured ETF analysis (similar to `DividendAnalysis`)
-   - Gracefully skips missing fields
+## Deferred to Option B (next slice)
+- ETF-metadata model + provider (yfinance) for real expense ratio, distribution
+  yield, AUM, tracking index, and top holdings/sectors.
+- Thread the engine output through render() (ctx["etf"]) and extend coverage to
+  the tactical and comparative report types.
 
-2. **Renderer**: Add `_build_etf_block` in `renderer.py`:
-   - Gated on `SecurityType.ETF`
-   - Mirrors `_build_dividend_block` structure
-   - Uses existing `money()` for monetary values
-
-3. **Integration**: Ensure non-ETF subjects produce byte-identical output.
-
-## Available Fields
-- **Required**:
-  - `description` (fund strategy)
-  - `is_etf` flag
-  - `etf_ttm_yield`
-
-- **Optional (gracefully skipped if missing)**:
-  - Expense ratio
-  - AUM/net assets
-  - Tracking index
-  - Top holdings/sectors
-
-## Testing Strategy
-1. Unit tests for `etf.py` engine
-2. Integration test proving:
-   - ETF subject includes ETF block
-   - Non-ETF subject remains unchanged
-
-## Critical Requirement
-- When subject is NOT an ETF, output must be byte-identical to current behavior.
+## Tests (tests/test_etf_subject.py)
+- ETFEngine: overview + AUM surfaced; data gaps recorded when fields missing.
+- Renderer: ETF Overview present for an ETF subject, absent for an equity.
