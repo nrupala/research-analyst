@@ -339,3 +339,10 @@ html { font-size: clamp(14px, 13.3px + 0.22vw, 17px); }
     .form-actions { justify-content: stretch; }
     .form-actions .btn--primary { width: 100%; justify-content: center; }
 }
+
+
+/* A.3b: company-name / ticker resolve candidate picker */
+.resolve-candidates{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+.resolve-candidates__title{margin:0 0 4px;font-size:.9rem;color:#64748b}
+.resolve-candidate{text-align:left;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;cursor:pointer;font:inherit}
+.resolve-candidate:hover{background:#f1f5f9;border-color:#2563eb}

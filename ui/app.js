@@ -1,5 +1,5 @@
 "use strict";
-var dom={form:document.getElementById("research-form"),ticker:document.getElementById("ticker"),reportType:document.getElementById("report-type"),timeframe:document.getElementById("timeframe"),btnSubmit:document.getElementById("btn-submit"),btnText:document.getElementById("btn-text"),btnSpinner:document.getElementById("btn-spinner"),status:document.getElementById("status"),statusText:document.getElementById("status-text"),progressBar:document.getElementById("progress-bar"),errorPanel:document.getElementById("error-panel"),errorMessage:document.getElementById("error-message"),btnRetry:document.getElementById("btn-retry"),results:document.getElementById("results"),metaBar:document.getElementById("meta-bar"),reportTabs:document.getElementById("report-tabs"),reportContent:document.getElementById("report-content"),btnAbout:document.getElementById("btn-about"),aboutModal:document.getElementById("about-modal"),btnCloseAbout:document.getElementById("btn-close-about"),modeSingle:document.getElementById("mode-single"),modeCompare:document.getElementById("mode-compare"),compareForm:document.getElementById("compare-form"),compareTickers:document.getElementById("compare-tickers"),compareTimeframe:document.getElementById("compare-timeframe"),compareError:document.getElementById("compare-error"),btnCompare:document.getElementById("btn-compare"),btnCompareText:document.getElementById("btn-compare-text"),btnCompareSpinner:document.getElementById("btn-compare-spinner"),btnGetApp:document.getElementById("btn-getapp"),getappModal:document.getElementById("getapp-modal"),btnCloseGetapp:document.getElementById("btn-close-getapp")};
+var dom={form:document.getElementById("research-form"),ticker:document.getElementById("ticker"),reportType:document.getElementById("report-type"),timeframe:document.getElementById("timeframe"),btnSubmit:document.getElementById("btn-submit"),btnText:document.getElementById("btn-text"),btnSpinner:document.getElementById("btn-spinner"),status:document.getElementById("status"),statusText:document.getElementById("status-text"),progressBar:document.getElementById("progress-bar"),errorPanel:document.getElementById("error-panel"),errorMessage:document.getElementById("error-message"),btnRetry:document.getElementById("btn-retry"),results:document.getElementById("results"),metaBar:document.getElementById("meta-bar"),reportTabs:document.getElementById("report-tabs"),reportContent:document.getElementById("report-content"),btnAbout:document.getElementById("btn-about"),aboutModal:document.getElementById("about-modal"),btnCloseAbout:document.getElementById("btn-close-about"),modeSingle:document.getElementById("mode-single"),modeCompare:document.getElementById("mode-compare"),compareForm:document.getElementById("compare-form"),compareTickers:document.getElementById("compare-tickers"),compareTimeframe:document.getElementById("compare-timeframe"),compareError:document.getElementById("compare-error"),btnCompare:document.getElementById("btn-compare"),btnCompareText:document.getElementById("btn-compare-text"),btnCompareSpinner:document.getElementById("btn-compare-spinner"),btnGetApp:document.getElementById("btn-getapp"),getappModal:document.getElementById("getapp-modal"),btnCloseGetapp:document.getElementById("btn-close-getapp"),resolveCandidates:document.getElementById("resolve-candidates")};
 var currentReports=[],activeTabIndex=0,isLoading=false,currentMode="single";
 document.addEventListener("DOMContentLoaded",function(){if(typeof mermaid!=="undefined"){mermaid.initialize({startOnLoad:false,theme:"neutral",securityLevel:"strict",flowchart:{useMaxWidth:true,htmlLabels:true},sequence:{useMaxWidth:true},gantt:{useMaxWidth:true}})}});
 dom.form.addEventListener("submit",function(e){e.preventDefault();if(!isLoading)runResearch()});
@@ -42,10 +42,32 @@ if(dom.contactForm)dom.contactForm.addEventListener("submit",function(e){
 
 async function runResearch(){
     currentMode="single";
-    var ticker=dom.ticker.value.trim().toUpperCase();
-    if(!ticker){dom.ticker.focus();return}
-    if(!/^[A-Z0-9.\-]{1,10}$/.test(ticker)){showError("Invalid ticker.");return}
-    setLoading(true);hideError();hideResults();
+    var raw=dom.ticker.value.trim();
+    if(!raw){dom.ticker.focus();return}
+    // Name-like input (whitespace or lowercase letters) resolves first via /api/resolve.
+    // Bare or suffixed tickers (AAPL, RELIANCE.NS) skip resolve and research directly.
+    if(/\s/.test(raw)||/[a-z]/.test(raw)){return resolveThenResearch(raw)}
+    var ticker=raw.toUpperCase();
+    if(!/^[A-Z0-9.\-]{1,20}$/.test(ticker)){showError("Enter a valid ticker (e.g. AAPL or RELIANCE.NS) or a company name.");return}
+    return runResearchTicker(ticker);
+}
+async function resolveThenResearch(query){
+    currentMode="single";
+    hideCandidates();setLoading(true);hideError();hideResults();
+    showStatus("Looking up \""+query+"\"...",8);
+    var res;
+    try{
+        var r=await fetch("/api/resolve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:query})});
+        if(!r.ok){var e=await r.json().catch(function(){return{detail:r.statusText}});throw new Error(e.detail||"HTTP "+r.status)}
+        res=await r.json();
+    }catch(err){setLoading(false);showError("Lookup failed: "+(err.message||"could not reach the resolver."));return}
+    if(res&&res.status==="resolved"&&res.resolved&&res.resolved.symbol){return runResearchTicker(res.resolved.symbol)}
+    if(res&&res.status==="ambiguous"&&Array.isArray(res.candidates)&&res.candidates.length){setLoading(false);showCandidates(query,res.candidates);return}
+    setLoading(false);showError((res&&res.note)?res.note:("No match for \""+query+"\". Try the ticker directly, e.g. RELIANCE.NS."))
+}
+async function runResearchTicker(ticker){
+    currentMode="single";
+    hideCandidates();setLoading(true);hideError();hideResults();
     currentReports=[];
     showStatus("Fetching data for "+ticker+"...",10);
     try{
@@ -63,6 +85,26 @@ async function runResearch(){
         showStatus("Complete",100);
         setTimeout(function(){dom.status.hidden=true},1500);
     }catch(err){showError(err.message||"Research pipeline failed.")}finally{setLoading(false)}
+}
+function hideCandidates(){if(dom.resolveCandidates){dom.resolveCandidates.hidden=true;dom.resolveCandidates.innerHTML=""}}
+function showCandidates(query,candidates){
+    var list=candidates.slice(0,5);
+    if(!dom.resolveCandidates){
+        var names=list.map(function(c){return c.symbol+" ("+(c.name||"")+")"}).join(", ");
+        showError("Multiple matches for \""+query+"\": "+names+". Enter the exact ticker.");
+        return
+    }
+    var box=dom.resolveCandidates;box.innerHTML="";
+    var h=document.createElement("p");h.className="resolve-candidates__title";h.textContent="Multiple matches for \""+query+"\" \u2014 pick one:";box.appendChild(h);
+    list.forEach(function(c){
+        var b=document.createElement("button");b.type="button";b.className="resolve-candidate";
+        var head=c.symbol+(c.name?" \u00b7 "+c.name:"");
+        var tail=[];if(c.market_name||c.market)tail.push(c.market_name||c.market);if(c.currency)tail.push(c.currency);
+        b.textContent=head+(tail.length?"  ("+tail.join(", ")+")":"");
+        b.addEventListener("click",function(){runResearchTicker(c.symbol)});
+        box.appendChild(b)
+    });
+    box.hidden=false
 }
 
 function setLoading(v){isLoading=v;dom.btnSubmit.disabled=v;dom.btnText.hidden=v;dom.btnSpinner.hidden=!v;if(v)dom.status.hidden=false}

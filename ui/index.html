@@ -59,12 +59,12 @@
             <form id="research-form" autocomplete="off" novalidate>
                 <div class="form-row">
                     <div class="form-group form-group--ticker">
-                        <label for="ticker" class="form-label">Ticker Symbol</label>
+                        <label for="ticker" class="form-label">Ticker or Company Name</label>
                         <input type="text" id="ticker" name="ticker" class="form-input"
-                               placeholder="e.g. AAPL, MSFT, SPY" required maxlength="10"
-                               pattern="[A-Za-z0-9.\-]{1,10}" autocapitalize="characters"
+                               placeholder="e.g. AAPL, RELIANCE.NS, or Reliance Industries" required maxlength="64"
+                               autocapitalize="off" autocomplete="off"
                                spellcheck="false" aria-describedby="ticker-help">
-                        <small id="ticker-help" class="form-help">Enter an equity or ETF ticker symbol</small>
+                        <small id="ticker-help" class="form-help">Ticker (US bare e.g. AAPL; non-US with suffix e.g. RELIANCE.NS) or a company name.</small>
                     </div>
                     <div class="form-group">
                         <label for="report-type" class="form-label">Report Type</label>
@@ -93,6 +93,8 @@
                     </button>
                 </div>
             </form>
+
+            <div id="resolve-candidates" class="resolve-candidates" hidden aria-live="polite"></div>
 
             <form id="compare-form" autocomplete="off" novalidate hidden>
                 <div class="form-row form-row--compare">
