@@ -1,92 +1,73 @@
-"""Tests for ETF-as-subject report path."""
-# Module: tests/test_etf_subject.py | Version: 0.3.0 | Updated: 2026-06-02
+"""Tests for the ETF-as-subject report path (Slice B, Option A)."""
+# Module: tests/test_etf_subject.py | Version: 0.3.0 | Updated: 2026-08-24
 
-import pytest
-from datetime import datetime
+from decimal import Decimal
 
-from research_analyst.models import (
-    CompanyProfile,
-    DividendData,
-    FinancialStatement,
-    ReportOutput,
-    SecurityType,
-)
+from research_analyst.enums import SecurityType
+from research_analyst.models import CompanyProfile
 from research_analyst.engines.etf import ETFEngine
 from research_analyst.reports.renderer import ReportRenderer
 
 
-def test_etf_engine_basic():
-    """Test ETF engine with minimal data."""
-    engine = ETFEngine()
-    profile = CompanyProfile(
+def _etf_profile() -> CompanyProfile:
+    return CompanyProfile(
         ticker="SPY",
-        name="SPDR S&P 500 ETF",
+        name="SPDR S&P 500 ETF Trust",
         security_type=SecurityType.ETF,
-        market_cap=Decimal("400000000000"),
+        market_cap=Decimal("500000000000"),
         currency="USD",
+        description="Seeks to track the S&P 500 index.",
     )
-    
-    stmt = FinancialStatement(
-        period="FY2026",
-        expense_ratio=Decimal("0.0009"),
-    )
-    
-    result = engine.analyze(profile, [stmt])
-    assert "expense_ratio" in result
-    assert result["expense_ratio"] == Decimal("0.0009")
-    assert "aum" in result
-    assert "fund_overview" not in result  # No description
-    assert len(result["data_gaps"]) > 0
 
 
-def test_etf_block_in_renderer():
-    """Test that ETF subjects get the ETF block in reports."""
-    renderer = ReportRenderer()
-    profile = CompanyProfile(
-        ticker="VTI",
-        name="Vanguard Total Stock Market ETF",
-        security_type=SecurityType.ETF,
-        description="Seeks to track CRSP US Total Market Index",
-        market_cap=Decimal("1200000000000"),
-        currency="USD",
-    )
-    
-    # Mock ETF engine result
-    etf_analysis = {
-        "expense_ratio": Decimal("0.0003"),
-        "fund_overview": profile.description,
-        "assumptions": [
-            Assumption(
-                label="Expense Ratio",
-                value="0.03%",
-                source="Latest financial statement",
-            )
-        ],
-    }
-    
-    # Render a report (minimal inputs)
-    report = renderer.render(
-        report_type=ReportType.COMPREHENSIVE,
-        profile=profile,
-        prices=PriceSeries(ticker="VTI", current_price=210.0),
-        financials=[],
-        etf=etf_analysis,
-    )
-    
-    # Verify ETF block appears
-    content = report.sections[0].content
-    assert "ETF Overview" in content
-    assert "0.03%" in content  # Expense ratio
-    
-    # Non-ETF test remains unchanged
-    equity_profile = CompanyProfile(
+def _equity_profile() -> CompanyProfile:
+    return CompanyProfile(
         ticker="AAPL",
+        name="Apple Inc.",
         security_type=SecurityType.EQUITY,
+        market_cap=Decimal("3000000000000"),
+        currency="USD",
+        description="Designs and sells consumer electronics.",
     )
-    equity_report = renderer.render(
-        report_type=ReportType.COMPREHENSIVE,
-        profile=equity_profile,
-        prices=PriceSeries(ticker="AAPL", current_price=180.0),
-        financials=[],
+
+
+def test_etf_engine_surfaces_overview_and_aum():
+    result = ETFEngine().analyze(_etf_profile())
+    assert result["fund_overview"] == "Seeks to track the S&P 500 index."
+    assert result["aum"] == Decimal("500000000000")
+    labels = [a.label for a in result["assumptions"]]
+    assert "Assets Under Management" in labels
+    assert all(isinstance(a.value, str) for a in result["assumptions"])
+    assert any("Expense ratio" in g for g in result["data_gaps"])
+
+
+def test_etf_engine_records_gaps_when_fields_missing():
+    profile = CompanyProfile(
+        ticker="XYZ",
+        name="Mystery Fund",
+        security_type=SecurityType.ETF,
     )
-    assert "ETF Overview" not in equity_report.sections[0].content
+    result = ETFEngine().analyze(profile)
+    assert result["fund_overview"] is None
+    assert result["aum"] is None
+    assert any("description unavailable" in g for g in result["data_gaps"])
+    assert any("Assets under management unavailable" in g for g in result["data_gaps"])
+
+
+def test_etf_block_present_for_etf_subject():
+    renderer = ReportRenderer()
+    parts, visuals, assumptions, gaps = renderer._build_etf_block({"profile": _etf_profile()})
+    assert "### ETF Overview" in parts
+    assert any(p.startswith("**Strategy:**") for p in parts)
+    assert any("Assets Under Management" in p for p in parts)
+    assert any("$500000000000.00" in p for p in parts)
+    assert any(a.label == "Assets Under Management" for a in assumptions)
+
+
+def test_etf_block_absent_for_equity_subject():
+    renderer = ReportRenderer()
+    parts, visuals, assumptions, gaps = renderer._build_etf_block({"profile": _equity_profile()})
+    assert parts == []
+    assert visuals == []
+    assert assumptions == []
+    assert gaps == []
