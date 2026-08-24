@@ -38,6 +38,7 @@ from ..models import (
 )
 from .templates import ReportTemplate, StepTemplate, get_template
 from .visuals import VisualEngine
+from .currency import money
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +211,7 @@ class ReportRenderer:
 
         if div.current_yield is not None:
             ylabel = "Distribution yield" if div.is_etf else "Dividend yield"
-            rate = f" forward (${div.annual_dividend_rate:.2f}/share)" if div.annual_dividend_rate else ""
+            rate = f" forward ({money(div.annual_dividend_rate, ctx['profile'].currency)}/share)" if div.annual_dividend_rate else ""
             parts.append(f"- {ylabel}: **{div.current_yield:.2%}**{rate}")
         if div.us_10y_yield is not None and div.yield_vs_treasury_spread is not None:
             rel = "above" if div.yield_vs_treasury_spread > 0 else "below"
@@ -297,10 +298,10 @@ class ReportRenderer:
             parts.append("")
 
         # Price context
-        parts.append(f"**Current Price:** ${prices.current_price:.2f}")
+        parts.append(f"**Current Price:** {money(prices.current_price, profile.currency)}")
         if prices.price_52w_high > 0:
             parts.append(
-                f"**52-Week Range:** ${prices.price_52w_low:.2f} - ${prices.price_52w_high:.2f}"
+                f"**52-Week Range:** {money(prices.price_52w_low, profile.currency)} - {money(prices.price_52w_high, profile.currency)}"
             )
         if prices.ytd_return:
             parts.append(f"**YTD Return:** {prices.ytd_return:.1%}")
@@ -572,10 +573,10 @@ class ReportRenderer:
             parts.append("### Key Levels")
             if support:
                 dist = getattr(technical, "support_distance_pct", 0)
-                parts.append(f"- Nearest support: **${support:.2f}** ({dist:.1%} below)")
+                parts.append(f"- Nearest support: **{money(support, ctx['profile'].currency)}** ({dist:.1%} below)")
             if resistance:
                 dist = getattr(technical, "resistance_distance_pct", 0)
-                parts.append(f"- Nearest resistance: **${resistance:.2f}** ({dist:.1%} above)")
+                parts.append(f"- Nearest resistance: **{money(resistance, ctx['profile'].currency)}** ({dist:.1%} above)")
             parts.append("")
 
         # Patterns
@@ -714,7 +715,7 @@ class ReportRenderer:
         parts.append("")
 
         if valuation and valuation.scenarios:
-            parts.append(f"**Current Price:** ${valuation.current_price:.2f}")
+            parts.append(f"**Current Price:** {money(valuation.current_price, ctx['profile'].currency)}")
             parts.append(f"**Primary Methodology:** {valuation.primary_methodology}")
             parts.append("")
 
@@ -729,7 +730,7 @@ class ReportRenderer:
 
             # Scenario details
             for s in valuation.scenarios:
-                parts.append(f"\n**{s.label}:** ${s.implied_price_low:.0f} - ${s.implied_price_high:.0f}")
+                parts.append(f"\n**{s.label}:** {money(s.implied_price_low, ctx['profile'].currency, 0)} - {money(s.implied_price_high, ctx['profile'].currency, 0)}")
                 if s.implied_upside_low is not None and s.implied_upside_high is not None:
                     parts.append(f"  Implied move: {s.implied_upside_low:.1%} to {s.implied_upside_high:.1%}")
                 parts.append(f"  {s.narrative}")
@@ -916,10 +917,10 @@ class ReportRenderer:
             parts.append(profile.description[:300])
             parts.append("")
 
-        parts.append(f"**Current Price:** ${prices.current_price:.2f}")
+        parts.append(f"**Current Price:** {money(prices.current_price, profile.currency)}")
         if prices.price_52w_high > 0:
             pct_from_high = (prices.current_price - prices.price_52w_high) / prices.price_52w_high
-            parts.append(f"**52-Week Range:** ${prices.price_52w_low:.2f} - ${prices.price_52w_high:.2f} (currently {pct_from_high:.1%} from high)")
+            parts.append(f"**52-Week Range:** {money(prices.price_52w_low, profile.currency)} - {money(prices.price_52w_high, profile.currency)} (currently {pct_from_high:.1%} from high)")
         if prices.ytd_return:
             parts.append(f"**YTD Return:** {prices.ytd_return:.1%}")
         if prices.total_return_1y:
@@ -976,10 +977,10 @@ class ReportRenderer:
             parts.append("### Key Levels")
             if support:
                 dist = getattr(technical, "support_distance_pct", 0)
-                parts.append(f"- Nearest support: **${support:.2f}** ({dist:.1%} below)")
+                parts.append(f"- Nearest support: **{money(support, ctx['profile'].currency)}** ({dist:.1%} below)")
             if resistance:
                 dist = getattr(technical, "resistance_distance_pct", 0)
-                parts.append(f"- Nearest resistance: **${resistance:.2f}** ({dist:.1%} above)")
+                parts.append(f"- Nearest resistance: **{money(resistance, ctx['profile'].currency)}** ({dist:.1%} above)")
             parts.append("")
 
         patterns = getattr(technical, "patterns", [])
@@ -1161,7 +1162,7 @@ class ReportRenderer:
             return ReportSection(step_number=step.step_number, title=step.title,
                 content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), 0
 
-        parts.append(f"**Current Price:** ${valuation.current_price:.2f}")
+        parts.append(f"**Current Price:** {money(valuation.current_price, ctx['profile'].currency)}")
         parts.append(f"**Methodology:** {valuation.primary_methodology}")
         parts.append("")
 
@@ -1173,7 +1174,7 @@ class ReportRenderer:
             visuals.append(plotly_chart)
 
         for s in valuation.scenarios:
-            parts.append(f"\n**{s.label}:** ${s.implied_price_low:.0f} - ${s.implied_price_high:.0f}")
+            parts.append(f"\n**{s.label}:** {money(s.implied_price_low, ctx['profile'].currency, 0)} - {money(s.implied_price_high, ctx['profile'].currency, 0)}")
             if s.implied_upside_low is not None and s.implied_upside_high is not None:
                 parts.append(f"  Implied move: {s.implied_upside_low:.1%} to {s.implied_upside_high:.1%}")
             parts.append(f"  {s.narrative}")
@@ -1301,7 +1302,7 @@ class ReportRenderer:
         parts.append(f"**Sector:** {profile.sector}")
         parts.append(f"**Industry:** {profile.industry}")
         if profile.market_cap:
-            parts.append(f"**Market Cap:** ${float(profile.market_cap) / 1e9:.1f}B")
+            parts.append(f"**Market Cap:** {money(float(profile.market_cap) / 1e9, profile.currency, 1)}B")
         if profile.employees:
             parts.append(f"**Employees:** {profile.employees:,}")
         parts.append("")
