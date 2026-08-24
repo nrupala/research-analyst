@@ -22,7 +22,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from ..enums import ReportType
+from ..enums import ReportType, SecurityType
 from ..models import (
     Assumption,
     CapitalAllocation,
@@ -278,6 +278,52 @@ class ReportRenderer:
     # Comprehensive report step renderers
     # ------------------------------------------------------------------
 
+    def _build_etf_block(
+        self, ctx: dict[str, Any]
+    ) -> tuple[list[str], list[ReportVisual], list[Assumption], list[str]]:
+        """ETF-as-subject overview block (Slice B, Option A).
+
+        Surfaces fund overview + assets under management from fields the
+        profile already carries. Expense ratio, distribution yield, tracking
+        index and holdings are deferred to Slice B-B and recorded as data
+        gaps. Returns empty lists for non-ETF subjects (equity path unchanged).
+        """
+        profile: CompanyProfile = ctx["profile"]
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        assumptions: list[Assumption] = []
+        gaps: list[str] = []
+
+        if profile.security_type is not SecurityType.ETF:
+            return parts, visuals, assumptions, gaps
+
+        parts.append("### ETF Overview")
+        if profile.description:
+            parts.append(f"**Strategy:** {profile.description[:500]}")
+        else:
+            gaps.append("ETF strategy description unavailable.")
+
+        if profile.market_cap:
+            parts.append(
+                f"**Assets Under Management:** "
+                f"{money(profile.market_cap, profile.currency)}"
+            )
+            assumptions.append(
+                Assumption(
+                    label="Assets Under Management",
+                    value=money(profile.market_cap, profile.currency),
+                    source="market_cap from security profile (AUM proxy)",
+                )
+            )
+        else:
+            gaps.append("Assets under management unavailable.")
+
+        gaps.append(
+            "Expense ratio, distribution yield, tracking index and top "
+            "holdings pending ETF-metadata integration (Slice B-B)."
+        )
+        return parts, visuals, assumptions, gaps
+
     def _render_comprehensive_step1(
         self, step: StepTemplate, ctx: dict[str, Any]
     ) -> tuple[ReportSection, int]:
@@ -296,6 +342,15 @@ class ReportRenderer:
         if profile.description:
             parts.append(profile.description[:500])
             parts.append("")
+
+        # ETF-as-subject overview (Slice B)
+        etf_parts, etf_visuals, etf_assumptions, etf_gaps = self._build_etf_block(ctx)
+        if etf_parts:
+            parts.extend(etf_parts)
+            parts.append("")
+            visuals.extend(etf_visuals)
+            assumptions.extend(etf_assumptions)
+            gaps.extend(etf_gaps)
 
         # Price context
         parts.append(f"**Current Price:** {money(prices.current_price, profile.currency)}")
