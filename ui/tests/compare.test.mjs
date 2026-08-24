@@ -156,6 +156,7 @@ const ELEMENT_IDS = [
   { id: "mode-single", tag: "button" }, { id: "mode-compare", tag: "button" }, { id: "compare-form", tag: "form" },
   { id: "compare-tickers", tag: "input" }, { id: "compare-timeframe", tag: "select" }, { id: "compare-error", tag: "small" },
   { id: "btn-compare", tag: "button" }, { id: "btn-compare-text", tag: "span" }, { id: "btn-compare-spinner", tag: "span" },
+  { id: "resolve-candidates" },
 ];
 
 const flush = async (n = 40) => { for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0)); };
@@ -372,6 +373,73 @@ test("regression: single-ticker /api/research still renders + exports", async ()
   const md = await env.lastBlob().text();
   assert.ok(/Apple/.test(md), "single-ticker MD export has content");
   assert.ok(md.includes("Report prepared on https://ra.devinfo.dev"), "single-ticker MD footer intact");
+});
+
+// --- A.3b: company-name / symbol resolve helpers ---
+function resolveResolved(symbol, name) {
+  return { query: name, status: "resolved",
+    resolved: { symbol, name, quote_type: "EQUITY", market: "IN", market_name: "India (NSE)", currency: "INR" },
+    candidates: [], note: "exact name match" };
+}
+function resolveAmbiguous(query) {
+  return { query, status: "ambiguous", resolved: null,
+    candidates: [
+      { symbol: "RELIANCE.NS", name: "Reliance Industries Ltd", market: "IN", market_name: "India (NSE)", currency: "INR" },
+      { symbol: "RELIANCE.BO", name: "Reliance Industries Ltd", market: "IN", market_name: "India (BSE)", currency: "INR" },
+    ], note: "multiple listings" };
+}
+
+// --- A.3b: multi-word name -> /api/resolve (resolved) -> /api/research ---
+test("name lookup: multi-word name resolves then researches the resolved ticker", async () => {
+  const env = makeEnv(ELEMENT_IDS);
+  const calls = [];
+  env.state.fetchImpl = async (url, opts) => {
+    if (url === "/style.css") return { ok: true, text: async () => MOCK_CSS };
+    calls.push(url);
+    if (url === "/api/resolve") {
+      assert.strictEqual(opts.method, "POST");
+      assert.strictEqual(JSON.parse(opts.body).query, "Reliance Industries");
+      return { ok: true, json: async () => resolveResolved("RELIANCE.NS", "Reliance Industries") };
+    }
+    if (url === "/api/research") {
+      assert.strictEqual(JSON.parse(opts.body).ticker, "RELIANCE.NS", "researches the resolved ticker");
+      return { ok: true, json: async () => researchResponse() };
+    }
+    throw new Error("unexpected url " + url);
+  };
+  env.el("ticker").value = "Reliance Industries";
+  env.el("research-form").dispatch("submit", {});
+  await flush();
+  assert.deepStrictEqual(calls, ["/api/resolve", "/api/research"], "resolve precedes research");
+  assert.ok(/Apple|Valuation/.test(env.el("report-content").innerHTML), "report rendered after resolve");
+});
+
+// --- A.3b: ambiguous name -> candidate picker -> click -> /api/research ---
+test("name lookup: ambiguous shows a candidate picker; clicking one researches that ticker", async () => {
+  const env = makeEnv(ELEMENT_IDS);
+  const calls = [];
+  env.state.fetchImpl = async (url, opts) => {
+    if (url === "/style.css") return { ok: true, text: async () => MOCK_CSS };
+    calls.push(url);
+    if (url === "/api/resolve") return { ok: true, json: async () => resolveAmbiguous("Reliance") };
+    if (url === "/api/research") {
+      assert.strictEqual(JSON.parse(opts.body).ticker, "RELIANCE.NS");
+      return { ok: true, json: async () => researchResponse() };
+    }
+    throw new Error("unexpected url " + url);
+  };
+  env.el("ticker").value = "Reliance";
+  env.el("research-form").dispatch("submit", {});
+  await flush();
+  assert.deepStrictEqual(calls, ["/api/resolve"], "no research until a candidate is picked");
+  const box = env.el("resolve-candidates");
+  assert.strictEqual(box.hidden, false, "candidate picker shown");
+  const btns = box.children.filter((c) => c.tagName === "BUTTON");
+  assert.strictEqual(btns.length, 2, "both listings offered");
+  btns[0].click();
+  await flush();
+  assert.deepStrictEqual(calls, ["/api/resolve", "/api/research"], "picking a candidate fires research");
+  assert.ok(/Apple|Valuation/.test(env.el("report-content").innerHTML), "report rendered after pick");
 });
 
 // --------------------------------------------------------------------------
