@@ -17,7 +17,7 @@ Design:
 Architecture:
   Request → Validate → Fetch (parallel) → Analyze → Render → Response
 """
-# Module: research_analyst/orchestrator.py | Version: 0.1.1 | Updated: 2026-06-02
+# Module: research_analyst/orchestrator.py | Version: 0.3.0 | Updated: 2026-08-23
 
 from __future__ import annotations
 
@@ -47,6 +47,7 @@ from .models import (
     ResearchRequest,
     ResearchResponse,
 )
+from .providers import markets
 from .providers.market_data import MarketDataProvider
 from .providers.sec_edgar import SECEdgarProvider
 from .providers.technical import TechnicalProvider
@@ -99,13 +100,14 @@ class ResearchOrchestrator:
         """
         start_time = time.monotonic()
         ticker = request.ticker
+        market = markets.resolve(ticker)  # international market registry (v0.3.0)
         data_sources: list[str] = []
         data_freshness: dict[str, str] = {}
         warnings: list[str] = []
         all_assumptions: list[Any] = []
 
-        logger.info("Starting research pipeline for %s (reports: %s)",
-                     ticker, [r.value for r in request.report_types])
+        logger.info("Starting research pipeline for %s [%s] (reports: %s)",
+                     ticker, market.name, [r.value for r in request.report_types])
 
         # ================================================================
         # PHASE 1: Data Fetching (parallel where possible)
@@ -120,8 +122,8 @@ class ResearchOrchestrator:
             logger.warning("Market data profile failed for %s: %s", ticker, e)
             warnings.append(f"Market data profile unavailable: {e}")
 
-        # If market data failed, try SEC
-        if profile is None:
+        # If market data failed, try SEC — US listings only (SEC EDGAR is US-scope)
+        if profile is None and market.code == "US":
             try:
                 async with SECEdgarProvider() as sec:
                     profile = await sec.get_company_profile(ticker)
@@ -131,6 +133,13 @@ class ResearchOrchestrator:
                     f"Cannot resolve ticker '{ticker}'. "
                     f"Neither market data nor SEC returned results: {e}"
                 ) from e
+        if profile is None:
+            hint = "." if market.code == "US" else (
+                f" (SEC EDGAR not applicable for {market.name} listing)."
+            )
+            raise ValueError(
+                f"Cannot resolve ticker '{ticker}'. Market data returned no profile" + hint
+            )
 
         # --- Parallel data fetching ---
         price_task = self._fetch_prices(ticker, request)
@@ -303,12 +312,26 @@ class ResearchOrchestrator:
 
         elapsed = time.monotonic() - start_time
 
+        # Reporting currency: prefer the profile's own currency (from yfinance),
+        # fall back to the market registry default. International (v0.3.0).
+        reporting_currency = (
+            (profile.currency or market.currency) if profile else market.currency
+        )
+        # Explicit data-gap: a non-US listing with no fundamentals from either source.
+        if market.code != "US" and not financials:
+            warnings.append(
+                f"No fundamentals for {market.name} listing ({ticker}): "
+                f"SEC EDGAR is US-only and yfinance financials were empty."
+            )
+
         metadata = ResearchMetadata(
             data_sources=data_sources,
             data_freshness=data_freshness,
             assumptions_used=all_assumptions,
             warnings=warnings,
             processing_time_seconds=round(elapsed, 2),
+            market=market.name,
+            reporting_currency=reporting_currency,
         )
 
         logger.info(
@@ -342,6 +365,13 @@ class ResearchOrchestrator:
         return await self._market.get_financials(ticker)
 
     async def _fetch_sec_financials(self, ticker: str) -> list:
+        # SEC EDGAR is US-only; skip the (rate-limited) call for non-US listings.
+        if not markets.should_query_sec(ticker):
+            logger.debug(
+                "SEC financials skipped for %s: non-US listing (%s)",
+                ticker, markets.resolve(ticker).name,
+            )
+            return []
         try:
             async with SECEdgarProvider() as sec:
                 return await sec.get_financials(ticker)
