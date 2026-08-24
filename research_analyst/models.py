@@ -76,6 +76,8 @@ class ResearchMetadata(BaseModel):
     assumptions_used: list[Assumption] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     processing_time_seconds: float = 0.0
+    market: str = ""                 # resolved market name, e.g. "India (NSE)"; "" == US default
+    reporting_currency: str = "USD"  # security trading/quote currency (from profile, else registry)
 
 
 # ---------------------------------------------------------------------------

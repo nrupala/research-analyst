@@ -80,6 +80,16 @@ def is_us(ticker: str) -> bool:
     return resolve(ticker).code == "US"
 
 
+def should_query_sec(ticker: str) -> bool:
+    """Whether SEC EDGAR should be queried for a ticker (US listings only).
+
+    SEC EDGAR is a US-filing database; querying it for a non-US listing wastes a
+    rate-limited request and never matches. Non-US fundamentals come from the
+    market-data provider (yfinance) instead.
+    """
+    return is_us(ticker)
+
+
 def fx_pair(currency: str, base: str = "USD") -> "str | None":
     """yfinance FX symbol to convert `currency` -> `base` (e.g. 'INRUSD=X').
 
