@@ -81,6 +81,7 @@ class ReportRenderer:
         risk_matrix: RiskMatrix | None = None,
         capital_allocation: CapitalAllocation | None = None,
         dividend: Any = None,
+        etf: Any = None,
     ) -> ReportOutput:
         """Render a complete report from analysis outputs.
 
@@ -120,6 +121,7 @@ class ReportRenderer:
             "risk_matrix": risk_matrix,
             "capital_allocation": capital_allocation,
             "dividend": dividend,
+            "etf": etf,
         }
 
         sections: list[ReportSection] = []
@@ -281,12 +283,14 @@ class ReportRenderer:
     def _build_etf_block(
         self, ctx: dict[str, Any]
     ) -> tuple[list[str], list[ReportVisual], list[Assumption], list[str]]:
-        """ETF-as-subject overview block (Slice B, Option A).
+        """ETF-as-subject overview block (Slice B).
 
-        Surfaces fund overview + assets under management from fields the
-        profile already carries. Expense ratio, distribution yield, tracking
-        index and holdings are deferred to Slice B-B and recorded as data
-        gaps. Returns empty lists for non-ETF subjects (equity path unchanged).
+        With an ETF engine result on the context (ctx["etf"], Slice B-B) this
+        surfaces real expense ratio, distribution yield, AUM, tracking index /
+        category, fund family, top holdings and sector weights. Without it, it
+        falls back to the Slice B-A profile-only surface (fund overview + AUM
+        proxy). Returns empty lists for non-ETF subjects (equity path
+        unchanged) and records explicit data gaps for anything missing.
         """
         profile: CompanyProfile = ctx["profile"]
         parts: list[str] = []
@@ -297,31 +301,78 @@ class ReportRenderer:
         if profile.security_type is not SecurityType.ETF:
             return parts, visuals, assumptions, gaps
 
+        etf = ctx.get("etf")
         parts.append("### ETF Overview")
-        if profile.description:
-            parts.append(f"**Strategy:** {profile.description[:500]}")
-        else:
-            gaps.append("ETF strategy description unavailable.")
 
-        if profile.market_cap:
-            parts.append(
-                f"**Assets Under Management:** "
-                f"{money(profile.market_cap, profile.currency)}"
-            )
-            assumptions.append(
-                Assumption(
-                    label="Assets Under Management",
-                    value=money(profile.market_cap, profile.currency),
-                    source="market_cap from security profile (AUM proxy)",
+        if etf:
+            overview = etf.get("fund_overview")
+            if overview:
+                parts.append(f"**Strategy:** {overview[:500]}")
+            family = etf.get("fund_family")
+            if family:
+                parts.append(f"**Fund Family:** {family}")
+            index = etf.get("tracking_index")
+            if index:
+                parts.append(f"**Index / Category:** {index}")
+            expense_ratio = etf.get("expense_ratio")
+            if expense_ratio is not None:
+                parts.append(f"**Expense Ratio:** {expense_ratio:.2%}")
+            distribution_yield = etf.get("distribution_yield")
+            if distribution_yield is not None:
+                parts.append(f"**Distribution Yield:** {distribution_yield:.2%}")
+            aum = etf.get("aum")
+            if aum is not None:
+                parts.append(
+                    f"**Assets Under Management:** {money(aum, profile.currency)}"
                 )
-            )
+            holdings = etf.get("top_holdings") or []
+            if holdings:
+                parts.append("")
+                parts.append("**Top Holdings:**")
+                for holding in holdings[:10]:
+                    symbol = (holding.get("symbol") or "").strip()
+                    name = (holding.get("name") or "").strip()
+                    weight = holding.get("weight")
+                    label = " — ".join(p for p in (symbol, name) if p)
+                    if not label:
+                        continue
+                    if weight is not None:
+                        parts.append(f"- {label} ({weight:.2%})")
+                    else:
+                        parts.append(f"- {label}")
+            sector_weights = etf.get("sector_weights") or {}
+            if sector_weights:
+                parts.append("")
+                parts.append("**Sector Weights:**")
+                for sector, weight in sector_weights.items():
+                    if weight is not None:
+                        parts.append(f"- {sector} ({weight:.2%})")
+            assumptions.extend(etf.get("assumptions") or [])
+            gaps.extend(etf.get("data_gaps") or [])
         else:
-            gaps.append("Assets under management unavailable.")
-
-        gaps.append(
-            "Expense ratio, distribution yield, tracking index and top "
-            "holdings pending ETF-metadata integration (Slice B-B)."
-        )
+            # Slice B-A fallback: profile-only surface.
+            if profile.description:
+                parts.append(f"**Strategy:** {profile.description[:500]}")
+            else:
+                gaps.append("ETF strategy description unavailable.")
+            if profile.market_cap:
+                parts.append(
+                    f"**Assets Under Management:** "
+                    f"{money(profile.market_cap, profile.currency)}"
+                )
+                assumptions.append(
+                    Assumption(
+                        label="Assets Under Management",
+                        value=money(profile.market_cap, profile.currency),
+                        source="market_cap from security profile (AUM proxy)",
+                    )
+                )
+            else:
+                gaps.append("Assets under management unavailable.")
+            gaps.append(
+                "Expense ratio, distribution yield, tracking index and top "
+                "holdings pending ETF-metadata integration (Slice B-B)."
+            )
         return parts, visuals, assumptions, gaps
 
     def _render_comprehensive_step1(
@@ -972,6 +1023,14 @@ class ReportRenderer:
             parts.append(profile.description[:300])
             parts.append("")
 
+        etf_parts, etf_visuals, etf_assumptions, etf_gaps = self._build_etf_block(ctx)
+        if etf_parts:
+            parts.extend(etf_parts)
+            parts.append("")
+            visuals.extend(etf_visuals)
+            assumptions.extend(etf_assumptions)
+            gaps.extend(etf_gaps)
+
         parts.append(f"**Current Price:** {money(prices.current_price, profile.currency)}")
         if prices.price_52w_high > 0:
             pct_from_high = (prices.current_price - prices.price_52w_high) / prices.price_52w_high
@@ -1349,10 +1408,21 @@ class ReportRenderer:
         profile = ctx["profile"]
         parts = []
         visuals = []
+        assumptions = []
+        gaps = []
 
         if profile.description:
             parts.append(profile.description[:500])
             parts.append("")
+
+        # ETF-as-subject overview (Slice B)
+        etf_parts, etf_visuals, etf_assumptions, etf_gaps = self._build_etf_block(ctx)
+        if etf_parts:
+            parts.extend(etf_parts)
+            parts.append("")
+            visuals.extend(etf_visuals)
+            assumptions.extend(etf_assumptions)
+            gaps.extend(etf_gaps)
 
         parts.append(f"**Sector:** {profile.sector}")
         parts.append(f"**Industry:** {profile.industry}")
@@ -1366,7 +1436,7 @@ class ReportRenderer:
         visuals.append(biz_model)
 
         return ReportSection(step_number=step.step_number, title=step.title,
-            content="\n".join(parts), visuals=visuals), len(visuals)
+            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), len(visuals)
 
     def _render_long_term_step2(self, step, ctx):
         """Step 2: Financial Analysis & Quality of Earnings."""

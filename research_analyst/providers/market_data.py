@@ -36,6 +36,8 @@ from ..models import (
     Competitor,
     DividendData,
     DividendPayment,
+    ETFMetadata,
+    ETFTopHolding,
     FinancialStatement,
     InstitutionalHolder,
     MacroSnapshot,
@@ -242,6 +244,82 @@ class MarketDataProvider:
             return df
 
         return await asyncio.to_thread(_dl)
+
+    async def fetch_etf_metadata(
+        self, ticker: str, yf_ticker: Any = None
+    ) -> ETFMetadata:
+        """Fetch ETF-specific metadata from yfinance (.info + .funds_data).
+
+        Populates each field where the source supplies it and records an
+        explicit data gap for every field it does not. Holdings and sector
+        weights are normalised to plain Python here so the pure extractor
+        (_extract_etf_metadata) stays testable without pandas or a network call.
+        Never raises — degrades to an empty/gapped ETFMetadata.
+        """
+        if yf_ticker is None:
+            yf_ticker = await self._yf_ticker(ticker)
+
+        info: dict[str, Any] = {}
+        try:
+            info = await asyncio.to_thread(lambda: yf_ticker.info) or {}
+        except Exception as e:  # noqa: BLE001 - degrade, never crash the pipeline
+            logger.warning("ETF .info fetch failed for %s: %s", ticker, e)
+
+        holdings: list[dict[str, Any]] | None = None
+        sector_weights: dict[str, Any] | None = None
+        try:
+            funds_data = await asyncio.to_thread(lambda: yf_ticker.funds_data)
+            holdings = self._normalize_top_holdings(funds_data)
+            sector_weights = self._normalize_sector_weights(funds_data)
+        except Exception as e:  # noqa: BLE001 - holdings/sectors are best-effort
+            logger.info("ETF funds_data unavailable for %s: %s", ticker, e)
+
+        return _extract_etf_metadata(ticker, info, holdings, sector_weights)
+
+    @staticmethod
+    def _normalize_top_holdings(funds_data: Any) -> list[dict[str, Any]] | None:
+        """Best-effort conversion of yfinance funds_data.top_holdings to a list."""
+        if funds_data is None:
+            return None
+        try:
+            df = funds_data.top_holdings
+        except Exception:
+            return None
+        if df is None:
+            return None
+        rows: list[dict[str, Any]] = []
+        try:
+            for symbol, row in df.iterrows():
+                name = ""
+                weight = None
+                for key in ("Name", "name", "Holding Name"):
+                    if key in row.index:
+                        name = str(row[key])
+                        break
+                for key in ("Holding Percent", "% Assets", "weight"):
+                    if key in row.index:
+                        weight = row[key]
+                        break
+                rows.append({"symbol": str(symbol), "name": name, "weight": weight})
+        except Exception:
+            return None
+        return rows or None
+
+    @staticmethod
+    def _normalize_sector_weights(funds_data: Any) -> dict[str, Any] | None:
+        """Best-effort conversion of yfinance funds_data.sector_weightings to a dict."""
+        if funds_data is None:
+            return None
+        try:
+            sw = funds_data.sector_weightings
+        except Exception:
+            return None
+        if not sw:
+            return None
+        try:
+            return {str(k): v for k, v in dict(sw).items()}
+        except Exception:
+            return None
 
     # ------------------------------------------------------------------
     # Price data
@@ -926,3 +1004,73 @@ class MarketDataProvider:
         self._cache.put(cache_key, snapshot.model_dump(mode="json"))
         return snapshot
 
+
+def _extract_etf_metadata(
+    ticker: str,
+    info: dict[str, Any],
+    holdings: list[dict[str, Any]] | None = None,
+    sector_weights: dict[str, Any] | None = None,
+) -> ETFMetadata:
+    """Map a yfinance .info dict (plus normalised holdings/sector weights) to
+    ETFMetadata. Pure and deterministic — no network, no pandas — so it is
+    fully unit-testable. Records an explicit data gap for every absent field.
+    """
+    info = info or {}
+    gaps: list[str] = []
+
+    _er_raw = info.get("annualReportExpenseRatio")
+    if _er_raw is None:
+        _er_raw = info.get("netExpenseRatio")
+    expense_ratio = _safe_decimal(_er_raw)
+    if expense_ratio is None:
+        gaps.append("Expense ratio unavailable from source.")
+
+    _dy_raw = info.get("yield")
+    if _dy_raw is None:
+        _dy_raw = info.get("trailingAnnualDividendYield")
+    distribution_yield = _safe_decimal(_dy_raw)
+    if distribution_yield is None:
+        gaps.append("Distribution yield unavailable from source.")
+
+    _aum_raw = info.get("totalAssets")
+    if _aum_raw is None:
+        _aum_raw = info.get("netAssets")
+    aum = _safe_decimal(_aum_raw)
+    if aum is None:
+        gaps.append("Assets under management unavailable from source.")
+
+    tracking_index = str(info.get("category") or "").strip()
+    if not tracking_index:
+        gaps.append("Tracking index / category unavailable from source.")
+
+    fund_family = str(info.get("fundFamily") or "").strip()
+
+    top_holdings: list[ETFTopHolding] = []
+    for h in holdings or []:
+        top_holdings.append(
+            ETFTopHolding(
+                symbol=str(h.get("symbol") or "").strip(),
+                name=str(h.get("name") or "").strip(),
+                weight=_safe_decimal(h.get("weight")),
+            )
+        )
+    if not top_holdings:
+        gaps.append("Top holdings unavailable from source.")
+
+    normalized_sectors: dict[str, Decimal] = {}
+    for sector, weight in (sector_weights or {}).items():
+        w = _safe_decimal(weight)
+        if w is not None:
+            normalized_sectors[str(sector)] = w
+
+    return ETFMetadata(
+        ticker=ticker,
+        expense_ratio=expense_ratio,
+        distribution_yield=distribution_yield,
+        aum=aum,
+        tracking_index=tracking_index,
+        fund_family=fund_family,
+        top_holdings=top_holdings,
+        sector_weights=normalized_sectors,
+        data_gaps=gaps,
+    )

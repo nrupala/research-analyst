@@ -30,6 +30,7 @@ from typing import Any
 from .config import settings
 from .engines.competitor import CompetitorEngine
 from .engines.dividend import DividendEngine
+from .engines.etf import ETFEngine
 from .engines.fundamental import FundamentalEngine
 from .engines.macro import MacroEngine
 from .engines.risk import RiskEngine
@@ -71,6 +72,7 @@ class ResearchOrchestrator:
         self._technical_provider = TechnicalProvider()
         self._fundamental_engine = FundamentalEngine()
         self._dividend_engine = DividendEngine()
+        self._etf_engine = ETFEngine()
         self._technical_engine = TechnicalEngine()
         self._macro_engine = MacroEngine()
         self._competitor_engine = CompetitorEngine()
@@ -268,6 +270,18 @@ class ResearchOrchestrator:
             competitive=competitive_analysis,
         )
 
+        # --- ETF-as-subject (Slice B) ---
+        etf_analysis = None
+        if profile.security_type is SecurityType.ETF:
+            etf_metadata = None
+            try:
+                etf_metadata = await self._market.fetch_etf_metadata(ticker)
+                data_sources.append("yfinance (ETF metadata)")
+            except Exception as e:
+                logger.warning("ETF metadata fetch failed for %s: %s", ticker, e)
+            etf_analysis = self._etf_engine.analyze(profile, etf_metadata)
+            all_assumptions.extend(etf_analysis.get("assumptions", []))
+
         # ================================================================
         # PHASE 3: Report Rendering
         # ================================================================
@@ -290,6 +304,7 @@ class ResearchOrchestrator:
                     risk_matrix=risk_matrix,
                     capital_allocation=fundamental_analysis.capital_allocation,
                     dividend=dividend_analysis,
+                    etf=etf_analysis,
                 )
                 reports.append(report)
             except Exception as e:
