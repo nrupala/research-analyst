@@ -85,7 +85,8 @@ def test_extract_etf_metadata_fallback_keys():
         "category": "",
     }
     md = _extract_etf_metadata("XYZ", info)
-    assert md.expense_ratio == Decimal("0.03")
+    # netExpenseRatio is percent-scaled (0.03 == 0.03%) -> normalised to 0.0003.
+    assert md.expense_ratio == Decimal("0.0003")
     assert md.distribution_yield == Decimal("0.02")
     assert md.aum == Decimal("1000000")
     assert any("Tracking index" in g for g in md.data_gaps)
@@ -213,3 +214,22 @@ def test_live_etf_metadata_smoke():
     md = asyncio.run(MarketDataProvider().fetch_etf_metadata("SPY"))
     assert md.ticker == "SPY"
     assert (md.expense_ratio is not None) or (md.aum is not None)
+
+
+def test_extract_etf_metadata_expense_ratio_percent_scaled():
+    # Regression for the live prod bug: yfinance netExpenseRatio is
+    # percent-scaled (SPY: 0.0945 == 0.0945%). It must be normalised to a
+    # fraction so the renderer shows ~0.09%, never 9.45%.
+    info = {"netExpenseRatio": 0.0945, "category": "Large Blend"}
+    md = _extract_etf_metadata("SPY", info)
+    assert md.expense_ratio == Decimal("0.000945")
+    assert f"{md.expense_ratio:.2%}" == "0.09%"
+
+
+def test_extract_etf_metadata_expense_ratio_backstop_clamp():
+    # Defensive: a percent-scaled value landing in the fraction field
+    # (annualReportExpenseRatio) is >= 5% and gets divided by 100.
+    info = {"annualReportExpenseRatio": 0.09}
+    md = _extract_etf_metadata("XYZ", info)
+    assert md.expense_ratio == Decimal("0.0009")
+    assert f"{md.expense_ratio:.2%}" == "0.09%"
