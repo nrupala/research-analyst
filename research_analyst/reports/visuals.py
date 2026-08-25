@@ -29,6 +29,8 @@ from ..models import (
     ValuationRange,
 )
 
+from .currency import currency_symbol
+
 logger = logging.getLogger(__name__)
 
 
@@ -52,10 +54,14 @@ class VisualEngine:
     def plotly_financial_trends(
         financials: list[FinancialStatement],
         ticker: str,
+        currency: str | None = None,
     ) -> ReportVisual | None:
         """Revenue + margin trend chart as Plotly.js JSON."""
         if len(financials) < 2:
             return None
+
+        sym = currency_symbol(currency)
+        code = (currency or "USD").strip().upper()
 
         sorted_fin = sorted(
             financials,
@@ -71,7 +77,7 @@ class VisualEngine:
         traces: list[dict[str, Any]] = []
 
         traces.append({
-            "x": periods, "y": revenues, "name": "Revenue ($B)",
+            "x": periods, "y": revenues, "name": f"Revenue ({sym}B)",
             "type": "bar", "marker": {"color": "#2563eb", "opacity": 0.8},
             "yaxis": "y"
         })
@@ -101,7 +107,7 @@ class VisualEngine:
             "title": f"{ticker} — Revenue & Margin Trends",
             "template": "plotly_white", "height": 420,
             "legend": {"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
-            "yaxis": {"title": "Revenue ($B)", "side": "left"},
+            "yaxis": {"title": f"Revenue ({sym}B)", "side": "left"},
             "yaxis2": {"title": "Margin (%)", "side": "right", "overlaying": "y"},
             "margin": {"t": 50, "b": 50, "l": 60, "r": 60},
         }
@@ -111,15 +117,16 @@ class VisualEngine:
             title=f"{ticker} — Revenue & Margin Trends",
             content=json.dumps({"traces": traces, "layout": layout}),
             ties_to="Financial trajectory assessment (Step 2)",
-            caption="Revenue in billions USD. Margins as percentage of revenue.",
+            caption=f"Revenue in billions {code}. Margins as percentage of revenue.",
         )
 
     @staticmethod
-    def plotly_scenario_valuation(valuation: ValuationRange) -> ReportVisual | None:
+    def plotly_scenario_valuation(valuation: ValuationRange, currency: str | None = None) -> ReportVisual | None:
         """Scenario valuation range as Plotly.js JSON."""
         if not valuation.scenarios:
             return None
 
+        sym = currency_symbol(currency)
         labels = []
         lows = []
         highs = []
@@ -141,14 +148,14 @@ class VisualEngine:
                 "type": "bar", "orientation": "h",
                 "name": labels[i],
                 "marker": {"color": colors.get(labels[i], "#6b7280"), "opacity": 0.8},
-                "text": [f"${lows[i]:.0f} - ${highs[i]:.0f}"],
+                "text": [f"{sym}{lows[i]:.0f} - {sym}{highs[i]:.0f}"],
                 "textposition": "inside", "showlegend": False,
             })
 
         layout: dict[str, Any] = {
             "title": "Scenario-Based Valuation Range",
             "template": "plotly_white", "height": 280,
-            "xaxis": {"title": "Price ($)"},
+            "xaxis": {"title": f"Price ({sym})"},
             "margin": {"t": 50, "b": 50, "l": 120, "r": 30},
         }
 
@@ -161,7 +168,7 @@ class VisualEngine:
             }]
             layout["annotations"] = [{
                 "x": valuation.current_price, "y": len(labels) - 0.5,
-                "text": f"Current: ${valuation.current_price:.0f}",
+                "text": f"Current: {sym}{valuation.current_price:.0f}",
                 "showarrow": False, "yshift": 15,
                 "font": {"size": 11, "color": "black"},
             }]
@@ -171,7 +178,7 @@ class VisualEngine:
             title="Scenario-Based Valuation Range",
             content=json.dumps({"traces": traces, "layout": layout}),
             ties_to="Valuation scenarios (Step 6)",
-            caption=f"Current price: ${valuation.current_price:.2f}. Assumption-driven illustrations.",
+            caption=f"Current price: {sym}{valuation.current_price:.2f}. Assumption-driven illustrations.",
         )
 
     @staticmethod
@@ -370,14 +377,14 @@ class VisualEngine:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def ascii_scenario_chart(valuation: ValuationRange) -> ReportVisual:
+    def ascii_scenario_chart(valuation: ValuationRange, currency: str | None = None) -> ReportVisual:
         """Mandatory ASCII scenario summary."""
         return ReportVisual(
             visual_type="ascii",
             title="Scenario-Based Valuation Summary",
             content=valuation.ascii_chart(),
             ties_to="Scenario-based valuation range",
-            caption=f"Current price: ${valuation.current_price:.2f}.",
+            caption=f"Current price: {currency_symbol(currency)}{valuation.current_price:.2f}.",
         )
 
     @staticmethod
@@ -427,6 +434,7 @@ class VisualEngine:
     ) -> ReportVisual:
         """Key metrics summary table."""
         latest = financials[0] if financials else None
+        sym = currency_symbol(profile.currency)
         rows = [
             "| Metric | Value |",
             "|--------|-------|",
@@ -434,12 +442,12 @@ class VisualEngine:
             f"| **Sector / Industry** | {profile.sector} / {profile.industry} |",
         ]
         if profile.market_cap:
-            rows.append(f"| **Market Cap** | ${float(profile.market_cap) / 1e9:.1f}B |")
-        rows.append(f"| **Current Price** | ${current_price:.2f} |")
+            rows.append(f"| **Market Cap** | {sym}{float(profile.market_cap) / 1e9:.1f}B |")
+        rows.append(f"| **Current Price** | {sym}{current_price:.2f} |")
 
         if latest:
             if latest.revenue:
-                rows.append(f"| **Revenue (Latest)** | ${float(latest.revenue) / 1e9:.2f}B |")
+                rows.append(f"| **Revenue (Latest)** | {sym}{float(latest.revenue) / 1e9:.2f}B |")
             if latest.operating_margin is not None:
                 rows.append(f"| **Operating Margin** | {latest.operating_margin:.1%} |")
             if latest.net_margin is not None:
@@ -449,7 +457,7 @@ class VisualEngine:
             if latest.debt_to_equity is not None:
                 rows.append(f"| **Debt/Equity** | {latest.debt_to_equity:.2f}x |")
             if latest.eps_diluted is not None:
-                rows.append(f"| **EPS (Diluted)** | ${latest.eps_diluted:.2f} |")
+                rows.append(f"| **EPS (Diluted)** | {sym}{latest.eps_diluted:.2f} |")
         if pe_ratio:
             rows.append(f"| **P/E Ratio** | {pe_ratio:.1f}x |")
 
@@ -462,17 +470,18 @@ class VisualEngine:
         )
 
     @staticmethod
-    def table_peer_comparison(target_ticker: str, peers: list[Competitor]) -> ReportVisual:
+    def table_peer_comparison(target_ticker: str, peers: list[Competitor], currency: str | None = None) -> ReportVisual:
         """Peer comparison table."""
         if not peers:
             return ReportVisual(visual_type="table", title="Peer Comparison", content="*No peer data.*", ties_to="Competitive analysis")
 
-        header = "| Ticker | Name | Mkt Cap ($B) | Gross Margin | Op Margin | P/E | EV/EBITDA | Rev Growth | ROE | D/E |"
+        sym = currency_symbol(currency)
+        header = f"| Ticker | Name | Mkt Cap ({sym}B) | Gross Margin | Op Margin | P/E | EV/EBITDA | Rev Growth | ROE | D/E |"
         sep = "|--------|------|-------------|-------------|-----------|-----|-----------|------------|-----|-----|"
         rows = [header, sep]
 
         for p in peers[:8]:
-            mc = f"${float(p.market_cap) / 1e9:.1f}" if p.market_cap else "N/A"
+            mc = f"{sym}{float(p.market_cap) / 1e9:.1f}" if p.market_cap else "N/A"
             gm = f"{p.gross_margin:.1%}" if p.gross_margin is not None else "N/A"
             om = f"{p.operating_margin:.1%}" if p.operating_margin is not None else "N/A"
             pe = f"{p.pe_ratio:.1f}x" if p.pe_ratio is not None else "N/A"
@@ -500,11 +509,12 @@ class VisualEngine:
         return ReportVisual(visual_type="table", title="Structured Risk Matrix", content="\n".join(rows), ties_to="Risk assessment (Step 5/6)")
 
     @staticmethod
-    def table_financial_summary(financials: list[FinancialStatement]) -> ReportVisual:
+    def table_financial_summary(financials: list[FinancialStatement], currency: str | None = None) -> ReportVisual:
         """Multi-period financial summary table."""
         if not financials:
             return ReportVisual(visual_type="table", title="Financial Summary", content="*No data.*", ties_to="Financial analysis")
 
+        sym = currency_symbol(currency)
         sorted_fin = sorted(financials, key=lambda f: f.period_end_date or __import__("datetime").date.min)[-5:]
         periods = [f.period for f in sorted_fin]
         header = "| Metric | " + " | ".join(periods) + " |"
@@ -517,7 +527,7 @@ class VisualEngine:
                 if v is None:
                     vals.append("N/A")
                 elif fmt == "dec":
-                    vals.append(f"${float(v) / 1e9:.2f}B")
+                    vals.append(f"{sym}{float(v) / 1e9:.2f}B")
                 elif fmt == "pct":
                     vals.append(f"{v:.1%}")
                 elif fmt == "float":
@@ -565,9 +575,10 @@ class VisualEngine:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def table_dividend_summary(div: DividendAnalysis) -> ReportVisual:
+    def table_dividend_summary(div: DividendAnalysis, currency: str | None = None) -> ReportVisual:
         """Dividend & yield summary table."""
         label = div.income_label or "Dividend"
+        sym = currency_symbol(currency)
         rows = ["| Metric | Value |", "|--------|-------|"]
 
         if not div.pays_dividend:
@@ -593,7 +604,7 @@ class VisualEngine:
         if div.five_year_avg_yield is not None:
             rows.append(f"| **5Y Avg Yield** | {pct(div.five_year_avg_yield)} |")
         if div.annual_dividend_rate is not None:
-            rows.append(f"| **Annual Rate** | ${div.annual_dividend_rate:.2f}/share |")
+            rows.append(f"| **Annual Rate** | {sym}{div.annual_dividend_rate:.2f}/share |")
         if div.dividend_growth_1y is not None:
             rows.append(f"| **Growth (1Y)** | {pct(div.dividend_growth_1y)} |")
         if div.dividend_growth_3y_cagr is not None:
@@ -631,11 +642,13 @@ class VisualEngine:
         )
 
     @staticmethod
-    def plotly_dividend_history(div: DividendAnalysis) -> ReportVisual | None:
+    def plotly_dividend_history(div: DividendAnalysis, currency: str | None = None) -> ReportVisual | None:
         """Annual dividend-per-share history as a Plotly.js bar chart."""
         annual = div.annual_dividends or {}
         if len(annual) < 3:
             return None
+
+        sym = currency_symbol(currency)
 
         years = sorted(annual.keys(), key=lambda y: int(y))[-10:]
         values = [round(annual[y], 4) for y in years]
@@ -647,7 +660,7 @@ class VisualEngine:
         layout = {
             "title": f"{div.ticker} — Dividend Per Share by Year",
             "template": "plotly_white", "height": 320,
-            "yaxis": {"title": "DPS ($)"},
+            "yaxis": {"title": f"DPS ({sym})"},
             "xaxis": {"title": "Year", "type": "category"},
             "margin": {"t": 50, "b": 50, "l": 60, "r": 30},
         }
