@@ -1018,10 +1018,20 @@ def _extract_etf_metadata(
     info = info or {}
     gaps: list[str] = []
 
-    _er_raw = info.get("annualReportExpenseRatio")
-    if _er_raw is None:
-        _er_raw = info.get("netExpenseRatio")
-    expense_ratio = _safe_decimal(_er_raw)
+    # Expense ratio: yfinance's two expense fields use DIFFERENT units.
+    #   annualReportExpenseRatio -> a fraction (e.g. 0.000945 == 0.0945%)
+    #   netExpenseRatio          -> percent-scaled (e.g. 0.0945 == 0.0945%)
+    # Normalise both to a fraction so the renderer's ".2%" formatting is correct
+    # (treating netExpenseRatio as a fraction overstated fees by 100x).
+    expense_ratio = _safe_decimal(info.get("annualReportExpenseRatio"))
+    if expense_ratio is None:
+        _net = _safe_decimal(info.get("netExpenseRatio"))
+        if _net is not None:
+            expense_ratio = _net / Decimal("100")
+    # Defensive backstop: no real ETF expense ratio exceeds ~5% as a fraction,
+    # so a larger value means a percent-scaled number slipped through -> /100.
+    if expense_ratio is not None and expense_ratio >= Decimal("0.05"):
+        expense_ratio = expense_ratio / Decimal("100")
     if expense_ratio is None:
         gaps.append("Expense ratio unavailable from source.")
 
