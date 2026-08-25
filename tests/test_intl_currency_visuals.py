@@ -9,6 +9,7 @@ rupee symbol; CHF uses the trailing-space "CHF " form.
 """
 from __future__ import annotations
 
+import json
 from datetime import date
 from decimal import Decimal
 
@@ -84,7 +85,13 @@ def _div() -> DividendAnalysis:
 
 
 def _txt(rv) -> str:
-    return (rv.content or "") + "\n" + (rv.caption or "")
+    body = rv.content or ""
+    if body.startswith("{"):
+        try:
+            body = json.dumps(json.loads(body), ensure_ascii=False)
+        except ValueError:
+            pass
+    return body + "\n" + (rv.caption or "")
 
 
 class TestVisualsCurrencyUSD:
