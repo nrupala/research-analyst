@@ -742,3 +742,33 @@ class SubjectResolution(BaseModel):
     resolved: SymbolMatch | None = None
     candidates: list[SymbolMatch] = Field(default_factory=list)
     note: str = ""
+
+
+# ---------------------------------------------------------------------------
+# ETF Metadata (Slice B-B)
+# ---------------------------------------------------------------------------
+
+class ETFTopHolding(BaseModel):
+    """A single top holding within an ETF."""
+
+    symbol: str = ""
+    name: str = ""
+    weight: Decimal | None = None  # fraction of fund NAV (0..1)
+
+
+class ETFMetadata(BaseModel):
+    """ETF-specific metadata sourced from the market-data provider.
+
+    Every field degrades to None / empty with an explicit data gap when the
+    source does not supply it — the engine and renderer never invent ETF facts.
+    """
+
+    ticker: str
+    expense_ratio: Decimal | None = None       # fraction, e.g. 0.0009 = 0.09%
+    distribution_yield: Decimal | None = None  # fraction, e.g. 0.015 = 1.5%
+    aum: Decimal | None = None                 # net assets, in profile currency
+    tracking_index: str = ""                   # underlying index / fund category
+    fund_family: str = ""                      # issuer / fund family
+    top_holdings: list[ETFTopHolding] = Field(default_factory=list)
+    sector_weights: dict[str, Decimal] = Field(default_factory=dict)  # sector -> fraction
+    data_gaps: list[str] = Field(default_factory=list)
