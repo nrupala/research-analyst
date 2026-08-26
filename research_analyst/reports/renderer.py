@@ -266,9 +266,9 @@ class ReportRenderer:
             parts.append(f"- Attractiveness: **{div.attractiveness_rating}**{rationale}")
         parts.append("")
 
-        visuals.append(VisualEngine.table_dividend_summary(div))
+        visuals.append(VisualEngine.table_dividend_summary(div, currency=ctx['profile'].currency))
         if not compact:
-            chart = VisualEngine.plotly_dividend_history(div)
+            chart = VisualEngine.plotly_dividend_history(div, currency=ctx['profile'].currency)
             if chart:
                 visuals.append(chart)
 
@@ -470,11 +470,11 @@ class ReportRenderer:
             ), 0
 
         # Financial summary table
-        fin_table = VisualEngine.table_financial_summary(financials)
+        fin_table = VisualEngine.table_financial_summary(financials, currency=profile.currency)
         visuals.append(fin_table)
 
         # Plotly trend chart
-        plotly_chart = VisualEngine.plotly_financial_trends(financials, profile.ticker)
+        plotly_chart = VisualEngine.plotly_financial_trends(financials, profile.ticker, currency=profile.currency)
         if plotly_chart:
             visuals.append(plotly_chart)
 
@@ -589,7 +589,7 @@ class ReportRenderer:
 
         # Peer table
         if peers:
-            peer_table = VisualEngine.table_peer_comparison(profile.ticker, peers)
+            peer_table = VisualEngine.table_peer_comparison(profile.ticker, peers, currency=profile.currency)
             visuals.append(peer_table)
 
         # Positioning summary
@@ -826,11 +826,11 @@ class ReportRenderer:
             parts.append("")
 
             # Mandatory ASCII chart
-            ascii_chart = VisualEngine.ascii_scenario_chart(valuation)
+            ascii_chart = VisualEngine.ascii_scenario_chart(valuation, currency=ctx['profile'].currency)
             visuals.append(ascii_chart)
 
             # Plotly scenario chart
-            plotly_scenario = VisualEngine.plotly_scenario_valuation(valuation)
+            plotly_scenario = VisualEngine.plotly_scenario_valuation(valuation, currency=ctx['profile'].currency)
             if plotly_scenario:
                 visuals.append(plotly_scenario)
 
@@ -1200,7 +1200,7 @@ class ReportRenderer:
                 parts.append("")
 
         # Financial summary table as visual
-        fin_table = VisualEngine.table_financial_summary(financials)
+        fin_table = VisualEngine.table_financial_summary(financials, currency=profile.currency)
         visuals.append(fin_table)
 
         fund_assumptions = getattr(fundamental, "assumptions", []) if fundamental else []
@@ -1280,10 +1280,10 @@ class ReportRenderer:
         parts.append(f"**Methodology:** {valuation.primary_methodology}")
         parts.append("")
 
-        ascii_chart = VisualEngine.ascii_scenario_chart(valuation)
+        ascii_chart = VisualEngine.ascii_scenario_chart(valuation, currency=ctx['profile'].currency)
         visuals.append(ascii_chart)
 
-        plotly_chart = VisualEngine.plotly_scenario_valuation(valuation)
+        plotly_chart = VisualEngine.plotly_scenario_valuation(valuation, currency=ctx['profile'].currency)
         if plotly_chart:
             visuals.append(plotly_chart)
 
@@ -1454,10 +1454,10 @@ class ReportRenderer:
             return ReportSection(step_number=step.step_number, title=step.title,
                 content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), 0
 
-        fin_table = VisualEngine.table_financial_summary(financials)
+        fin_table = VisualEngine.table_financial_summary(financials, currency=profile.currency)
         visuals.append(fin_table)
 
-        plotly_chart = VisualEngine.plotly_financial_trends(financials, profile.ticker)
+        plotly_chart = VisualEngine.plotly_financial_trends(financials, profile.ticker, currency=profile.currency)
         if plotly_chart:
             visuals.append(plotly_chart)
 
@@ -1517,7 +1517,7 @@ class ReportRenderer:
         peers = landscape.peers if landscape else []
 
         if peers:
-            peer_table = VisualEngine.table_peer_comparison(profile.ticker, peers)
+            peer_table = VisualEngine.table_peer_comparison(profile.ticker, peers, currency=profile.currency)
             visuals.append(peer_table)
 
         summary = getattr(competitive, "positioning_summary", "")
