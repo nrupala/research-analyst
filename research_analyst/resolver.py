@@ -15,6 +15,19 @@ from .providers import markets
 # Quote types RA can actually research as a subject.
 _ELIGIBLE = {"EQUITY", "ETF"}
 
+# India-focused curated alias map: well-known bare names -> canonical NSE listing.
+# These are deliberate, user-approved mappings (not a search guess); extend freely.
+_INDIA_ALIASES = {
+    "ICICI": "ICICIBANK.NS",
+    "TECHM": "TECHM.NS",
+    "INFY": "INFY.NS",
+    "RELIANCE": "RELIANCE.NS",
+    "TCS": "TCS.NS",
+    "HDFCBANK": "HDFCBANK.NS",
+    "SBIN": "SBIN.NS",
+    "WIPRO": "WIPRO.NS",
+}
+
 
 def _tokens(text: str) -> list[str]:
     cleaned = "".join(c.lower() if (c.isalnum() or c.isspace()) else " " for c in (text or ""))
@@ -31,6 +44,16 @@ def resolve_subject(query: str, matches: list[SymbolMatch]) -> SubjectResolution
     """Decide resolve-vs-candidates for a query against search matches."""
     q = markets.normalize_ticker(query)  # trimmed + upper-cased
 
+    # 0) India alias: a curated bare name maps to its canonical NSE listing.
+    alias = _INDIA_ALIASES.get(q)
+    if alias:
+        m = markets.resolve(alias)
+        return SubjectResolution(
+            query=query, status="resolved",
+            resolved=SymbolMatch(symbol=alias, market=m.code, market_name=m.name, currency=m.currency),
+            note=f"India alias: {q} -> {alias}",
+        )
+
     # 1) Explicit exchange suffix -> the user named the listing. Resolve directly.
     if markets.suffix_of(q):
         m = markets.resolve(q)
@@ -42,6 +65,17 @@ def resolve_subject(query: str, matches: list[SymbolMatch]) -> SubjectResolution
 
     eligible = [m for m in (matches or []) if (m.quote_type or "").upper() in _ELIGIBLE]
     if not eligible:
+        # India-focused fallback: a bare, suffix-less alphanumeric symbol that yfinance
+        # could not match is very often an NSE listing typed without ".NS". Suggest it
+        # (never silently resolve) so the safe-confirm policy holds.
+        if not matches and q.isalnum() and 1 <= len(q) <= 12 and not markets.suffix_of(q):
+            ns = f"{q}.NS"
+            m = markets.resolve(ns)
+            return SubjectResolution(
+                query=query, status="ambiguous",
+                candidates=[SymbolMatch(symbol=ns, market=m.code, market_name=m.name, currency=m.currency)],
+                note=f"did you mean {ns}? (Indian NSE listing)",
+            )
         return SubjectResolution(query=query, status="not_found",
                                  note="no equity or ETF listing matched")
 
