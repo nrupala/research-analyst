@@ -5,13 +5,14 @@ var currentReports=[],activeTabIndex=0,isLoading=false,currentMode="single";
 function initDisclaimerGate() {
   const gate = document.getElementById('ra-disclaimer-gate');
   if (!gate) return; // shim-safe
+  gate.hidden = true; // fail-safe default: stay hidden unless we explicitly decide to show
   
   try {
     fetch('/api/disclaimer').then(async (res) => {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const {version, full} = await res.json();
       
-      if (localStorage.getItem('ra_disclaimer_ack') === version) {
+      if (window.localStorage.getItem('ra_disclaimer_ack') === version) {
         return; // already acknowledged
       }
       
@@ -21,7 +22,7 @@ function initDisclaimerGate() {
       gate.hidden = false;
       document.getElementById('ra-gate-accept')?.addEventListener('click', () => {
         try {
-          localStorage.setItem('ra_disclaimer_ack', version);
+          window.localStorage.setItem('ra_disclaimer_ack', version);
           gate.hidden = true;
         } catch (e) {
           console.warn('Failed to persist disclaimer ack:', e);
@@ -432,3 +433,10 @@ function mdToHTML(md){
 }
 
 function esc(s){var d=document.createElement("div");d.textContent=s;return d.innerHTML}
+
+// Bootstrap the first-use disclaimer gate one tick after load, so it runs after
+// synchronous page init (and, in tests, after the fetch mock is installed).
+// typeof guards keep it shim-safe; the gate itself fails open on any error.
+if (typeof requestAnimationFrame === 'function') requestAnimationFrame(initDisclaimerGate);
+else if (typeof setTimeout === 'function') setTimeout(initDisclaimerGate, 0);
+else initDisclaimerGate();
