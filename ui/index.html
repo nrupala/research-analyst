@@ -226,7 +226,13 @@
         <p><a href="https://devinfo.dev" style="color: var(--c-primary);">&larr; Back to devinfo.dev</a> &middot; <a href="https://buymeacoffee.com/nrupalakolt" target="_blank" rel="noopener noreferrer" style="color: var(--c-primary);">Buy Me a Coffee</a></p>
     </footer>
 
-    <script src="/app.js" defer></script>
+    <section id="ra-disclaimer-gate" class="disclaimer-gate" role="dialog" aria-modal="true" aria-labelledby="ra-gate-title" hidden>
+      <div class="disclaimer-gate__content">
+        <h2 id="ra-gate-title">Before you use Research Analyst</h2>
+        <div id="ra-gate-body" class="disclaimer-gate__body"></div>
+        <button id="ra-gate-accept" class="btn btn--primary" type="button">I understand — continue</button>
+      </div>
+    </section>
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", function () {
