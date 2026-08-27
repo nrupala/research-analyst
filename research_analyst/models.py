@@ -696,7 +696,7 @@ class ReportOutput(BaseModel):
                 parts.append(f"- **Why It Matters:** {vp.why_it_matters}")
 
         parts.append("---\n")
-        parts.append(self.disclaimer)
+        parts.append(f"**Disclaimer:**\n{self.disclaimer}")
         return "\n".join(parts)
 
 
