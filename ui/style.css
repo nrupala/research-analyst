@@ -294,10 +294,22 @@ body {
     .report table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
 }
 
-@media print {
-    #export-footer { display: block; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; color: #475569; }
-    .export-toolbar { display: none; }
-    .meta-bar { display: none; }
+/* Disclaimer gate modal */
+.disclaimer-gate {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  z-index: 1000; background: rgba(15,23,42,0.95);
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--sp-6);
+}
+.disclaimer-gate__content {
+  background: var(--c-surface); border-radius: var(--r-lg);
+  padding: var(--sp-8); max-width: 640px; width: 100%;
+  box-shadow: var(--sh-lg);
+}
+.disclaimer-gate__body {
+  max-height: 60vh; overflow-y: auto; padding: var(--sp-4) 0;
+  margin: var(--sp-4) 0; border-top: 1px solid var(--c-border);
+  border-bottom: 1px solid var(--c-border);
 }
 
 /* === v0.2.1: fluid, resolution-aware sizing so components are never oversized === */
