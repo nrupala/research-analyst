@@ -311,7 +311,10 @@ class TestReportOutput:
             sections=[],
         )
         md = report.to_markdown()
-        assert "not financial advice" in md.lower()
+        if "disclaimer" in md.lower():
+        assert "informational purposes only" in md
+    else:
+        assert False, "Disclaimer section is missing from report"
 
 
 # ---------------------------------------------------------------------------
