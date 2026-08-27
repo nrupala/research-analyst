@@ -26,6 +26,8 @@ from __future__ import annotations
 import html
 from typing import TYPE_CHECKING
 
+from .currency import currency_symbol
+
 if TYPE_CHECKING:  # avoid a runtime import cycle
     from ..comparative import ComparativeReport, MetricComparison
 
@@ -43,14 +45,18 @@ _HOW_TO_READ = (
 # Value formatting
 # ---------------------------------------------------------------------------
 
-def _fmt_value(value: float | None, unit: str) -> str:
-    """Format a raw metric value for display, given its unit."""
+def _fmt_value(value: float | None, unit: str, currency: str | None = None) -> str:
+    """Format a raw metric value for display, given its unit.
+
+    ``currency`` (ISO 4217) selects the money symbol for the ``price`` unit;
+    ``None`` / ``"USD"`` resolve to ``$`` so US output stays byte-identical.
+    """
     if value is None:
         return "N/A"
     if unit == "pct":
         return f"{value * 100:.1f}%"
     if unit == "price":
-        return f"${value:,.2f}"
+        return f"{currency_symbol(currency)}{value:,.2f}"
     if unit == "score":
         return f"{value:.0f}"
     if unit == "ratio":
@@ -139,7 +145,7 @@ def render_markdown(report: "ComparativeReport") -> str:
             cells = []
             for t in tickers:
                 value = metric.values.get(t)
-                text = _fmt_value(value, metric.unit)
+                text = _fmt_value(value, metric.unit, report.currencies.get(t))
                 if metric.rankable and value is not None:
                     rank = metric.ranks.get(t)
                     star = " ★" if t in metric.winners else ""
@@ -304,7 +310,7 @@ def render_html(report: "ComparativeReport") -> str:
             cells = [_esc(_metric_label(metric))]
             for t in tickers:
                 value = metric.values.get(t)
-                text = _fmt_value(value, metric.unit)
+                text = _fmt_value(value, metric.unit, report.currencies.get(t))
                 if metric.rankable and value is not None:
                     rank = metric.ranks.get(t)
                     if rank:
