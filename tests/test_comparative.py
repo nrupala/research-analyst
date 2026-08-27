@@ -295,7 +295,7 @@ class TestCompareEndpoint:
         assert data["tickers"] == ["KO", "PEP"]
         assert len(data["report"]["scorecard"]) == 2
         assert len(data["report"]["per_ticker_reports"]) == 2
-        assert "not financial advice" in data["report_markdown"].lower()
+        assert "informational purposes only" in data["report_markdown"].lower()
         _assert_no_advice(data["report_markdown"])
 
     def test_five_tickers(self) -> None:
@@ -383,7 +383,7 @@ class TestComparativeRenderer:
         assert "# Comparative Research Report" in md
         assert "## Scorecard" in md
         assert "## Provenance & Data Sources" in md
-        assert "not financial advice" in md.lower()
+        assert "informational purposes only" in md.lower()
         assert "Compliance:" in md
         assert "KO" in md and "PEP" in md
         _assert_no_advice(md)
@@ -396,7 +396,7 @@ class TestComparativeRenderer:
         assert "<style>" in html_doc
         assert "http://" not in html_doc.replace("http://www.w3.org", "")  # no external asset URLs
         assert "src=" not in html_doc
-        assert "not financial advice" in html_doc.lower()
+        assert "informational purposes only" in html_doc.lower()
         assert "Compliance:" in html_doc
         assert "ra.devinfo.dev" in html_doc  # prepared-on footer
         _assert_no_advice(html_doc)
