@@ -315,6 +315,7 @@ class ComparativeReport(BaseModel):
     requested_tickers: list[str]
     tickers: list[str] = Field(default_factory=list)   # successfully analyzed, in order
     company_names: dict[str, str] = Field(default_factory=dict)
+    currencies: dict[str, str] = Field(default_factory=dict)
     generated_at: datetime
     scorecard: list[ScorecardRow] = Field(default_factory=list)
     dimensions: list[DimensionComparison] = Field(default_factory=list)
@@ -348,6 +349,7 @@ def build_comparative_report(
     tickers = [resp.ticker for resp in responses]
     requested_list = list(requested) if requested is not None else list(tickers)
     company_names = {resp.ticker: resp.company_name for resp in responses}
+    currencies = {resp.ticker: getattr(resp, "currency", "USD") for resp in responses}
     data_sources = {resp.ticker: list(resp.metadata.data_sources) for resp in responses}
 
     reports_by_ticker: dict[str, ReportOutput] = {}
@@ -419,6 +421,7 @@ def build_comparative_report(
         requested_tickers=requested_list,
         tickers=tickers,
         company_names=company_names,
+        currencies=currencies,
         generated_at=datetime.now(timezone.utc),
         scorecard=scorecard,
         dimensions=dimensions,
