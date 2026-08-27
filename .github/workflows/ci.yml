@@ -58,6 +58,9 @@ jobs:
 
       - name: UI tests (headless, gating)
         run: node ui/tests/compare.test.mjs
+
+      - name: UI disclaimer gate test (headless, gating)
+        run: node ui/tests/disclaimer_gate.test.mjs
   deploy-fly:
     name: Deploy to Fly.io
     runs-on: ubuntu-latest
