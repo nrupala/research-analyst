@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from research_analyst.providers.market_data import MarketDataProvider
+from research_analyst.resolver import resolve_subject
 
 
 def _provider_with_info(info: dict) -> MarketDataProvider:
@@ -66,3 +67,39 @@ async def test_international_ticker_resolves():
     prof = await p.get_company_profile("RY.TO")
     assert prof.currency == "CAD"
     assert prof.name == "Royal Bank of Canada"
+
+
+# ---------------------------------------------------------------------------
+# resolve_subject: India alias map + bare -> .NS "did you mean" (Slice C).
+# Pure/offline: markets is a deterministic suffix table, no network.
+# ---------------------------------------------------------------------------
+
+def test_alias_infy_resolves_to_nse():
+    r = resolve_subject("INFY", [])
+    assert r.status == "resolved"
+    assert r.resolved.symbol == "INFY.NS"
+    assert r.resolved.currency == "INR"
+
+
+def test_alias_icici_maps_to_icicibank_nse():
+    r = resolve_subject("icici", [])  # normalized to upper before lookup
+    assert r.status == "resolved"
+    assert r.resolved.symbol == "ICICIBANK.NS"
+
+
+def test_bare_symbol_suggests_ns():
+    r = resolve_subject("ICICIBANK", [])
+    assert r.status == "ambiguous"
+    assert r.candidates and r.candidates[0].symbol == "ICICIBANK.NS"
+    assert "did you mean" in (r.note or "").lower()
+
+
+def test_explicit_suffix_still_resolves():
+    r = resolve_subject("TECHM.BO", [])
+    assert r.status == "resolved"
+    assert r.resolved.symbol == "TECHM.BO"
+
+
+def test_name_query_not_suggested_as_ns():
+    r = resolve_subject("some random company", [])
+    assert r.status == "not_found"
