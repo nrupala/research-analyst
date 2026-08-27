@@ -12,6 +12,7 @@ from decimal import Decimal
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
+from .disclaimer import DISCLAIMER_SHORT
 
 from .enums import (
     AnalysisDomain,
@@ -638,13 +639,7 @@ class ReportOutput(BaseModel):
     risk_matrix: RiskMatrix | None = None
     capital_allocation: CapitalAllocation | None = None
     dividend: DividendAnalysis | None = None
-    disclaimer: str = (
-        "**Disclaimer:**\n"
-        "This report is for informational and educational purposes only. "
-        "It is not financial advice, investment advice, or a recommendation "
-        "to buy or sell any security. "
-        "All scenario ranges are assumption-driven illustrations, not predictions."
-    )
+    disclaimer: str = ""  # Set by __init__ to DISCLAIMER_SHORT from disclaimer.py
 
     def to_markdown(self) -> str:
         """Render full report as Markdown."""

@@ -58,13 +58,8 @@ DIMENSION_ORDER = [DIM_VALUATION, DIM_GROWTH, DIM_QUALITY, DIM_DIVIDEND, DIM_RIS
 # single-ticker path untouched). Documented, never silently faked.
 DEFERRED_DIMENSIONS = ["Technical / Momentum", "Macro / Sector"]
 
-_DISCLAIMER = (
-    "**Disclaimer:**\n"
-    "This report is for informational and educational purposes only. "
-    "It is not financial advice, investment advice, or a recommendation "
-    "to buy or sell any security. "
-    "All scenario ranges are assumption-driven illustrations, not predictions."
-)
+from .disclaimer import DISCLAIMER_SHORT
+_DISCLAIMER = DISCLAIMER_SHORT
 _COMPLIANCE_NOTE = (
     "This tool ranks and compares numbers; you decide. It makes no buy, sell, or "
     "hold recommendation. The rankings show how the selected tickers compare on "
