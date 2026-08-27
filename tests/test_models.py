@@ -311,7 +311,7 @@ class TestReportOutput:
             sections=[],
         )
         md = report.to_markdown()
-        assert "not financial advice" in md.lower()
+        assert "informational purposes only" in md.lower()
 
 
 # ---------------------------------------------------------------------------
