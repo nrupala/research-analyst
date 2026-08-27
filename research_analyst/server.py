@@ -41,6 +41,7 @@ from .orchestrator import ResearchOrchestrator
 from .providers.market_data import MarketDataProvider
 from .comparative import MAX_TICKERS, MIN_TICKERS, ComparativeOrchestrator
 from .reports.comparative_renderer import render_html, render_markdown
+from .disclaimer import DISCLAIMER_VERSION, DISCLAIMER_FULL, DISCLAIMER_SHORT
 
 logger = logging.getLogger(__name__)
 
@@ -199,9 +200,13 @@ def create_app() -> FastAPI:
     # API Endpoints
     # ================================================================
 
-    @app.get("/api/health")
-    async def health_check() -> dict[str, str]:
-        return {"status": "ok", "service": "research-analyst", "version": __version__}
+    @app.get("/api/disclaimer")
+    async def get_disclaimer() -> dict[str, str]:
+        return {
+            "version": DISCLAIMER_VERSION,
+            "full": DISCLAIMER_FULL,
+            "short": DISCLAIMER_SHORT,
+        }
 
     @app.post("/api/resolve", response_model=ResolveAPIResponse)
     async def resolve_subject_endpoint(body: ResolveAPIRequest, request: Request) -> ResolveAPIResponse:
