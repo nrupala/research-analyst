@@ -335,6 +335,7 @@ class ResearchOrchestrator:
             ticker=ticker,
             security_type=profile.security_type,
             company_name=profile.name,
+            currency=profile.currency,
             generated_at=datetime.now(timezone.utc),
             reports=reports,
             metadata=metadata,

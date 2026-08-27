@@ -64,6 +64,7 @@ class ResearchResponse(BaseModel):
     ticker: str
     security_type: SecurityType
     company_name: str
+    currency: str = "USD"
     generated_at: datetime
     reports: list[ReportOutput]
     metadata: ResearchMetadata
