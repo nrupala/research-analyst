@@ -1,7 +1,41 @@
 "use strict";
 var dom={form:document.getElementById("research-form"),ticker:document.getElementById("ticker"),reportType:document.getElementById("report-type"),timeframe:document.getElementById("timeframe"),btnSubmit:document.getElementById("btn-submit"),btnText:document.getElementById("btn-text"),btnSpinner:document.getElementById("btn-spinner"),status:document.getElementById("status"),statusText:document.getElementById("status-text"),progressBar:document.getElementById("progress-bar"),errorPanel:document.getElementById("error-panel"),errorMessage:document.getElementById("error-message"),btnRetry:document.getElementById("btn-retry"),results:document.getElementById("results"),metaBar:document.getElementById("meta-bar"),reportTabs:document.getElementById("report-tabs"),reportContent:document.getElementById("report-content"),btnAbout:document.getElementById("btn-about"),aboutModal:document.getElementById("about-modal"),btnCloseAbout:document.getElementById("btn-close-about"),modeSingle:document.getElementById("mode-single"),modeCompare:document.getElementById("mode-compare"),compareForm:document.getElementById("compare-form"),compareTickers:document.getElementById("compare-tickers"),compareTimeframe:document.getElementById("compare-timeframe"),compareError:document.getElementById("compare-error"),btnCompare:document.getElementById("btn-compare"),btnCompareText:document.getElementById("btn-compare-text"),btnCompareSpinner:document.getElementById("btn-compare-spinner"),btnGetApp:document.getElementById("btn-getapp"),getappModal:document.getElementById("getapp-modal"),btnCloseGetapp:document.getElementById("btn-close-getapp"),resolveCandidates:document.getElementById("resolve-candidates")};
 var currentReports=[],activeTabIndex=0,isLoading=false,currentMode="single";
-document.addEventListener("DOMContentLoaded",function(){if(typeof mermaid!=="undefined"){mermaid.initialize({startOnLoad:false,theme:"neutral",securityLevel:"strict",flowchart:{useMaxWidth:true,htmlLabels:true},sequence:{useMaxWidth:true},gantt:{useMaxWidth:true}})}});
+// ---- v0.2.2: first-use disclaimer acknowledgment gate ----
+function initDisclaimerGate() {
+  const gate = document.getElementById('ra-disclaimer-gate');
+  if (!gate) return; // shim-safe
+  gate.hidden = true; // fail-safe default: stay hidden unless we explicitly decide to show
+  
+  try {
+    fetch('/api/disclaimer').then(async (res) => {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const {version, full} = await res.json();
+      
+      if (window.localStorage.getItem('ra_disclaimer_ack') === version) {
+        return; // already acknowledged
+      }
+      
+      const body = document.getElementById('ra-gate-body');
+      if (body) body.textContent = full;
+      
+      gate.hidden = false;
+      document.getElementById('ra-gate-accept')?.addEventListener('click', () => {
+        try {
+          window.localStorage.setItem('ra_disclaimer_ack', version);
+          gate.hidden = true;
+        } catch (e) {
+          console.warn('Failed to persist disclaimer ack:', e);
+        }
+      });
+    }).catch((e) => {
+      console.warn('Disclaimer gate failed:', e);
+    });
+  } catch (e) {
+    console.warn('Disclaimer gate initialization failed:', e);
+  }
+}
+
 dom.form.addEventListener("submit",function(e){e.preventDefault();if(!isLoading)runResearch()});
 dom.btnRetry.addEventListener("click",function(){if(!isLoading)runResearch()});
 dom.btnAbout.addEventListener("click",function(){dom.aboutModal.showModal()});
@@ -399,3 +433,10 @@ function mdToHTML(md){
 }
 
 function esc(s){var d=document.createElement("div");d.textContent=s;return d.innerHTML}
+
+// Bootstrap the first-use disclaimer gate one tick after load, so it runs after
+// synchronous page init (and, in tests, after the fetch mock is installed).
+// typeof guards keep it shim-safe; the gate itself fails open on any error.
+if (typeof requestAnimationFrame === 'function') requestAnimationFrame(initDisclaimerGate);
+else if (typeof setTimeout === 'function') setTimeout(initDisclaimerGate, 0);
+else initDisclaimerGate();
