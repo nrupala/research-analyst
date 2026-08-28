@@ -5,6 +5,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project use
 Releases are cut by tagging the repo (see `docs/VERSIONING.md`); GitHub auto-generates the per-release notes from merged PRs.
 
 ## [Unreleased]
+### Added
+- Comparative reports render each ticker's price in its own currency. `ResearchResponse.currency` (from the security profile) flows into `ComparativeReport.currencies`, and the comparative renderer's `_fmt_value` uses it for `price` cells in both the Markdown and HTML dimension tables. US/None stays byte-identical (`$`); non-USD tickers localise (e.g. INR renders `₹`). Brings comparative mode in line with the native-currency rendering already used in single-ticker reports. (PR #37)
 
 ## [0.3.0] - 2026-08-27
 ### Added
