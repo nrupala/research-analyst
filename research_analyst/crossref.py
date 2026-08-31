@@ -33,6 +33,18 @@ TWF_ROOT = "https://thinkwithfinance.com"
 # The live index (from cache_dir/crossref_index.json) ADDS paths; it never
 # removes the default topic skeleton.
 _CROSSREF_DEFAULT: dict[str, dict[str, str]] = {
+    "how_to_read": {
+        "title": "How to read this research report", "path": "",
+        "blurb": "What the 7-step structure means and how to use it.",
+    },
+    "business_model": {
+        "title": "Understanding a company's business model", "path": "",
+        "blurb": "Revenue streams, cost structure, and value chains.",
+    },
+    "fundamentals": {
+        "title": "Reading financial statements like an analyst", "path": "",
+        "blurb": "Growth, profitability, balance sheet, and earnings quality.",
+    },
     "valuation": {
         "title": "How to think about valuation", "path": "",
         "blurb": "Frameworks for intrinsic value and scenario analysis.",
@@ -56,6 +68,52 @@ _CROSSREF_DEFAULT: dict[str, dict[str, str]] = {
     "risk_management": {
         "title": "Risk and position sizing", "path": "",
         "blurb": "Probability, impact, and drawdown thinking.",
+    },
+    "competitive_moat": {
+        "title": "Competitive moats and durable advantage", "path": "",
+        "blurb": "How companies defend their economics.",
+    },
+    "capital_allocation": {
+        "title": "Capital allocation and shareholder returns", "path": "",
+        "blurb": "Capex, buybacks, dividends, and ROIC.",
+    },
+    "decision_framework": {
+        "title": "Building your own decision framework", "path": "",
+        "blurb": "Favors, disfavors, catalysts, and monitoring.",
+    },
+}
+
+# The report format is FIXED (7 steps per template). So is the article set:
+# one explainer topic per section, per report type. This mapping is the
+# contract with thinkwithfinance content — publish an article, add its path
+# to the index, and every report of that type links that section to it.
+_SECTION_TOPICS: dict[str, dict[int, list[str]]] = {
+    "comprehensive": {
+        1: ["how_to_read"],
+        2: ["fundamentals"],
+        3: ["competitive_moat"],
+        4: ["technical_analysis"],
+        5: ["macro"],
+        6: ["valuation", "risk_management"],
+        7: ["decision_framework"],
+    },
+    "long_term": {
+        1: ["business_model"],
+        2: ["fundamentals"],
+        3: ["competitive_moat"],
+        4: ["capital_allocation", "dividends"],
+        5: ["risk_management"],
+        6: ["valuation"],
+        7: ["decision_framework"],
+    },
+    "tactical": {
+        1: ["how_to_read"],
+        2: ["technical_analysis"],
+        3: ["macro"],
+        4: ["fundamentals"],
+        5: ["risk_management"],
+        6: ["valuation"],
+        7: ["decision_framework"],
     },
 }
 
@@ -93,6 +151,59 @@ def _topics(report_type: str, is_etf: bool) -> list[str]:
     if is_etf and "etf_101" not in keys:
         keys = ["etf_101", *keys]
     return keys
+
+
+def section_topics(report_type: str, step_number: int, is_etf: bool = False) -> list[str]:
+    """Fixed topic keys for a report section (the report format is fixed, so the
+    article set per section is fixed too). ETF subjects get etf_101 on step 1."""
+    defaults = _SECTION_TOPICS.get(report_type, _SECTION_TOPICS["comprehensive"])
+    topics = list(defaults.get(step_number, []))
+    if is_etf and step_number == 1 and "etf_101" not in topics:
+        topics.append("etf_101")
+    return topics
+
+
+def section_crossref_links(
+    report_type: str,
+    step_number: int,
+    is_etf: bool = False,
+    index: dict[str, dict[str, str]] | None = None,
+) -> list[dict[str, str]]:
+    """Article links for a single report section (empty until content ships)."""
+    index = index if index is not None else _CROSSREF_DEFAULT
+    links: list[dict[str, str]] = []
+    for key in section_topics(report_type, step_number, is_etf):
+        entry = index.get(key)
+        if not entry or not entry.get("path"):
+            continue
+        links.append({
+            "topic": key,
+            "title": entry.get("title", key.replace("_", " ").title()),
+            "url": f"{TWF_ROOT}/{entry['path'].lstrip('/')}",
+            "blurb": entry.get("blurb", ""),
+        })
+    return links
+
+
+def render_section_link(
+    report_type: str,
+    step_number: int,
+    is_etf: bool = False,
+    index: dict[str, dict[str, str]] | None = None,
+) -> str:
+    """Inline markdown hyperlink(s) for a report section. Empty string when no
+    article for the section exists yet — the link simply doesn't appear."""
+    links = section_crossref_links(report_type, step_number, is_etf, index)
+    if not links:
+        return ""
+    lines = [""]
+    for link in links:
+        lines.append(
+            f"*Learn more — [{link['title']}]({link['url']}) "
+            f"(thinkwithfinance)*"
+        )
+    lines.append("")
+    return "\n".join(lines)
 
 
 def crossref_for(
