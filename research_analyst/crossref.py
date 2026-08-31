@@ -34,51 +34,63 @@ TWF_ROOT = "https://thinkwithfinance.com"
 # removes the default topic skeleton.
 _CROSSREF_DEFAULT: dict[str, dict[str, str]] = {
     "how_to_read": {
-        "title": "How to read this research report", "path": "p/how-to-read-an-equity-research-report",
+        "title": "How to read this research report",
+        "path": "p/how-to-read-an-equity-research-report",
         "blurb": "What the 7-step structure means and how to use it.",
     },
     "business_model": {
-        "title": "Understanding a company's business model", "path": "p/understanding-a-company-business-model",
+        "title": "Understanding a company's business model",
+        "path": "p/understanding-a-company-business-model",
         "blurb": "Revenue streams, cost structure, and value chains.",
     },
     "fundamentals": {
-        "title": "Reading financial statements like an analyst", "path": "p/reading-financial-statements-like-an-analyst",
+        "title": "Reading financial statements like an analyst",
+        "path": "p/reading-financial-statements-like-an-analyst",
         "blurb": "Growth, profitability, balance sheet, and earnings quality.",
     },
     "valuation": {
-        "title": "How to think about valuation", "path": "p/how-to-think-about-valuation",
+        "title": "How to think about valuation",
+        "path": "p/how-to-think-about-valuation",
         "blurb": "Frameworks for intrinsic value and scenario analysis.",
     },
     "dividends": {
-        "title": "Dividend investing fundamentals", "path": "p/reading-the-dividend-payout-ratio",
+        "title": "Dividend investing fundamentals",
+        "path": "p/reading-the-dividend-payout-ratio",
         "blurb": "Yield, payout, and reinvestment basics.",
     },
     "etf_101": {
-        "title": "ETF mechanics", "path": "p/index-funds-and-etfs-explained",
+        "title": "ETF mechanics",
+        "path": "p/index-funds-and-etfs-explained",
         "blurb": "Expense ratios, tracking, and fund structure.",
     },
     "technical_analysis": {
-        "title": "Reading charts and indicators", "path": "p/reading-stock-charts-and-technical-indicators",
+        "title": "Reading charts and indicators",
+        "path": "p/reading-stock-charts-and-technical-indicators",
         "blurb": "Trend, momentum, and support/resistance.",
     },
     "macro": {
-        "title": "Macro regimes and your portfolio", "path": "p/macro-regimes-and-your-portfolio",
+        "title": "Macro regimes and your portfolio",
+        "path": "p/macro-regimes-and-your-portfolio",
         "blurb": "Rates, inflation, and growth cycles.",
     },
     "risk_management": {
-        "title": "Risk and position sizing", "path": "p/managing-risk-and-position-sizing",
+        "title": "Risk and position sizing",
+        "path": "p/managing-risk-and-position-sizing",
         "blurb": "Probability, impact, and drawdown thinking.",
     },
     "competitive_moat": {
-        "title": "Competitive moats and durable advantage", "path": "p/competitive-moats-and-durable-advantage",
+        "title": "Competitive moats and durable advantage",
+        "path": "p/competitive-moats-and-durable-advantage",
         "blurb": "How companies defend their economics.",
     },
     "capital_allocation": {
-        "title": "Capital allocation and shareholder returns", "path": "p/capital-allocation-and-shareholder-returns",
+        "title": "Capital allocation and shareholder returns",
+        "path": "p/capital-allocation-and-shareholder-returns",
         "blurb": "Capex, buybacks, dividends, and ROIC.",
     },
     "decision_framework": {
-        "title": "Building your own decision framework", "path": "p/building-an-investment-decision-framework",
+        "title": "Building your own decision framework",
+        "path": "p/building-an-investment-decision-framework",
         "blurb": "Favors, disfavors, catalysts, and monitoring.",
     },
 }
