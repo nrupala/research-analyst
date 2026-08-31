@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import logging
 import sys
 from pathlib import Path
@@ -74,6 +73,16 @@ def main() -> None:
     # --- health ---
     subparsers.add_parser("health", help="Check system health.")
 
+    # --- schema-export ---
+    schema_parser = subparsers.add_parser(
+        "schema-export",
+        help="Emit typed-export artifacts (JSON Schema + TypeScript .d.ts) to an output dir.",
+    )
+    schema_parser.add_argument(
+        "--out", "-o", default="exports",
+        help="Output directory (default: ./exports).",
+    )
+
     args = parser.parse_args()
 
     # Configure logging
@@ -96,6 +105,8 @@ def main() -> None:
         asyncio.run(_cmd_resolve(args))
     elif args.command == "health":
         _cmd_health()
+    elif args.command == "schema-export":
+        _cmd_schema_export(args)
     else:
         parser.print_help()
         sys.exit(1)
@@ -180,7 +191,7 @@ async def _cmd_research(args: argparse.Namespace) -> None:
 
     # Summary
     meta = response.metadata
-    print(f"\n--- Research Complete ---")
+    print("\n--- Research Complete ---")
     print(f"Ticker: {response.ticker} ({response.company_name})")
     print(f"Reports generated: {len(response.reports)}")
     print(f"Processing time: {meta.processing_time_seconds:.1f}s")
@@ -218,11 +229,33 @@ async def _cmd_resolve(args: argparse.Namespace) -> None:
 def _cmd_health() -> None:
     """Print health status."""
     print("Research Analyst v0.1.0")
-    print(f"Config: OK")
+    print("Config: OK")
     print(f"Output dir: {settings.output_dir}")
     print(f"Cache dir: {settings.market.cache_dir}")
     print(f"Server port: {settings.server.port}")
     print("Status: HEALTHY")
+
+
+def _cmd_schema_export(args: argparse.Namespace) -> None:
+    """Emit typed-export artifacts (JSON Schema + TypeScript .d.ts)."""
+    import json as _json
+
+    from .api_models import SCHEMA_VERSION
+    from .exporters import json_schemas_all, ts_definitions
+
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    for name, schema in json_schemas_all().items():
+        path = out_dir / f"{name}.schema.json"
+        path.write_text(_json.dumps(schema, indent=2) + "\n")
+        print(f"wrote {path}")
+
+    ts_path = out_dir / "types.d.ts"
+    ts_path.write_text(ts_definitions())
+    print(f"wrote {ts_path}")
+
+    print(f"\nSchema artifacts exported (schema_version={SCHEMA_VERSION}) to {out_dir.resolve()}")
 
 
 if __name__ == "__main__":
