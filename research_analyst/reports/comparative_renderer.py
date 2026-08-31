@@ -66,14 +66,14 @@ def _fmt_value(value: float | None, unit: str, currency: str | None = None) -> s
     return f"{value}"
 
 
-def _metric_label(metric: "MetricComparison") -> str:
+def _metric_label(metric: MetricComparison) -> str:
     """Metric label annotated with orientation when it is ranked."""
     if metric.rankable and not metric.higher_is_better:
         return f"{metric.label} (lower is better)"
     return metric.label
 
 
-def _rankable_metrics(report: "ComparativeReport") -> list["MetricComparison"]:
+def _rankable_metrics(report: ComparativeReport) -> list[MetricComparison]:
     return [m for dim in report.dimensions for m in dim.metrics if m.rankable and m.available]
 
 
@@ -81,7 +81,7 @@ def _rankable_metrics(report: "ComparativeReport") -> list["MetricComparison"]:
 # Markdown
 # ---------------------------------------------------------------------------
 
-def render_markdown(report: "ComparativeReport") -> str:
+def render_markdown(report: ComparativeReport) -> str:
     """Render the comparative report as Markdown."""
     tickers = report.tickers
     out: list[str] = []
@@ -211,6 +211,14 @@ table { border-collapse: collapse; width: 100%; margin: .5rem 0 1rem; font-size:
 th, td { border: 1px solid #e5e7eb; padding: .45rem .6rem; text-align: left; }
 th { background: #f1f5f9; font-weight: 600; }
 tbody tr:nth-child(even) { background: #fafafa; }
+.table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 4px; }
+.table-scroll table { min-width: 100%; }
+@media (max-width: 640px) {
+  body { padding: 1rem; }
+  .table-scroll { margin-left: -1rem; margin-right: -1rem; padding-left: 1rem; padding-right: 1rem; width: auto; }
+  th, td { padding: .35rem .45rem; font-size: .8rem; }
+  h1 { font-size: 1.3rem; }
+}
 .win { color: #15803d; font-weight: 700; }
 .na { color: #9ca3af; }
 ul { margin: .3rem 0 1rem 1.2rem; padding: 0; }
@@ -229,12 +237,12 @@ def _esc(text: object) -> str:
 
 
 def _html_table(header: list[str], rows: list[list[str]]) -> str:
-    parts = ["<table>", "<thead><tr>"]
+    parts = ['<div class="table-scroll"><table>', "<thead><tr>"]
     parts += [f"<th>{_esc(h)}</th>" for h in header]
     parts.append("</tr></thead><tbody>")
     for row in rows:
         parts.append("<tr>" + "".join(f"<td>{c}</td>" for c in row) + "</tr>")
-    parts.append("</tbody></table>")
+    parts.append("</tbody></table></div>")
     return "".join(parts)
 
 
@@ -247,7 +255,7 @@ def _cell_with_marker(text: str, is_winner: bool) -> str:
     return safe
 
 
-def render_html(report: "ComparativeReport") -> str:
+def render_html(report: ComparativeReport) -> str:
     """Render the comparative report as a self-contained HTML document."""
     tickers = report.tickers
     heading = " vs ".join(tickers) if tickers else "(no valid tickers)"
