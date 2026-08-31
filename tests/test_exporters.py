@@ -340,6 +340,7 @@ def test_wire_payload_unchanged_by_typing():
                 "risk_matrix": None,
                 "capital_allocation": None,
                 "dividend": None,
+                "security_type": None,
                 "disclaimer": "",
             }
         ],

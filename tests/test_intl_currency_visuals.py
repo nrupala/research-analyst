@@ -104,7 +104,7 @@ class TestVisualsCurrencyUSD:
     def test_scenario_valuation(self):
         t = _txt(VisualEngine.plotly_scenario_valuation(_valuation()))
         assert "Price ($)" in t
-        assert "$90 - $110" in t
+        assert "$90 \u2013 $110" in t  # em-dash range (Phase 3 presentation polish)
         assert "Current price: $100.00" in t
         assert RUPEE not in t
 
@@ -150,7 +150,7 @@ class TestVisualsCurrencyINR:
     def test_scenario_valuation(self):
         t = _txt(VisualEngine.plotly_scenario_valuation(_valuation(), currency="INR"))
         assert f"Price ({RUPEE})" in t
-        assert f"{RUPEE}90 - {RUPEE}110" in t
+        assert f"{RUPEE}90 \u2013 {RUPEE}110" in t  # em-dash range (Phase 3 polish)
         assert f"Current price: {RUPEE}100.00" in t
 
     def test_ascii_scenario(self):
