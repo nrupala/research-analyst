@@ -23,27 +23,103 @@ import logging
 import time
 import uuid
 from collections import OrderedDict
-from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from starlette.middleware.gzip import GZipMiddleware
 
 from . import __version__
+from .api_models import (
+    CompareAPIRequest,
+    CompareAPIResponse,
+    ResearchAPIRequest,
+    ResearchAPIResponse,
+    ResolveAPIRequest,
+    ResolveAPIResponse,
+)
+from .comparative import MAX_TICKERS, MIN_TICKERS, ComparativeOrchestrator
 from .config import settings
+from .disclaimer import DISCLAIMER_FULL, DISCLAIMER_SHORT, DISCLAIMER_VERSION
 from .enums import ReportType
+from .exporters import ts_definitions, xml_from_dict
 from .models import ResearchRequest
 from .orchestrator import ResearchOrchestrator
 from .providers.market_data import MarketDataProvider
-from .comparative import MAX_TICKERS, MIN_TICKERS, ComparativeOrchestrator
 from .reports.comparative_renderer import render_html, render_markdown
-from .disclaimer import DISCLAIMER_VERSION, DISCLAIMER_FULL, DISCLAIMER_SHORT
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Content negotiation (typed-export layer)
+# ---------------------------------------------------------------------------
+
+SUPPORTED_FORMATS = {"json", "xml", "markdown", "html", "ts"}
+
+_ACCEPT_MAP: dict[str, str] = {
+    "application/json": "json",
+    "application/xml": "xml",
+    "text/xml": "xml",
+    "text/markdown": "markdown",
+    "text/html": "html",
+    "text/typescript": "ts",
+    "application/typescript": "ts",
+    "*/*": "json",
+}
+
+
+def negotiate_format(fmt: str | None, accept_header: str) -> str:
+    """Resolve the output format from ?format= or the Accept header."""
+    if fmt:
+        f = fmt.lower()
+        if f not in SUPPORTED_FORMATS:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Unsupported format {fmt!r}. "
+                    f"Allowed: {', '.join(sorted(SUPPORTED_FORMATS))}."
+                ),
+            )
+        return f
+    if accept_header:
+        for part in accept_header.split(","):
+            media = part.split(";")[0].strip().lower()
+            if media in _ACCEPT_MAP:
+                return _ACCEPT_MAP[media]
+    return "json"
+
+
+def _render_payload(
+    data: dict[str, Any],
+    fmt: str,
+    root: str,
+    *,
+    markdown: str | None = None,
+    html: str | None = None,
+) -> Response:
+    """Render a typed payload dict in the negotiated format."""
+    if fmt == "json":
+        return JSONResponse(data)
+    if fmt == "xml":
+        return Response(
+            content=xml_from_dict(data, root), media_type="application/xml"
+        )
+    if fmt == "markdown":
+        if markdown is None:
+            raise HTTPException(
+                status_code=400, detail="markdown is not available for this endpoint."
+            )
+        return Response(content=markdown, media_type="text/markdown")
+    if fmt == "html":
+        if html is None:
+            raise HTTPException(status_code=400, detail="html is not available for this endpoint.")
+        return Response(content=html, media_type="text/html")
+    if fmt == "ts":
+        return Response(content=ts_definitions(), media_type="text/typescript")
+    raise HTTPException(status_code=400, detail=f"Unsupported format {fmt!r}.")
 
 
 # ---------------------------------------------------------------------------
@@ -78,52 +154,14 @@ class _IPRateLimiter:
 
 
 # ---------------------------------------------------------------------------
-# Response models
+# Response models (defined in api_models.py — the typed-export source of truth)
 # ---------------------------------------------------------------------------
 
-class ResearchAPIRequest(BaseModel):
-    # max_length 20 to admit suffixed international tickers (e.g. RELIANCE.NS);
-    # mirrors models.ResearchRequest.ticker (v0.3.0 international).
-    ticker: str = Field(..., min_length=1, max_length=20)
-    report_type: str | None = Field(default=None)
-    compare_tickers: list[str] = Field(default_factory=list, max_length=5)
-    timeframe: str = Field(default="1Y")
-    custom_assumptions: dict[str, Any] = Field(default_factory=dict)
-
-
-class ResearchAPIResponse(BaseModel):
-    request_id: str
-    ticker: str
-    company_name: str
-    security_type: str
-    reports: list[dict[str, Any]]
-    metadata: dict[str, Any]
-    reports_markdown: list[str]
-
-
-class CompareAPIRequest(BaseModel):
-    tickers: list[str] = Field(..., min_length=1, max_length=10)
-    timeframe: str = Field(default="1Y")
-
-
-class CompareAPIResponse(BaseModel):
-    request_id: str
-    tickers: list[str]
-    report: dict[str, Any]
-    report_markdown: str
-    report_html: str
-
-
-class ResolveAPIRequest(BaseModel):
-    query: str = Field(..., min_length=1, max_length=64)
-
-
-class ResolveAPIResponse(BaseModel):
-    query: str
-    status: str
-    resolved: dict[str, Any] | None = None
-    candidates: list[dict[str, Any]] = Field(default_factory=list)
-    note: str = ""
+__all__ = [
+    "ResearchAPIRequest", "ResearchAPIResponse",
+    "CompareAPIRequest", "CompareAPIResponse",
+    "ResolveAPIRequest", "ResolveAPIResponse",
+]
 
 
 # Lazily-built singleton so the endpoint stays cheap to import and tests can
@@ -143,7 +181,10 @@ def get_comparative_orchestrator() -> ComparativeOrchestrator:
 # App factory
 # ---------------------------------------------------------------------------
 
-def create_app() -> FastAPI:
+def create_app(
+    orchestrator: ResearchOrchestrator | None = None,
+    rate_limiter: _IPRateLimiter | None = None,
+) -> FastAPI:
     app = FastAPI(
         title="Research Analyst",
         description="Institutional-grade equity and ETF research agent.",
@@ -179,11 +220,11 @@ def create_app() -> FastAPI:
         )
         return response
 
-    # --- Rate limiter ---
-    rate_limiter = _IPRateLimiter(rate=0.5, burst=3)
+    # --- Rate limiter (injectable so tests can widen the window) ---
+    rate_limiter = rate_limiter or _IPRateLimiter(rate=0.5, burst=3)
 
-    # --- Orchestrator ---
-    orchestrator = ResearchOrchestrator()
+    # --- Orchestrator (injectable so tests can stub the pipeline) ---
+    orchestrator = orchestrator or ResearchOrchestrator()
 
     # --- Market data (symbol/name resolution) ---
     market_provider = MarketDataProvider()
@@ -209,23 +250,35 @@ def create_app() -> FastAPI:
         }
 
     @app.post("/api/resolve", response_model=ResolveAPIResponse)
-    async def resolve_subject_endpoint(body: ResolveAPIRequest, request: Request) -> ResolveAPIResponse:
+    async def resolve_subject_endpoint(
+        body: ResolveAPIRequest,
+        request: Request,
+        format: str | None = Query(default=None),
+    ) -> Response:
         client_ip = request.client.host if request.client else "unknown"
         if not rate_limiter.allow(client_ip):
             raise HTTPException(status_code=429, detail="Rate limit exceeded.")
         from .resolver import resolve_subject
         matches = await market_provider.search_symbols(body.query)
         res = resolve_subject(body.query, matches)
-        return ResolveAPIResponse(
+        api_response = ResolveAPIResponse(
             query=res.query,
             status=res.status,
-            resolved=res.resolved.model_dump() if res.resolved else None,
-            candidates=[c.model_dump() for c in res.candidates],
+            resolved=res.resolved,
+            candidates=res.candidates,
             note=res.note,
         )
+        fmt = negotiate_format(format, request.headers.get("accept", ""))
+        if fmt in ("markdown", "html"):
+            raise HTTPException(status_code=400, detail=f"{fmt} is not available for /api/resolve.")
+        return _render_payload(api_response.model_dump(mode="json"), fmt, "resolution")
 
     @app.post("/api/research", response_model=ResearchAPIResponse)
-    async def run_research(body: ResearchAPIRequest, request: Request) -> ResearchAPIResponse:
+    async def run_research(
+        body: ResearchAPIRequest,
+        request: Request,
+        format: str | None = Query(default=None),
+    ) -> Response:
         client_ip = request.client.host if request.client else "unknown"
         if not rate_limiter.allow(client_ip):
             raise HTTPException(status_code=429, detail="Rate limit exceeded.")
@@ -237,8 +290,31 @@ def create_app() -> FastAPI:
             logger.info("Cache hit for %s", body.ticker)
             cached = report_cache[ck]
             report_cache.move_to_end(ck)
-            return cached
+            api_response = cached
+        else:
+            api_response = await _run_research_uncached(body, request_id)
+            if len(report_cache) >= cache_max:
+                report_cache.popitem(last=False)
+            report_cache[ck] = api_response
 
+        fmt = negotiate_format(format, request.headers.get("accept", ""))
+        if fmt == "html":
+            raise HTTPException(
+                status_code=400,
+                detail="html is not available for /api/research (use markdown).",
+            )
+        markdown = (
+            "\n\n---\n\n".join(api_response.reports_markdown)
+            if fmt == "markdown"
+            else None
+        )
+        return _render_payload(
+            api_response.model_dump(mode="json"), fmt, "research", markdown=markdown
+        )
+
+    async def _run_research_uncached(
+        body: ResearchAPIRequest, request_id: str
+    ) -> ResearchAPIResponse:
         report_types = ReportType.from_user_input(body.report_type)
 
         from .enums import Timeframe
@@ -269,34 +345,25 @@ def create_app() -> FastAPI:
                 detail=f"Research pipeline failed: {type(e).__name__}",
             ) from e
 
-        reports_data = []
-        reports_markdown = []
-        for report in result.reports:
-            reports_data.append(report.model_dump(mode="json"))
-            reports_markdown.append(report.to_markdown())
+        reports_markdown = [report.to_markdown() for report in result.reports]
 
-        api_response = ResearchAPIResponse(
+        return ResearchAPIResponse(
             request_id=request_id,
             ticker=result.ticker,
             company_name=result.company_name,
             security_type=result.security_type.value,
-            reports=reports_data,
-            metadata=result.metadata.model_dump(mode="json"),
+            reports=result.reports,
+            metadata=result.metadata,
             reports_markdown=reports_markdown,
         )
-
-        if len(report_cache) >= cache_max:
-            report_cache.popitem(last=False)
-        report_cache[ck] = api_response
-
-        return api_response
 
     @app.post("/api/compare", response_model=CompareAPIResponse)
     async def run_compare(
         body: CompareAPIRequest,
         request: Request,
+        format: str | None = Query(default=None),
         comparative: ComparativeOrchestrator = Depends(get_comparative_orchestrator),
-    ) -> CompareAPIResponse:
+    ) -> Response:
         client_ip = request.client.host if request.client else "unknown"
         if not rate_limiter.allow(client_ip):
             raise HTTPException(status_code=429, detail="Rate limit exceeded.")
@@ -325,12 +392,21 @@ def create_app() -> FastAPI:
                 detail=f"Comparative pipeline failed: {type(e).__name__}",
             ) from e
 
-        return CompareAPIResponse(
+        api_response = CompareAPIResponse(
             request_id=request_id,
             tickers=report.tickers,
-            report=report.model_dump(mode="json"),
+            report=report,
             report_markdown=render_markdown(report),
             report_html=render_html(report),
+        )
+
+        fmt = negotiate_format(format, request.headers.get("accept", ""))
+        return _render_payload(
+            api_response.model_dump(mode="json"),
+            fmt,
+            "comparison",
+            markdown=api_response.report_markdown if fmt == "markdown" else None,
+            html=api_response.report_html if fmt == "html" else None,
         )
 
     # ================================================================
