@@ -640,6 +640,7 @@ class ReportOutput(BaseModel):
     risk_matrix: RiskMatrix | None = None
     capital_allocation: CapitalAllocation | None = None
     dividend: DividendAnalysis | None = None
+    security_type: SecurityType | None = None  # set by the renderer (ETF topic mapping)
     disclaimer: str = ""  # Set by __init__ to DISCLAIMER_SHORT from disclaimer.py
 
     def to_markdown(self) -> str:
@@ -695,6 +696,18 @@ class ReportOutput(BaseModel):
                 parts.append(f"- **Consensus View:** {vp.consensus_view}")
                 parts.append(f"- **Variant View:** {vp.variant_view}")
                 parts.append(f"- **Why It Matters:** {vp.why_it_matters}")
+
+        # thinkwithfinance cross-reference (Phase 4) — empty until content ships
+        from .crossref import render_crossref_block
+
+        parts.append(
+            render_crossref_block(
+                self.ticker,
+                self.ticker,
+                report_type=self.report_type.value,
+                is_etf=self.security_type is not None and self.security_type == SecurityType.ETF,
+            )
+        )
 
         parts.append("---\n")
         parts.append(f"**Disclaimer:**\n{self.disclaimer or DISCLAIMER_SHORT}")

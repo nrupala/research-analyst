@@ -417,7 +417,7 @@ function mdToHTML(md){
     h=h.replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>");
     h=h.replace(/\*(.+?)\*/g,"<em>$1</em>");
     h=h.replace(/`([^`]+)`/g,"<code>$1</code>");
-    h=h.replace(/^(\|.+\|)\n(\|[-|: ]+\|)\n((?:\|.+\|\n?)*)/gm,function(_,hdr,sep,body){var ths=hdr.split("|").filter(function(c){return c.trim()}).map(function(c){return"<th>"+c.trim()+"</th>"}).join("");var rows=body.trim().split("\n").map(function(row){var tds=row.split("|").filter(function(c){return c.trim()}).map(function(c){return"<td>"+c.trim()+"</td>"}).join("");return"<tr>"+tds+"</tr>"}).join("");return"<table><thead><tr>"+ths+"</tr></thead><tbody>"+rows+"</tbody></table>"});
+    h=h.replace(/^(\|.+\|)\n(\|[-|: ]+\|)\n((?:\|.+\|\n?)*)/gm,function(_,hdr,sep,body){var ths=hdr.split("|").filter(function(c){return c.trim()}).map(function(c){return"<th>"+c.trim()+"</th>"}).join("");var rows=body.trim().split("\n").map(function(row){var tds=row.split("|").filter(function(c){return c.trim()}).map(function(c){return"<td>"+c.trim()+"</td>"}).join("");return"<tr>"+tds+"</tr>"}).join("");return'<div class="table-scroll"><table><thead><tr>'+ths+'</tr></thead><tbody>'+rows+'</tbody></table></div>'});
     h=h.replace(/^- (.+)$/gm,"<li>$1</li>");
     h=h.replace(/(<li>[\s\S]*?<\/li>(?:\n|$))+/g,function(m){return"<ul>"+m+"</ul>"});
     h=h.replace(/\n\n+/g,"</p><p>");h="<p>"+h+"</p>";

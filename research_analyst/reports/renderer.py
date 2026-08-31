@@ -152,6 +152,7 @@ class ReportRenderer:
             risk_matrix=risk_matrix,
             capital_allocation=capital_allocation,
             dividend=dividend,
+            security_type=profile.security_type,
         )
 
     # ------------------------------------------------------------------

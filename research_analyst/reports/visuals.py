@@ -28,10 +28,52 @@ from ..models import (
     TechnicalIndicators,
     ValuationRange,
 )
-
 from .currency import currency_symbol
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Shared visual language (Phase 3 — presentation polish)
+# ---------------------------------------------------------------------------
+# One palette, one grid/font system, one margin convention. Every Plotly chart
+# built here derives from these constants so reports never diverge in look.
+
+PLOTLY_COLORS = {
+    "blue": "#2563eb",      # primary / revenue / base
+    "green": "#16a34a",     # gross margin / bull / dividends
+    "orange": "#ea580c",    # operating margin / medium risk
+    "violet": "#7c3aed",    # net margin / variants
+    "red": "#dc2626",       # bear / critical risk
+    "slate": "#6b7280",     # neutral / secondary
+}
+PLOTLY_FONT = {"family": "-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif", "size": 12, "color": "#1f2937"}
+PLOTLY_MARGIN = {"t": 56, "b": 56, "l": 68, "r": 40}
+PLOTLY_GRID_COLOR = "#e5e7eb"
+
+
+def _base_layout(title: str, *, height: int = 400, showlegend: bool = True) -> dict[str, Any]:
+    """Deterministic base layout every chart shares (then charts add specifics)."""
+    return {
+        "title": {"text": title, "font": {"size": 14, "color": "#111827"}},
+        "template": "plotly_white",
+        "height": height,
+        "font": dict(PLOTLY_FONT),
+        "margin": dict(PLOTLY_MARGIN),
+        "paper_bgcolor": "#ffffff",
+        "plot_bgcolor": "#ffffff",
+        "xaxis": {"gridcolor": PLOTLY_GRID_COLOR, "zerolinecolor": PLOTLY_GRID_COLOR},
+        "yaxis": {"gridcolor": PLOTLY_GRID_COLOR, "zerolinecolor": PLOTLY_GRID_COLOR},
+        "legend": (
+            {"orientation": "h", "yanchor": "bottom", "y": 1.03, "xanchor": "right", "x": 1}
+            if showlegend
+            else {"visible": False}
+        ),
+    }
+
+
+def _hover_template() -> dict[str, Any]:
+    """Consistent, clean hover: series name + bold value, no noisy trace names."""
+    return {"hoverlabel": {"bgcolor": "#ffffff", "bordercolor": "#e5e7eb", "font": {"size": 12}}}
 
 
 class VisualEngine:
@@ -78,7 +120,7 @@ class VisualEngine:
 
         traces.append({
             "x": periods, "y": revenues, "name": f"Revenue ({sym}B)",
-            "type": "bar", "marker": {"color": "#2563eb", "opacity": 0.8},
+            "type": "bar", "marker": {"color": PLOTLY_COLORS["blue"], "opacity": 0.8},
             "yaxis": "y"
         })
 
@@ -86,31 +128,30 @@ class VisualEngine:
             traces.append({
                 "x": periods, "y": gross_margins, "name": "Gross Margin %",
                 "type": "scatter", "mode": "lines+markers",
-                "line": {"color": "#16a34a", "width": 2}, "yaxis": "y2"
+                "line": {"color": PLOTLY_COLORS["green"], "width": 2}, "yaxis": "y2", "hovertemplate": "%{x}: %{y:.1f}%"
             })
 
         if any(v is not None for v in op_margins):
             traces.append({
                 "x": periods, "y": op_margins, "name": "Operating Margin %",
                 "type": "scatter", "mode": "lines+markers",
-                "line": {"color": "#ea580c", "width": 2}, "yaxis": "y2"
+                "line": {"color": PLOTLY_COLORS["orange"], "width": 2}, "yaxis": "y2", "hovertemplate": "%{x}: %{y:.1f}%"
             })
 
         if any(v is not None for v in net_margins):
             traces.append({
                 "x": periods, "y": net_margins, "name": "Net Margin %",
                 "type": "scatter", "mode": "lines+markers",
-                "line": {"color": "#7c3aed", "width": 2, "dash": "dot"}, "yaxis": "y2"
+                "line": {"color": PLOTLY_COLORS["violet"], "width": 2, "dash": "dot"}, "yaxis": "y2", "hovertemplate": "%{x}: %{y:.1f}%"
             })
 
-        layout = {
-            "title": f"{ticker} — Revenue & Margin Trends",
-            "template": "plotly_white", "height": 420,
-            "legend": {"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
-            "yaxis": {"title": f"Revenue ({sym}B)", "side": "left"},
-            "yaxis2": {"title": "Margin (%)", "side": "right", "overlaying": "y"},
-            "margin": {"t": 50, "b": 50, "l": 60, "r": 60},
+        layout = _base_layout(f"{ticker} — Revenue & Margin Trends", height=420)
+        layout["yaxis"] = {"title": f"Revenue ({sym}B)", "side": "left", "gridcolor": PLOTLY_GRID_COLOR}
+        layout["yaxis2"] = {
+            "title": "Margin (%)", "side": "right", "overlaying": "y",
+            "gridcolor": PLOTLY_GRID_COLOR, "showgrid": False,
         }
+        layout.update(_hover_template())
 
         return ReportVisual(
             visual_type="plotly_json",
@@ -139,7 +180,7 @@ class VisualEngine:
         if not labels:
             return None
 
-        colors = {"Bull Case": "#16a34a", "Base Case": "#2563eb", "Bear Case": "#dc2626"}
+        colors = {"Bull Case": PLOTLY_COLORS["green"], "Base Case": PLOTLY_COLORS["blue"], "Bear Case": PLOTLY_COLORS["red"]}
 
         traces: list[dict[str, Any]] = []
         for i in range(len(labels)):
@@ -147,17 +188,16 @@ class VisualEngine:
                 "y": [labels[i]], "x": [highs[i] - lows[i]], "base": [lows[i]],
                 "type": "bar", "orientation": "h",
                 "name": labels[i],
-                "marker": {"color": colors.get(labels[i], "#6b7280"), "opacity": 0.8},
-                "text": [f"{sym}{lows[i]:.0f} - {sym}{highs[i]:.0f}"],
+                "marker": {"color": colors.get(labels[i], PLOTLY_COLORS["slate"]), "opacity": 0.85},
+                "text": [f"{sym}{lows[i]:,.0f} – {sym}{highs[i]:,.0f}"],
                 "textposition": "inside", "showlegend": False,
+                "hovertemplate": f"{sym}%{{x[0]:,.0f}} – {sym}%{{base[0]:,.0f}}<extra></extra>",
             })
 
-        layout: dict[str, Any] = {
-            "title": "Scenario-Based Valuation Range",
-            "template": "plotly_white", "height": 280,
-            "xaxis": {"title": f"Price ({sym})"},
-            "margin": {"t": 50, "b": 50, "l": 120, "r": 30},
-        }
+        layout = _base_layout("Scenario-Based Valuation Range", height=280, showlegend=False)
+        layout["xaxis"] = {"title": f"Price ({sym})", "gridcolor": PLOTLY_GRID_COLOR}
+        layout["barmode"] = "overlay"
+        layout.update(_hover_template())
 
         if valuation.current_price > 0:
             layout["shapes"] = [{
@@ -199,16 +239,20 @@ class VisualEngine:
 
         traces = []
         for name, vals in metrics.items():
-            traces.append({"x": tickers, "y": vals, "name": name, "type": "bar"})
+            traces.append({
+                "x": tickers, "y": vals, "name": name, "type": "bar",
+                "marker": {"color": {
+                    "Gross Margin %": PLOTLY_COLORS["green"],
+                    "Op Margin %": PLOTLY_COLORS["blue"],
+                    "ROE %": PLOTLY_COLORS["violet"],
+                }.get(name, PLOTLY_COLORS["slate"]), "opacity": 0.85},
+                "hovertemplate": "%{x}: %{y:.1f}%<extra></extra>",
+            })
 
-        layout = {
-            "title": f"Peer Comparison — Key Metrics",
-            "barmode": "group",
-            "template": "plotly_white",
-            "legend": {"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
-            "height": 400,
-            "margin": {"t": 50, "b": 50, "l": 60, "r": 30},
-        }
+        layout = _base_layout("Peer Comparison — Key Metrics", height=400)
+        layout["barmode"] = "group"
+        layout["yaxis"] = {"title": "%", "gridcolor": PLOTLY_GRID_COLOR}
+        layout.update(_hover_template())
 
         return ReportVisual(
             visual_type="plotly_json",
@@ -241,27 +285,31 @@ class VisualEngine:
             labels.append(r.title[:30])
             sizes.append(20 + x * y * 5)
             severity = x * y
-            colors.append("#dc2626" if severity >= 8 else "#ea580c" if severity >= 4 else "#16a34a")
+            colors.append(
+                PLOTLY_COLORS["red"] if severity >= 8
+                else PLOTLY_COLORS["orange"] if severity >= 4
+                else PLOTLY_COLORS["green"]
+            )
 
         traces = [{
             "x": x_vals, "y": y_vals, "mode": "markers+text", "type": "scatter",
-            "marker": {"size": sizes, "color": colors, "opacity": 0.7, "line": {"width": 1, "color": "white"}},
+            "marker": {"size": sizes, "color": colors, "opacity": 0.75, "line": {"width": 1, "color": "white"}},
             "text": labels, "textposition": "top center", "textfont": {"size": 9},
+            "hovertemplate": "%{text}<br>Prob %{x}<br>Impact %{y}<extra></extra>",
         }]
 
-        layout = {
-            "title": "Risk Matrix — Probability vs Impact",
-            "template": "plotly_white", "height": 380, "showlegend": False,
-            "xaxis": {"title": "Probability", "tickvals": [1, 2, 3], "ticktext": ["Low", "Medium", "High"], "range": [0.5, 3.5]},
-            "yaxis": {"title": "Impact", "tickvals": [1, 2, 3, 4], "ticktext": ["Low", "Medium", "High", "Critical"], "range": [0.5, 4.5]},
-            "shapes": [
-                {"type": "rect", "x0": 0.5, "y0": 0.5, "x1": 1.5, "y1": 2.5, "fillcolor": "#dcfce7", "opacity": 0.3, "layer": "below", "line": {"width": 0}},
-                {"type": "rect", "x0": 1.5, "y0": 0.5, "x1": 2.5, "y1": 2.5, "fillcolor": "#fef9c3", "opacity": 0.3, "layer": "below", "line": {"width": 0}},
-                {"type": "rect", "x0": 2.5, "y0": 0.5, "x1": 3.5, "y1": 4.5, "fillcolor": "#fecaca", "opacity": 0.3, "layer": "below", "line": {"width": 0}},
-                {"type": "rect", "x0": 0.5, "y0": 2.5, "x1": 2.5, "y1": 4.5, "fillcolor": "#fed7aa", "opacity": 0.3, "layer": "below", "line": {"width": 0}},
-            ],
-            "margin": {"t": 50, "b": 50, "l": 60, "r": 30},
+        layout = _base_layout("Risk Matrix — Probability vs Impact", height=380, showlegend=False)
+        layout["xaxis"] = {
+            "title": "Probability", "tickvals": [1, 2, 3],
+            "ticktext": ["Low", "Medium", "High"], "range": [0.5, 3.5],
+            "gridcolor": PLOTLY_GRID_COLOR,
         }
+        layout["yaxis"] = {
+            "title": "Impact", "tickvals": [1, 2, 3, 4],
+            "ticktext": ["Low", "Medium", "High", "Critical"], "range": [0.5, 4.5],
+            "gridcolor": PLOTLY_GRID_COLOR,
+        }
+        layout.update(_hover_template())
 
         return ReportVisual(
             visual_type="plotly_json",
@@ -319,11 +367,11 @@ class VisualEngine:
             c = c.replace("&", "and").replace(";", ",").replace("#", "")
             return c[:maxlen]
 
-        lines = [f"graph TD"]
+        lines = ["graph TD"]
         lines.append(f"    THESIS[{ticker} Investment Thesis]")
-        lines.append(f"    THESIS --> F[Factors That Favor]")
-        lines.append(f"    THESIS --> D[Factors That Disfavor]")
-        lines.append(f"    THESIS --> CAT[Key Catalysts]")
+        lines.append("    THESIS --> F[Factors That Favor]")
+        lines.append("    THESIS --> D[Factors That Disfavor]")
+        lines.append("    THESIS --> CAT[Key Catalysts]")
 
         for i, f in enumerate(favors[:4]):
             lines.append(f"    F --> F{i}[{clean(f)}]")
@@ -332,10 +380,10 @@ class VisualEngine:
         for i, c in enumerate(catalysts[:3]):
             lines.append(f"    CAT --> C{i}[{clean(c)}]")
 
-        lines.append(f"    THESIS --> MON[Monitor]")
-        lines.append(f"    MON --> M1[Earnings trajectory]")
-        lines.append(f"    MON --> M2[Competitive dynamics]")
-        lines.append(f"    MON --> M3[Macro regime change]")
+        lines.append("    THESIS --> MON[Monitor]")
+        lines.append("    MON --> M1[Earnings trajectory]")
+        lines.append("    MON --> M2[Competitive dynamics]")
+        lines.append("    MON --> M3[Macro regime change]")
 
         return ReportVisual(
             visual_type="mermaid",
@@ -353,8 +401,8 @@ class VisualEngine:
         dividend_pct: float | None,
     ) -> ReportVisual:
         """Capital allocation flow as raw Mermaid syntax."""
-        lines = [f"graph TD", f"    FCF[{ticker} Free Cash Flow]"]
-        lines.append(f"    FCF --> ALLOC[Capital Allocation]")
+        lines = ["graph TD", f"    FCF[{ticker} Free Cash Flow]"]
+        lines.append("    FCF --> ALLOC[Capital Allocation]")
 
         if capex_pct is not None:
             lines.append(f"    ALLOC --> CAPEX[Capex: {capex_pct:.0%} of FCF]")
@@ -362,7 +410,7 @@ class VisualEngine:
             lines.append(f"    ALLOC --> BUY[Buybacks: {buyback_pct:.0%} of FCF]")
         if dividend_pct is not None:
             lines.append(f"    ALLOC --> DIV[Dividends: {dividend_pct:.0%} of FCF]")
-        lines.append(f"    ALLOC --> OTHER[Debt / M&A / Cash Build]")
+        lines.append("    ALLOC --> OTHER[Debt / M&A / Cash Build]")
 
         return ReportVisual(
             visual_type="mermaid",
@@ -437,7 +485,7 @@ class VisualEngine:
         sym = currency_symbol(profile.currency)
         rows = [
             "| Metric | Value |",
-            "|--------|-------|",
+            "|:-------|------:|",
             f"| **Company** | {profile.name} ({profile.ticker}) |",
             f"| **Sector / Industry** | {profile.sector} / {profile.industry} |",
         ]
@@ -477,7 +525,7 @@ class VisualEngine:
 
         sym = currency_symbol(currency)
         header = f"| Ticker | Name | Mkt Cap ({sym}B) | Gross Margin | Op Margin | P/E | EV/EBITDA | Rev Growth | ROE | D/E |"
-        sep = "|--------|------|-------------|-------------|-----------|-----|-----------|------------|-----|-----|"
+        sep = "|:------|:-----|-----------:|------------:|----------:|----:|----------:|-----------:|----:|----:|"
         rows = [header, sep]
 
         for p in peers[:8]:
@@ -500,7 +548,7 @@ class VisualEngine:
             return ReportVisual(visual_type="table", title="Risk Matrix", content="*No risks identified.*", ties_to="Risk assessment")
 
         header = "| Risk | Category | Probability | Impact | Timing | Nature |"
-        sep = "|------|----------|------------|--------|--------|--------|"
+        sep = "|:-----|:---------|-----------:|------:|:------|:------|"
         rows = [header, sep]
 
         for r in risks[:10]:
@@ -518,7 +566,7 @@ class VisualEngine:
         sorted_fin = sorted(financials, key=lambda f: f.period_end_date or __import__("datetime").date.min)[-5:]
         periods = [f.period for f in sorted_fin]
         header = "| Metric | " + " | ".join(periods) + " |"
-        sep = "|--------|" + "|".join(["-------"] * len(periods)) + "|"
+        sep = "|:-------|" + "|".join(["-------:"] * len(periods)) + "|"
 
         def _row(label, getter, fmt="dec"):
             vals = []
@@ -557,7 +605,7 @@ class VisualEngine:
     def table_macro_regime(implications: list) -> ReportVisual:
         """Macro regime summary table."""
         header = "| Factor | Current | Regime | Sector Impact | Magnitude |"
-        sep = "|--------|---------|--------|---------------|-----------|"
+        sep = "|:-------|:--------|:------|--------------:|:----------|"
         rows = [header, sep]
 
         for impl in implications:
@@ -579,7 +627,7 @@ class VisualEngine:
         """Dividend & yield summary table."""
         label = div.income_label or "Dividend"
         sym = currency_symbol(currency)
-        rows = ["| Metric | Value |", "|--------|-------|"]
+        rows = ["| Metric | Value |", "|:-------|------:|"]
 
         if not div.pays_dividend:
             rows.append(f"| **{label}** | None |")
@@ -655,15 +703,13 @@ class VisualEngine:
 
         traces = [{
             "x": years, "y": values, "type": "bar", "name": "DPS",
-            "marker": {"color": "#16a34a", "opacity": 0.85},
+            "marker": {"color": PLOTLY_COLORS["green"], "opacity": 0.85},
+            "hovertemplate": "%{x}: " + f"{sym}" + "%{y:.4f}<extra></extra>",
         }]
-        layout = {
-            "title": f"{div.ticker} — Dividend Per Share by Year",
-            "template": "plotly_white", "height": 320,
-            "yaxis": {"title": f"DPS ({sym})"},
-            "xaxis": {"title": "Year", "type": "category"},
-            "margin": {"t": 50, "b": 50, "l": 60, "r": 30},
-        }
+        layout = _base_layout(f"{div.ticker} — Dividend Per Share by Year", height=320)
+        layout["yaxis"] = {"title": f"DPS ({sym})", "gridcolor": PLOTLY_GRID_COLOR}
+        layout["xaxis"] = {"title": "Year", "type": "category", "gridcolor": PLOTLY_GRID_COLOR}
+        layout.update(_hover_template())
         return ReportVisual(
             visual_type="plotly_json",
             title=f"{div.ticker} — Dividend History",
