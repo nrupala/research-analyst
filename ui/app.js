@@ -216,6 +216,10 @@ function renderPlotlyCharts(){
 
 async function renderMermaidDiagrams(){
     if(typeof mermaid==="undefined")return;
+    // Mermaid 10 needs explicit initialization before a manual render() call
+    // (startOnLoad is false here — the app drives rendering). Calling initialize
+    // before every batch is idempotent and guards the deferred-script race.
+    try{ if(!window.__raMermaidInit){ mermaid.initialize({startOnLoad:false,theme:"default",securityLevel:"loose"}); window.__raMermaidInit=true } }catch(e){ return }
     var divs=document.querySelectorAll(".mermaid-data");
     for(var i=0;i<divs.length;i++){
         var el=divs[i];
@@ -232,10 +236,15 @@ async function renderMermaidDiagrams(){
             el.style.display="none"
         }catch(e){
             console.warn("Mermaid render failed:",e);
-            try{el.textContent=atob(encoded)}catch(x){}
-            el.style.display="block";el.style.whiteSpace="pre";el.style.fontFamily="monospace";
-            el.style.fontSize="0.8rem";el.style.color="#64748b";el.style.padding="1rem";
-            el.style.background="#f1f5f9";el.style.borderRadius="8px"
+            // Show the raw diagram text so a transient library failure never
+            // blanks the chart — a readable fallback beats an empty gap.
+            try{
+                var fallback=document.createElement("pre");
+                fallback.className="mermaid-fallback";
+                fallback.textContent=atob(encoded);
+                el.parentNode.insertBefore(fallback,el.nextSibling);
+                el.style.display="none"
+            }catch(x){}
         }
     }
 }
