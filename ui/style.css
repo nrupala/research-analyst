@@ -245,6 +245,32 @@ body {
     .contact-section { padding: 0 var(--sp-4); }
 }
 
+/* === v0.3.1: fluid presentation — charts/tables/layout follow device width === */
+/* Tables: fluid width, horizontal scroll only when the container is narrower. */
+.table-scroll {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: var(--r-sm);
+}
+.table-scroll table { min-width: 100%; margin: 0; }
+/* Fluid typography mirrors the header/list scale instead of fixed sizes. */
+.report h1, .report h2, .report h3, .report h4 {
+    overflow-wrap: break-word;
+}
+.report { width: 100%; min-width: 0; }
+@media (max-width: 640px) {
+    /* Same wrap/flow the top menu gets on phones: bleed the scroll region to
+       the viewport edges so wide tables pan like the nav wraps. */
+    .table-scroll { margin-left: calc(-1 * var(--sp-4)); margin-right: calc(-1 * var(--sp-4));
+        padding-left: var(--sp-4); padding-right: var(--sp-4); width: auto; }
+    .report { padding: var(--sp-3); }
+    .report h1 { font-size: var(--fs-xl); }
+    .report h2 { font-size: var(--fs-lg); }
+    .report h3 { font-size: var(--fs-base); }
+    .ra-chart { margin-bottom: var(--sp-3); }
+}
+
 @media print {
     .contact-section, #contact-modal { display: none; }
 }
