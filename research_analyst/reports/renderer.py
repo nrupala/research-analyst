@@ -43,6 +43,27 @@ from .currency import money
 logger = logging.getLogger(__name__)
 
 
+def _append_section_crossref(
+    section: ReportSection,
+    report_type: ReportType,
+    is_etf: bool,
+) -> ReportSection:
+    """Append the thinkwithfinance explainer link(s) to a section's content.
+
+    Each section maps to a fixed article topic (the report format is fixed, so
+    the article set is fixed). The link is invisible until the article exists —
+    this is the content-side contract with thinkwithfinance.
+    """
+    from ..crossref import render_section_link
+
+    link_md = render_section_link(report_type.value, section.step_number, is_etf=is_etf)
+    if not link_md:
+        return section
+    content = section.content.rstrip()
+    section.content = f"{content}\n{link_md}" if content else link_md
+    return section
+
+
 class ReportRenderer:
     """Assembles analysis into complete research reports.
 
@@ -127,8 +148,11 @@ class ReportRenderer:
         sections: list[ReportSection] = []
         visual_count = 0
 
+        is_etf = profile.security_type == SecurityType.ETF
+
         for step_tmpl in template.steps:
             section, n_visuals = self._render_step(step_tmpl, report_type, ctx)
+            section = _append_section_crossref(section, report_type, is_etf)
             sections.append(section)
             visual_count += n_visuals
 
