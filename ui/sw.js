@@ -2,7 +2,7 @@
 
 // Research Analyst - Service Worker v0.3.0
 
-var CACHE_VERSION = "ra-v0.3.0";
+var CACHE_VERSION = "ra-v0.3.1";
 var STATIC_CACHE = CACHE_VERSION + "-static";
 var DATA_CACHE = CACHE_VERSION + "-data";
 var CDN_CACHE = CACHE_VERSION + "-cdn";
