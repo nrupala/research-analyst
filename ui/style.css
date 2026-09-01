@@ -336,6 +336,7 @@ body {
   display: flex; align-items: center; justify-content: center;
   padding: var(--sp-6);
 }
+.disclaimer-gate[hidden] { display: none !important; }
 .disclaimer-gate__content {
   background: var(--c-surface); border-radius: var(--r-lg);
   padding: var(--sp-8); max-width: 640px; width: 100%;
