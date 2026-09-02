@@ -29,8 +29,11 @@ def test_d2_decision_framework_source():
     src = diagrams.d2_decision_framework(
         "AAPL", ["Revenue growth", "Strong margins"], ["Valuation rich"], ["Earnings"]
     )
-    assert "favors" in src and "disfavors" in src and "catalysts" in src
-    assert "Revenue growth" in src and "Valuation rich" in src
+    assert 'decision: "AAPL' in src
+    assert "favors: Revenue growth" in src and "disfavors: Valuation rich" in src
+    assert "catalyst: Earnings" in src
+    # plain edges only — no connector expressions (valid D2)
+    assert "-> decision" in src
 
 
 def test_render_fallback_when_d2_absent():
