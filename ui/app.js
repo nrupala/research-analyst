@@ -448,6 +448,7 @@ function mdToHTML(md){
     var h=md;
     var preserved=[];
     h=h.replace(/<div class="(?:plotly-chart-data|mermaid-data|chart-svg)"[\s\S]*?<\/div>/g,function(match){preserved.push(match);return"___PRESERVED_"+(preserved.length-1)+"___"});
+    h=h.replace(/<button type="button" class="chart-interactive"[\s\S]*?<\/button>/g,function(match){preserved.push(match);return"___PRESERVED_"+(preserved.length-1)+"___"});
     h=h.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     h=h.replace(/```(\w*)\n([\s\S]*?)```/g,function(_,lang,code){return'<pre><code class="language-'+(lang||"text")+'">'+code.trim()+"</code></pre>"});
     h=h.replace(/^#### (.+)$/gm,"<h4>$1</h4>");
