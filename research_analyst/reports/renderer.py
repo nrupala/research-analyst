@@ -566,7 +566,7 @@ class ReportRenderer:
                 capex_pct = getattr(cap_alloc, "capex_pct_of_fcf", None)
                 buyback_pct = getattr(cap_alloc, "buyback_pct_of_fcf", None)
                 div_pct = getattr(cap_alloc, "dividend_pct_of_fcf", None)
-                mermaid = VisualEngine.mermaid_capital_allocation(
+                mermaid = VisualEngine.d2_capital_allocation(
                     profile.ticker, capex_pct, buyback_pct, div_pct
                 )
                 visuals.append(mermaid)
@@ -1015,13 +1015,13 @@ class ReportRenderer:
         parts.append("")
 
         # Mermaid decision framework
-        mermaid = VisualEngine.mermaid_decision_framework(
+        mermaid = VisualEngine.d2_decision_framework(
             profile.ticker, favors[:4], disfavors[:4], catalysts[:3]
         )
         visuals.append(mermaid)
 
         # Mermaid business model (if Step 1 didn't include one for this template)
-        biz_model = VisualEngine.mermaid_business_model(profile)
+        biz_model = VisualEngine.d2_business_model(profile)
         visuals.append(biz_model)
 
         return ReportSection(
@@ -1415,7 +1415,7 @@ class ReportRenderer:
         parts.append("- Macro regime shift (rate decision, inflation print)")
         parts.append("- Volume confirmation of price moves")
 
-        mermaid = VisualEngine.mermaid_decision_framework(
+        mermaid = VisualEngine.d2_decision_framework(
             profile.ticker, favors[:4], disfavors[:4],
             ["Earnings report", "Technical breakout/breakdown", "Macro shift"]
         )
@@ -1457,7 +1457,7 @@ class ReportRenderer:
             parts.append(f"**Employees:** {profile.employees:,}")
         parts.append("")
 
-        biz_model = VisualEngine.mermaid_business_model(profile)
+        biz_model = VisualEngine.d2_business_model(profile)
         visuals.append(biz_model)
 
         return ReportSection(step_number=step.step_number, title=step.title,
@@ -1612,7 +1612,7 @@ class ReportRenderer:
         buyback_pct = getattr(cap, "buyback_pct_of_fcf", None)
         div_pct = getattr(cap, "dividend_pct_of_fcf", None)
 
-        mermaid = VisualEngine.mermaid_capital_allocation(profile.ticker, capex_pct, buyback_pct, div_pct)
+        mermaid = VisualEngine.d2_capital_allocation(profile.ticker, capex_pct, buyback_pct, div_pct)
         visuals.append(mermaid)
 
         # Dividend & yield (v0.1.1)
@@ -1753,7 +1753,7 @@ class ReportRenderer:
         parts.append("- Competitive moat durability")
         parts.append("- Regulatory environment changes")
 
-        mermaid = VisualEngine.mermaid_decision_framework(
+        mermaid = VisualEngine.d2_decision_framework(
             profile.ticker, favors[:4], disfavors[:4], catalysts[:3]
         )
         visuals.append(mermaid)

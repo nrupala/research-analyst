@@ -194,50 +194,17 @@ async function renderReport(idx){
     var html=mdToHTML(md);
     dom.reportContent.innerHTML=html;
     await new Promise(function(r){requestAnimationFrame(r)});
-    await renderMermaidDiagrams();
     addExportToolbar();
     updateExportFooter()
 }
 
-// Phase F: charts are server-rendered static SVG — nothing to instantiate.
-// Kept as a named no-op for export/print stripping hooks and legacy safety.
+// Phase F: charts AND diagrams are server-rendered static SVG — nothing to
+// instantiate. Kept as named no-ops for export/print stripping hooks.
 function renderPlotlyCharts(){
     return
 }
-
-async function renderMermaidDiagrams(){
-    if(typeof mermaid==="undefined")return;
-    // Mermaid 10 needs explicit initialization before a manual render() call
-    // (startOnLoad is false here — the app drives rendering). Calling initialize
-    // before every batch is idempotent and guards the deferred-script race.
-    try{ if(!window.__raMermaidInit){ mermaid.initialize({startOnLoad:false,theme:"default",securityLevel:"loose"}); window.__raMermaidInit=true } }catch(e){ return }
-    var divs=document.querySelectorAll(".mermaid-data");
-    for(var i=0;i<divs.length;i++){
-        var el=divs[i];
-        var encoded=el.getAttribute("data-mermaid");
-        if(!encoded)continue;
-        try{
-            var syntax=atob(encoded);
-            var id="mm-r-"+Date.now()+"-"+i;
-            var result=await mermaid.render(id,syntax);
-            var rendered=document.createElement("div");
-            rendered.className="mermaid-diagram";
-            rendered.innerHTML=result.svg;
-            el.parentNode.insertBefore(rendered,el.nextSibling);
-            el.style.display="none"
-        }catch(e){
-            console.warn("Mermaid render failed:",e);
-            // Show the raw diagram text so a transient library failure never
-            // blanks the chart — a readable fallback beats an empty gap.
-            try{
-                var fallback=document.createElement("pre");
-                fallback.className="mermaid-fallback";
-                fallback.textContent=atob(encoded);
-                el.parentNode.insertBefore(fallback,el.nextSibling);
-                el.style.display="none"
-            }catch(x){}
-        }
-    }
+function renderMermaidDiagrams(){
+    return
 }
 
 // ---- v0.2.0 export: MD / HTML / PDF (client-side, no server) ----
