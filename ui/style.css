@@ -285,14 +285,12 @@ body {
     .contact-section, #contact-modal { display: none; }
 }
 
-/* === v0.3.1: mermaid fallback (charts must never blank) === */
-.mermaid-fallback {
+/* === v0.3.1: diagram fallback (charts/diagrams must never blank) === */
+.mermaid-fallback, .diagram-fallback {
     white-space: pre; font-family: var(--ff-mono); font-size: var(--fs-xs);
     color: #64748b; background: #f1f5f9; padding: var(--sp-4);
     border-radius: var(--r-md); overflow-x: auto; line-height: 1.5;
 }
-.mermaid-diagram svg { max-width: 100%; height: auto; }
-.mermaid-diagram { overflow-x: auto; }
 
 /* === v0.3.2: collapsible report sections (analyst navigation) === */
 .report details.report-section {
