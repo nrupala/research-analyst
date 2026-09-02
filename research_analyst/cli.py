@@ -83,6 +83,25 @@ def main() -> None:
         help="Output directory (default: ./exports).",
     )
 
+    # --- sync ---
+    sync_parser = subparsers.add_parser(
+        "sync",
+        help="Local-first batch export: pull structured bundles for a watchlist into a local sink.",
+    )
+    sync_parser.add_argument("watchlist", help="Path to a watchlist JSON file ({tickers: [...]}).")
+    sync_parser.add_argument(
+        "--out", "-o", default="data",
+        help="Output directory for the SQLite sink + NDJSON bundles (default: ./data).",
+    )
+    sync_parser.add_argument(
+        "--max-age-hours", type=float, default=24.0,
+        help="Skip tickers synced within this many hours (incremental; default 24).",
+    )
+
+    # --- tui ---
+    from .tui import add_tui_parser
+    add_tui_parser(subparsers)
+
     args = parser.parse_args()
 
     # Configure logging
@@ -107,6 +126,12 @@ def main() -> None:
         _cmd_health()
     elif args.command == "schema-export":
         _cmd_schema_export(args)
+    elif args.command == "sync":
+        _cmd_sync(args)
+    elif args.command == "tui":
+        from .tui import run_tui_command
+
+        run_tui_command(args)
     else:
         parser.print_help()
         sys.exit(1)
@@ -256,6 +281,29 @@ def _cmd_schema_export(args: argparse.Namespace) -> None:
     print(f"wrote {ts_path}")
 
     print(f"\nSchema artifacts exported (schema_version={SCHEMA_VERSION}) to {out_dir.resolve()}")
+
+
+def _cmd_sync(args: argparse.Namespace) -> None:
+    """Local-first batch export for a watchlist (SQLite sink + NDJSON bundles)."""
+    from pathlib import Path as _Path
+
+    from .sync import run_sync
+
+    watchlist = _Path(args.watchlist)
+    out_dir = _Path(args.out)
+    result = run_sync(
+        watchlist,
+        out_dir,
+        max_age_hours=args.max_age_hours,
+    )
+    print("\nSync complete:")
+    print(f"  ok      : {len(result.succeeded)}")
+    print(f"  skipped : {len(result.skipped_fresh)} (fresh within {args.max_age_hours:g}h)")
+    if result.failed:
+        print(f"  failed  : {len(result.failed)}")
+        for ticker, err in result.failed.items():
+            print(f"    - {ticker}: {err}")
+    print(f"\nBundles written to {out_dir.resolve()} (bundle.db + *.ndjson)")
 
 
 if __name__ == "__main__":

@@ -312,9 +312,9 @@ def create_app(
             api_response.model_dump(mode="json"), fmt, "research", markdown=markdown
         )
 
-    async def _run_research_uncached(
-        body: ResearchAPIRequest, request_id: str
-    ) -> ResearchAPIResponse:
+    async def _run_pipeline(body: ResearchAPIRequest) -> Any:
+        """Build the ResearchRequest and run the orchestrator -> typed
+        ResearchResponse (shared by /api/research and the paid data endpoint)."""
         report_types = ReportType.from_user_input(body.report_type)
 
         from .enums import Timeframe
@@ -344,7 +344,12 @@ def create_app(
                 status_code=500,
                 detail=f"Research pipeline failed: {type(e).__name__}",
             ) from e
+        return result
 
+    async def _run_research_uncached(
+        body: ResearchAPIRequest, request_id: str
+    ) -> ResearchAPIResponse:
+        result = await _run_pipeline(body)
         reports_markdown = [report.to_markdown() for report in result.reports]
 
         return ResearchAPIResponse(
@@ -407,6 +412,63 @@ def create_app(
             "comparison",
             markdown=api_response.report_markdown if fmt == "markdown" else None,
             html=api_response.report_html if fmt == "html" else None,
+        )
+
+    @app.post("/api/research/data", response_model=None)
+    async def source_data_download(
+        body: ResearchAPIRequest,
+        request: Request,
+        format: str | None = Query(default=None),
+    ) -> Response:
+        """Paid feature (8c-2): the raw source-data bundle behind a report.
+
+        Gated by a valid X-RA-Key header when RA_BILLING_PAID_KEYS is set
+        (see BillingConfig). When paid keys are not configured (local/demo),
+        the endpoint is open. Returns JSON (canonical) or CSV.
+        """
+        from .data_export import build_bundle, bundle_to_csv
+
+        # --- Paid-key gate ---
+        paid_keys = settings.billing.paid_keys
+        if paid_keys:
+            provided = request.headers.get("x-ra-key", "")
+            if provided not in paid_keys:
+                raise HTTPException(
+                    status_code=401,
+                    detail="This is a paid feature. Provide a valid X-RA-Key header (or subscribe).",
+                )
+
+        client_ip = request.client.host if request.client else "unknown"
+        if not rate_limiter.allow(client_ip):
+            raise HTTPException(status_code=429, detail="Rate limit exceeded.")
+
+        # Run the pipeline and keep the typed ResearchResponse (not the API wire model)
+        _result = await _run_pipeline(body)
+        bundle = build_bundle(_result)
+
+        fmt = (format or "json").lower()
+        if fmt not in ("json", "csv"):
+            raise HTTPException(status_code=400, detail="Supported formats: json, csv.")
+
+        if fmt == "csv":
+            csv_text = bundle_to_csv(bundle)
+            return Response(
+                content=csv_text,
+                media_type="text/csv",
+                headers={
+                    "Content-Disposition": (
+                        f'attachment; filename="{body.ticker.upper()}_source_data.csv"'
+                    )
+                },
+            )
+        return Response(
+            content=__import__("json").dumps(bundle, indent=2),
+            media_type="application/json",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="{body.ticker.upper()}_source_data.json"'
+                )
+            },
         )
 
     # ================================================================
