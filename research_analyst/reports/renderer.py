@@ -293,7 +293,7 @@ class ReportRenderer:
 
         visuals.append(VisualEngine.table_dividend_summary(div, currency=ctx['profile'].currency))
         if not compact:
-            chart = VisualEngine.plotly_dividend_history(div, currency=ctx['profile'].currency)
+            chart = VisualEngine.svg_dividend_history(div, currency=ctx['profile'].currency)
             if chart:
                 visuals.append(chart)
 
@@ -499,7 +499,7 @@ class ReportRenderer:
         visuals.append(fin_table)
 
         # Plotly trend chart
-        plotly_chart = VisualEngine.plotly_financial_trends(financials, profile.ticker, currency=profile.currency)
+        plotly_chart = VisualEngine.svg_financial_trends(financials, profile.ticker, currency=profile.currency)
         if plotly_chart:
             visuals.append(plotly_chart)
 
@@ -819,7 +819,7 @@ class ReportRenderer:
             visuals.append(risk_table)
 
             # Plotly risk heatmap
-            risk_heatmap = VisualEngine.plotly_risk_heatmap(risk_matrix)
+            risk_heatmap = VisualEngine.svg_risk_heatmap(risk_matrix)
             if risk_heatmap:
                 visuals.append(risk_heatmap)
 
@@ -855,7 +855,7 @@ class ReportRenderer:
             visuals.append(ascii_chart)
 
             # Plotly scenario chart
-            plotly_scenario = VisualEngine.plotly_scenario_valuation(valuation, currency=ctx['profile'].currency)
+            plotly_scenario = VisualEngine.svg_scenario_valuation(valuation, currency=ctx['profile'].currency)
             if plotly_scenario:
                 visuals.append(plotly_scenario)
 
@@ -1280,7 +1280,7 @@ class ReportRenderer:
         risk_table = VisualEngine.table_risk_matrix(risk_matrix.risks)
         visuals.append(risk_table)
 
-        risk_heatmap = VisualEngine.plotly_risk_heatmap(risk_matrix)
+        risk_heatmap = VisualEngine.svg_risk_heatmap(risk_matrix)
         if risk_heatmap:
             visuals.append(risk_heatmap)
 
@@ -1308,7 +1308,7 @@ class ReportRenderer:
         ascii_chart = VisualEngine.ascii_scenario_chart(valuation, currency=ctx['profile'].currency)
         visuals.append(ascii_chart)
 
-        plotly_chart = VisualEngine.plotly_scenario_valuation(valuation, currency=ctx['profile'].currency)
+        plotly_chart = VisualEngine.svg_scenario_valuation(valuation, currency=ctx['profile'].currency)
         if plotly_chart:
             visuals.append(plotly_chart)
 
@@ -1482,7 +1482,7 @@ class ReportRenderer:
         fin_table = VisualEngine.table_financial_summary(financials, currency=profile.currency)
         visuals.append(fin_table)
 
-        plotly_chart = VisualEngine.plotly_financial_trends(financials, profile.ticker, currency=profile.currency)
+        plotly_chart = VisualEngine.svg_financial_trends(financials, profile.ticker, currency=profile.currency)
         if plotly_chart:
             visuals.append(plotly_chart)
 
@@ -1644,7 +1644,7 @@ class ReportRenderer:
         risk_table = VisualEngine.table_risk_matrix(risk_matrix.risks)
         visuals.append(risk_table)
 
-        risk_heatmap = VisualEngine.plotly_risk_heatmap(risk_matrix)
+        risk_heatmap = VisualEngine.svg_risk_heatmap(risk_matrix)
         if risk_heatmap:
             visuals.append(risk_heatmap)
 

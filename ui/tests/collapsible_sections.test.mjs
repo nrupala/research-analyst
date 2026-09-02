@@ -110,11 +110,11 @@ test("section content stays inside the body wrapper", () => {
 
 test("chart blocks are preserved inside collapsible sections", () => {
   const ctx = loadApp();
-  const plotly = `<div class="plotly-chart-data" data-plotly="e30="></div>`;
+  const svg = `<div class="chart-svg"><svg xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto" viewBox="0 0 10 10"></svg></div>`;
   const mermaid = `<div class="mermaid-data" data-mermaid="e30="></div>`;
-  const md = "## Step 1 — Snapshot\n\n" + plotly + "\n\n## Step 2 — Valuation\n\n" + mermaid + "\n";
+  const md = "## Step 1 — Snapshot\n\n" + svg + "\n\n## Step 2 — Valuation\n\n" + mermaid + "\n";
   const html = ctx.mdToHTML(md);
-  assert.ok(html.includes(plotly), "plotly block lost inside details");
+  assert.ok(html.includes(svg), "svg block lost inside details");
   assert.ok(html.includes(mermaid), "mermaid block lost inside details");
   assert.strictEqual((html.match(/<details class="report-section" open>/g) || []).length, 2);
 });
