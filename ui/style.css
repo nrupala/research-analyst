@@ -320,6 +320,26 @@ body {
     .report details.report-section > .report-section__body { padding: 0; }
 }
 
+/* === v0.3.3: presentation polish — chart cards, print pagination, anchors === */
+.ra-chart {
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-md);
+    background: var(--c-surface);
+    padding: var(--sp-2);
+}
+.report h1, .report h2, .report h3, .report h4 { scroll-margin-top: 96px; }
+.report { animation: ra-fade 0.25s ease; }
+@keyframes ra-fade { from { opacity: 0; } to { opacity: 1; } }
+@media print {
+    .ra-chart, .mermaid-diagram, .report details.report-section,
+    .report .table-scroll, .report pre {
+        break-inside: avoid; page-break-inside: avoid;
+    }
+    .report table { font-size: 0.82rem; }
+    .report h2 { break-after: avoid; page-break-after: avoid; }
+    .report h1 { margin-top: 0; }
+}
+
 @media print {
     .header, .footer, .card--form, .status, .tabs, .header__nav { display: none; }
     .report { border: none; box-shadow: none; padding: 0; }
