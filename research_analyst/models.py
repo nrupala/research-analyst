@@ -643,6 +643,7 @@ class ReportOutput(BaseModel):
     dividend: DividendAnalysis | None = None
     security_type: SecurityType | None = None  # set by the renderer (ETF topic mapping)
     disclaimer: str = ""  # Set by __init__ to DISCLAIMER_SHORT from disclaimer.py
+    lenses: list[Any] = Field(default_factory=list)  # typed LensResults (Phase 5)
 
     def to_markdown(self) -> str:
         """Render full report as Markdown."""
@@ -704,6 +705,28 @@ class ReportOutput(BaseModel):
                 parts.append(f"- **Consensus View:** {vp.consensus_view}")
                 parts.append(f"- **Variant View:** {vp.variant_view}")
                 parts.append(f"- **Why It Matters:** {vp.why_it_matters}")
+
+        # Mental-model lenses (Phase 5) — educational, attribution-safe
+        if self.lenses:
+            parts.append("## Mental-Model Lenses (Educational Frameworks)\n")
+            parts.append(
+                "The following lenses apply public-domain evaluation methodologies "
+                "to the report's data. They are educational models, not verdicts.\n"
+            )
+            for lens in self.lenses:
+                parts.append(f"### {lens.name}\n")
+                parts.append(lens.summary)
+                parts.append("")
+                for sig in lens.signals:
+                    read_icon = {
+                        "favor": "▲ Favor", "caution": "▼ Caution", "neutral": "• Neutral",
+                    }.get(sig.read, "• Neutral")
+                    parts.append(f"- **{sig.label}:** {sig.value} — {read_icon}")
+                    if sig.note:
+                        parts.append(f"  {sig.note}")
+                parts.append("")
+                if lens.attribution:
+                    parts.append(f"*{lens.attribution}*\n")
 
         # thinkwithfinance cross-reference (Phase 4) — empty until content ships
         from .crossref import render_crossref_block
