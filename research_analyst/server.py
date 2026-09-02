@@ -249,6 +249,15 @@ def create_app(
             "short": DISCLAIMER_SHORT,
         }
 
+    @app.get("/api/health")
+    async def health() -> dict[str, str]:
+        """Health check: service is up + version served (per VERSIONING.md)."""
+        return {
+            "status": "ok",
+            "version": __version__,
+            "service": "research-analyst",
+        }
+
     @app.post("/api/resolve", response_model=ResolveAPIResponse)
     async def resolve_subject_endpoint(
         body: ResolveAPIRequest,
