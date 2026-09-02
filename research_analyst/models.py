@@ -660,10 +660,6 @@ class ReportOutput(BaseModel):
                     parts.append('<div class="chart-svg">')
                     parts.append(visual.content)
                     parts.append("</div>")
-                elif visual.visual_type == "mermaid":
-                    import base64 as _b64
-                    _enc = _b64.b64encode(visual.content.encode()).decode()
-                    parts.append(f'<div class="mermaid-data" data-mermaid="{_enc}"></div>')
                 elif visual.visual_type == "table":
                     parts.append(visual.content)
                 else:

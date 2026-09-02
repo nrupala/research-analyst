@@ -88,7 +88,7 @@ const CHART_SVG = '<svg xmlns="http://www.w3.org/2000/svg" style="width:100%;hei
 const CHART_DIV = `<div class="chart-svg">${CHART_SVG}</div>`;
 
 const MERMAID_SYNTAX = "graph TD; A[Screen] --> B{Undervalued?}; B -->|Yes| C[Buy list]; B -->|No| D[Watch];";
-const MERMAID_DIV = `<div class="mermaid-data" data-mermaid="${Buffer.from(MERMAID_SYNTAX, "utf8").toString("base64")}"></div>`;
+const DIAGRAM_DIV = `<div class="chart-svg"><pre class="diagram-fallback">${MERMAID_SYNTAX}</pre></div>`;
 
 // Headings deliberately placed BEFORE, BETWEEN, and AFTER the two chart blocks.
 const SECTIONS = [
@@ -109,7 +109,7 @@ const FIXTURE = [
   "Fair-value estimate derived below.", "",
   SECTIONS[3].md, "",
   "| Metric | Value |", "| --- | --- |", "| WACC | 9.0% |", "",
-  MERMAID_DIV, "",                      // mermaid block immediately after a chart
+  DIAGRAM_DIV, "",                      // diagram block immediately after a chart
   SECTIONS[4].md, "",
   "- RSI neutral", "- MACD positive", "",
   SECTIONS[5].md, "",
@@ -144,9 +144,9 @@ test("the SVG chart block is preserved verbatim", () => {
   assert.ok(html.includes("<svg"), "svg markup lost");
 });
 
-test("the Mermaid block is preserved verbatim", () => {
+test("the Mermaid/D2 block is preserved verbatim", () => {
   const html = loadApp().mdToHTML(FIXTURE);
-  assert.ok(html.includes(MERMAID_DIV), "mermaid-data block was not preserved verbatim");
+  assert.ok(html.includes(DIAGRAM_DIV), "diagram block was not preserved verbatim");
 });
 
 test("no chart markup leaks into prose as escaped text", () => {

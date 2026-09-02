@@ -29,6 +29,7 @@ from ..models import (
     ValuationRange,
 )
 from .currency import currency_symbol
+from . import diagrams
 from . import svg_charts
 
 logger = logging.getLogger(__name__)
@@ -76,102 +77,51 @@ class VisualEngine:
         return svg_charts.svg_risk_heatmap(risk_matrix)
 
     # ------------------------------------------------------------------
-    # Mermaid diagrams — raw syntax, frontend calls mermaid.render()
+    # Diagrams — D2 source, rendered server-side to static SVG
     # ------------------------------------------------------------------
 
     @staticmethod
-    def mermaid_business_model(
+    def d2_business_model(
         profile: CompanyProfile,
         revenue_segments: list[str] | None = None,
     ) -> ReportVisual:
-        """Business model flowchart as raw Mermaid syntax."""
-        name = profile.name.replace('"', "'")
-        segments = revenue_segments or ["Products", "Services", "Subscriptions"]
-        seg_lines = "\n".join(f"    R --> S{i}[{seg}]" for i, seg in enumerate(segments))
-
-        diagram = f"""graph TD
-    A[{name}] --> R[Revenue Streams]
-{seg_lines}
-    A --> C[Cost Structure]
-    C --> COGS[Cost of Revenue]
-    C --> OPEX[Operating Expenses]
-    A --> M[Competitive Moat]
-    M --> SCALE[Scale / Network Effects]
-    M --> IP[IP / Technology]"""
-
-        return ReportVisual(
-            visual_type="mermaid",
+        """Business model flowchart as a server-rendered D2 diagram."""
+        source = diagrams.d2_business_model(profile.ticker, revenue_segments)
+        return diagrams.diagram_visual(
+            source,
             title=f"{profile.ticker} — Business Model Overview",
-            content=diagram,
             ties_to="Business model and structural position (Step 1)",
             caption="Conceptual business model flow.",
         )
 
     @staticmethod
-    def mermaid_decision_framework(
+    def d2_decision_framework(
         ticker: str,
         favors: list[str],
         disfavors: list[str],
         catalysts: list[str],
     ) -> ReportVisual:
-        """Decision tree as raw Mermaid syntax."""
-        # Truncate and sanitize text for Mermaid (no special chars)
-        def clean(s: str, maxlen: int = 40) -> str:
-            """Sanitize text for Mermaid node labels. Strip all special chars."""
-            c = s.replace("[", "").replace("]", "").replace("(", "").replace(")", "")
-            c = c.replace('"', "").replace("'", "").replace(">", "").replace("<", "")
-            c = c.replace("&", "and").replace(";", ",").replace("#", "")
-            return c[:maxlen]
-
-        lines = ["graph TD"]
-        lines.append(f"    THESIS[{ticker} Investment Thesis]")
-        lines.append("    THESIS --> F[Factors That Favor]")
-        lines.append("    THESIS --> D[Factors That Disfavor]")
-        lines.append("    THESIS --> CAT[Key Catalysts]")
-
-        for i, f in enumerate(favors[:4]):
-            lines.append(f"    F --> F{i}[{clean(f)}]")
-        for i, d in enumerate(disfavors[:4]):
-            lines.append(f"    D --> D{i}[{clean(d)}]")
-        for i, c in enumerate(catalysts[:3]):
-            lines.append(f"    CAT --> C{i}[{clean(c)}]")
-
-        lines.append("    THESIS --> MON[Monitor]")
-        lines.append("    MON --> M1[Earnings trajectory]")
-        lines.append("    MON --> M2[Competitive dynamics]")
-        lines.append("    MON --> M3[Macro regime change]")
-
-        return ReportVisual(
-            visual_type="mermaid",
+        """Decision framework as a server-rendered D2 diagram."""
+        source = diagrams.d2_decision_framework(ticker, favors, disfavors, catalysts)
+        return diagrams.diagram_visual(
+            source,
             title=f"{ticker} — Decision Framework",
-            content="\n".join(lines),
             ties_to="Investment thesis (Step 7)",
             caption="Favors/disfavors framing. Never buy/sell/hold.",
         )
 
     @staticmethod
-    def mermaid_capital_allocation(
+    def d2_capital_allocation(
         ticker: str,
         capex_pct: float | None,
         buyback_pct: float | None,
         dividend_pct: float | None,
     ) -> ReportVisual:
-        """Capital allocation flow as raw Mermaid syntax."""
-        lines = ["graph TD", f"    FCF[{ticker} Free Cash Flow]"]
-        lines.append("    FCF --> ALLOC[Capital Allocation]")
-
-        if capex_pct is not None:
-            lines.append(f"    ALLOC --> CAPEX[Capex: {capex_pct:.0%} of FCF]")
-        if buyback_pct is not None:
-            lines.append(f"    ALLOC --> BUY[Buybacks: {buyback_pct:.0%} of FCF]")
-        if dividend_pct is not None:
-            lines.append(f"    ALLOC --> DIV[Dividends: {dividend_pct:.0%} of FCF]")
-        lines.append("    ALLOC --> OTHER[Debt / M&A / Cash Build]")
-
-        return ReportVisual(
-            visual_type="mermaid",
+        """Capital allocation flow as a server-rendered D2 diagram."""
+        source = diagrams.d2_capital_allocation(ticker, capex_pct, buyback_pct, dividend_pct)
+        return diagrams.diagram_visual(
+            source,
             title=f"{ticker} — Capital Allocation Flow",
-            content="\n".join(lines),
             ties_to="Capital allocation analysis (Step 4)",
             caption="FCF deployment breakdown. Most recent annual period.",
         )
