@@ -22,6 +22,8 @@ notes so history never gets lost.
 | Web app | on-page footer / `<meta>` version marker | `X.Y.Z` |
 | PWA | `manifest.json` `version` | `X.Y.Z` |
 | PWA | service-worker cache name (`CACHE_VERSION`) | `<app>-v<X.Y.Z>` (bump invalidates old caches on release) |
+| Python package | `pyproject.toml` `version` | `X.Y.Z` |
+| Python runtime | `research_analyst/__init__.py` `__version__` | `X.Y.Z` (what the API serves) |
 | Android | `versionName` | `X.Y.Z` |
 | Android | `versionCode` | `MAJOR*10000 + MINOR*100 + PATCH` (monotonic; F-Droid/Play safe) |
 | iOS | `CFBundleShortVersionString` | `X.Y.Z` |
@@ -33,8 +35,9 @@ repo-wide to `MAJOR*1000000 + MINOR*1000 + PATCH`.)
 
 ## Two moving parts
 - **Author time — `scripts/bump-version.mjs <X.Y.Z>`**: writes the version into
-  every *committed* web/PWA surface (package.json, footer, manifest, SW cache)
-  and promotes the CHANGELOG `Unreleased` section to a dated release heading.
+  every *committed* surface — web/PWA (package.json, footer, manifest, SW cache)
+  and the Python server (pyproject.toml, `__init__.py` `__version__`) — and
+  promotes the CHANGELOG `Unreleased` section to a dated release heading.
 - **Build time — `scripts/stamp-app-version.sh`**: in CI, derives the version
   from the tag and stamps the *generated* native projects (Android
   `build.gradle`, iOS `Info.plist`). Those native folders are generated per
