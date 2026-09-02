@@ -621,11 +621,12 @@ class ReportSection(BaseModel):
 class ReportVisual(BaseModel):
     """Visual element within a report."""
 
-    visual_type: str  # "plotly" / "mermaid" / "ascii" / "table"
+    visual_type: str  # "svg" / "ascii" / "table"
     title: str
     content: str  # Code or markup
     ties_to: str = ""  # Which assumption / scenario / risk this supports
     caption: str = ""
+    interactive: dict[str, Any] | None = None  # trace-ready data for the on-demand interactive view
 
 
 class ReportOutput(BaseModel):
@@ -660,6 +661,17 @@ class ReportOutput(BaseModel):
                     parts.append('<div class="chart-svg">')
                     parts.append(visual.content)
                     parts.append("</div>")
+                    if visual.interactive:
+                        import base64 as _b64
+                        import json as _json
+                        _enc = _b64.b64encode(
+                            _json.dumps(visual.interactive).encode()
+                        ).decode()
+                        parts.append(
+                            '<button type="button" class="chart-interactive" '
+                            f'data-interactive="{_enc}">'
+                            "Interactive view \u2197</button>"
+                        )
                 elif visual.visual_type == "table":
                     parts.append(visual.content)
                 else:

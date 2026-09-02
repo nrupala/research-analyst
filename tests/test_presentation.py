@@ -11,7 +11,7 @@ Guards the "institutional, client-ready polish" so it doesn't rot:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timezone
 
 from research_analyst.enums import ReportType, SecurityType
 from research_analyst.models import (
@@ -222,6 +222,7 @@ def test_svg_emission_embedded_in_report_markdown():
     visual = ReportVisual(
         visual_type="svg", title="Chart",
         content=svg_markup, ties_to="test", caption="",
+        interactive={"type": "scenario", "scenarios": [{"label": "Base", "low": 90, "high": 110}]},
     )
     section = ReportSection(
         step_number=1, title="Step 1", content="body", visuals=[visual],
@@ -229,10 +230,14 @@ def test_svg_emission_embedded_in_report_markdown():
     report = ReportOutput(
         report_type=ReportType.COMPREHENSIVE,
         ticker="AAPL", title="AAPL — Comprehensive",
-        generated_at=datetime(2026, 1, 1, tzinfo=UTC),
+        generated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         sections=[section],
     )
     md = report.to_markdown()
     assert '<div class="chart-svg">' in md
     assert "<svg" in md and "</svg>" in md
     assert "data-plotly" not in md
+    # on-demand interactive view: button present with the lazy payload
+    assert 'class="chart-interactive"' in md
+    assert 'data-interactive="' in md
+    assert "Interactive view" in md
