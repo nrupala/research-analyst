@@ -130,15 +130,25 @@ body {
 .meta-bar__item { display: flex; align-items: center; gap: var(--sp-1); }
 .meta-bar__label { font-weight: 600; color: var(--c-text); }
 
-.tabs { display: flex; gap: var(--sp-1); border-bottom: 2px solid var(--c-border); margin-bottom: var(--sp-6); }
+.tabs { display: flex; gap: var(--sp-1); border-bottom: 2px solid var(--c-border); margin-bottom: var(--sp-6); overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
 .tab {
     padding: var(--sp-2) var(--sp-4); border: none; background: transparent;
     font-family: var(--ff-sans); font-size: var(--fs-sm); font-weight: 600;
-    color: var(--c-text-2); cursor: pointer;
+    color: var(--c-text-2); cursor: pointer; white-space: nowrap;
     border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.15s ease;
 }
 .tab:hover { color: var(--c-text); }
 .tab--active { color: var(--c-primary); border-bottom-color: var(--c-primary); }
+
+/* === v0.3.3: empty-state (no report to display) === */
+.empty-state {
+    text-align: center; padding: var(--sp-12) var(--sp-6);
+    border: 1px dashed var(--c-border); border-radius: var(--r-lg);
+    background: var(--c-bg); color: var(--c-text-2);
+}
+.empty-state__icon { font-size: var(--fs-3xl); opacity: 0.5; margin-bottom: var(--sp-3); }
+.empty-state__title { font-size: var(--fs-lg); font-weight: 700; color: var(--c-text); margin-bottom: var(--sp-2); }
+.empty-state__body { font-size: var(--fs-sm); max-width: 34rem; margin: 0 auto; line-height: 1.6; }
 
 .report {
     background: var(--c-surface); border: 1px solid var(--c-border);
