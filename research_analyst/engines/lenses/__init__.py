@@ -3,20 +3,24 @@
 Runs every registered lens over the same typed LensInput and returns typed
 LensResults. Adding a lens = drop a module in this package + register it here.
 """
-# Module: research_analyst/engines/lenses/__init__.py | Version: 1.0 | Updated: 2026-09-02
+# Module: research_analyst/engines/lenses/__init__.py | Version: 1.1 | Updated: 2026-09-02
 
 from __future__ import annotations
 
-from . import graham, greenblatt, lynch
+from . import buffett, dalio, damodaran, graham, greenblatt, lynch, marks
 from .base import ATTRIBUTION, LensInput, LensResult, LensSignal
 
 LENSES: dict[str, object] = {
     "graham": graham.run,
     "greenblatt": greenblatt.run,
     "lynch": lynch.run,
+    "damodaran": damodaran.run,
+    "buffett": buffett.run,
+    "dalio": dalio.run,
+    "marks": marks.run,
 }
 
-LENS_ORDER = ["graham", "greenblatt", "lynch"]
+LENS_ORDER = ["graham", "greenblatt", "lynch", "damodaran", "buffett", "dalio", "marks"]
 
 
 def run_all(data: LensInput) -> list[LensResult]:
