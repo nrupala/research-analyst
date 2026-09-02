@@ -29,52 +29,11 @@ from ..models import (
     ValuationRange,
 )
 from .currency import currency_symbol
+from . import svg_charts
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Shared visual language (Phase 3 — presentation polish)
-# ---------------------------------------------------------------------------
-# One palette, one grid/font system, one margin convention. Every Plotly chart
-# built here derives from these constants so reports never diverge in look.
-
-PLOTLY_COLORS = {
-    "blue": "#2563eb",      # primary / revenue / base
-    "green": "#16a34a",     # gross margin / bull / dividends
-    "orange": "#ea580c",    # operating margin / medium risk
-    "violet": "#7c3aed",    # net margin / variants
-    "red": "#dc2626",       # bear / critical risk
-    "slate": "#6b7280",     # neutral / secondary
-}
-PLOTLY_FONT = {"family": "-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif", "size": 12, "color": "#1f2937"}
-PLOTLY_MARGIN = {"t": 56, "b": 56, "l": 68, "r": 40}
-PLOTLY_GRID_COLOR = "#e5e7eb"
-
-
-def _base_layout(title: str, *, height: int = 400, showlegend: bool = True) -> dict[str, Any]:
-    """Deterministic base layout every chart shares (then charts add specifics)."""
-    return {
-        "title": {"text": title, "font": {"size": 14, "color": "#111827"}},
-        "template": "plotly_white",
-        "height": height,
-        "font": dict(PLOTLY_FONT),
-        "margin": dict(PLOTLY_MARGIN),
-        "paper_bgcolor": "#ffffff",
-        "plot_bgcolor": "#ffffff",
-        "xaxis": {"gridcolor": PLOTLY_GRID_COLOR, "zerolinecolor": PLOTLY_GRID_COLOR},
-        "yaxis": {"gridcolor": PLOTLY_GRID_COLOR, "zerolinecolor": PLOTLY_GRID_COLOR},
-        "legend": (
-            {"orientation": "h", "yanchor": "bottom", "y": 1.03, "xanchor": "right", "x": 1}
-            if showlegend
-            else {"visible": False}
-        ),
-    }
-
-
-def _hover_template() -> dict[str, Any]:
-    """Consistent, clean hover: series name + bold value, no noisy trace names."""
-    return {"hoverlabel": {"bgcolor": "#ffffff", "bordercolor": "#e5e7eb", "font": {"size": 12}}}
-
 
 class VisualEngine:
     """Generates constraint-safe visuals for research reports.
@@ -93,231 +52,28 @@ class VisualEngine:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def plotly_financial_trends(
-        financials: list[FinancialStatement],
-        ticker: str,
-        currency: str | None = None,
-    ) -> ReportVisual | None:
-        """Revenue + margin trend chart as Plotly.js JSON."""
-        if len(financials) < 2:
-            return None
-
-        sym = currency_symbol(currency)
-        code = (currency or "USD").strip().upper()
-
-        sorted_fin = sorted(
-            financials,
-            key=lambda f: f.period_end_date or __import__("datetime").date.min,
-        )
-
-        periods = [f.period for f in sorted_fin]
-        revenues = [float(f.revenue) / 1e9 if f.revenue else None for f in sorted_fin]
-        gross_margins = [f.gross_margin * 100 if f.gross_margin else None for f in sorted_fin]
-        op_margins = [f.operating_margin * 100 if f.operating_margin else None for f in sorted_fin]
-        net_margins = [f.net_margin * 100 if f.net_margin else None for f in sorted_fin]
-
-        traces: list[dict[str, Any]] = []
-
-        traces.append({
-            "x": periods, "y": revenues, "name": f"Revenue ({sym}B)",
-            "type": "bar", "marker": {"color": PLOTLY_COLORS["blue"], "opacity": 0.8},
-            "yaxis": "y"
-        })
-
-        if any(v is not None for v in gross_margins):
-            traces.append({
-                "x": periods, "y": gross_margins, "name": "Gross Margin %",
-                "type": "scatter", "mode": "lines+markers",
-                "line": {"color": PLOTLY_COLORS["green"], "width": 2}, "yaxis": "y2", "hovertemplate": "%{x}: %{y:.1f}%"
-            })
-
-        if any(v is not None for v in op_margins):
-            traces.append({
-                "x": periods, "y": op_margins, "name": "Operating Margin %",
-                "type": "scatter", "mode": "lines+markers",
-                "line": {"color": PLOTLY_COLORS["orange"], "width": 2}, "yaxis": "y2", "hovertemplate": "%{x}: %{y:.1f}%"
-            })
-
-        if any(v is not None for v in net_margins):
-            traces.append({
-                "x": periods, "y": net_margins, "name": "Net Margin %",
-                "type": "scatter", "mode": "lines+markers",
-                "line": {"color": PLOTLY_COLORS["violet"], "width": 2, "dash": "dot"}, "yaxis": "y2", "hovertemplate": "%{x}: %{y:.1f}%"
-            })
-
-        layout = _base_layout(f"{ticker} — Revenue & Margin Trends", height=420)
-        layout["yaxis"] = {"title": f"Revenue ({sym}B)", "side": "left", "gridcolor": PLOTLY_GRID_COLOR}
-        layout["yaxis2"] = {
-            "title": "Margin (%)", "side": "right", "overlaying": "y",
-            "gridcolor": PLOTLY_GRID_COLOR, "showgrid": False,
-        }
-        layout.update(_hover_template())
-
-        return ReportVisual(
-            visual_type="plotly_json",
-            title=f"{ticker} — Revenue & Margin Trends",
-            content=json.dumps({"traces": traces, "layout": layout}),
-            ties_to="Financial trajectory assessment (Step 2)",
-            caption=f"Revenue in billions {code}. Margins as percentage of revenue.",
-        )
+    def svg_financial_trends(financials, ticker, currency=None):
+        """Revenue + margin trend chart as server-rendered SVG."""
+        return svg_charts.svg_financial_trends(financials, ticker, currency)
 
     @staticmethod
-    def plotly_scenario_valuation(valuation: ValuationRange, currency: str | None = None) -> ReportVisual | None:
-        """Scenario valuation range as Plotly.js JSON."""
+    def svg_scenario_valuation(valuation, currency=None):
+        """Scenario valuation range as server-rendered SVG."""
         if not valuation.scenarios:
             return None
-
-        sym = currency_symbol(currency)
-        labels = []
-        lows = []
-        highs = []
-        for s in valuation.scenarios:
-            if s.implied_price_low is not None and s.implied_price_high is not None:
-                labels.append(s.label)
-                lows.append(s.implied_price_low)
-                highs.append(s.implied_price_high)
-
-        if not labels:
-            return None
-
-        colors = {"Bull Case": PLOTLY_COLORS["green"], "Base Case": PLOTLY_COLORS["blue"], "Bear Case": PLOTLY_COLORS["red"]}
-
-        traces: list[dict[str, Any]] = []
-        for i in range(len(labels)):
-            traces.append({
-                "y": [labels[i]], "x": [highs[i] - lows[i]], "base": [lows[i]],
-                "type": "bar", "orientation": "h",
-                "name": labels[i],
-                "marker": {"color": colors.get(labels[i], PLOTLY_COLORS["slate"]), "opacity": 0.85},
-                "text": [f"{sym}{lows[i]:,.0f} – {sym}{highs[i]:,.0f}"],
-                "textposition": "inside", "showlegend": False,
-                "hovertemplate": f"{sym}%{{x[0]:,.0f}} – {sym}%{{base[0]:,.0f}}<extra></extra>",
-            })
-
-        layout = _base_layout("Scenario-Based Valuation Range", height=280, showlegend=False)
-        layout["xaxis"] = {"title": f"Price ({sym})", "gridcolor": PLOTLY_GRID_COLOR}
-        layout["barmode"] = "overlay"
-        layout.update(_hover_template())
-
-        if valuation.current_price > 0:
-            layout["shapes"] = [{
-                "type": "line",
-                "x0": valuation.current_price, "x1": valuation.current_price,
-                "y0": -0.5, "y1": len(labels) - 0.5,
-                "line": {"color": "black", "width": 2, "dash": "dash"},
-            }]
-            layout["annotations"] = [{
-                "x": valuation.current_price, "y": len(labels) - 0.5,
-                "text": f"Current: {sym}{valuation.current_price:.0f}",
-                "showarrow": False, "yshift": 15,
-                "font": {"size": 11, "color": "black"},
-            }]
-
-        return ReportVisual(
-            visual_type="plotly_json",
-            title="Scenario-Based Valuation Range",
-            content=json.dumps({"traces": traces, "layout": layout}),
-            ties_to="Valuation scenarios (Step 6)",
-            caption=f"Current price: {sym}{valuation.current_price:.2f}. Assumption-driven illustrations.",
-        )
+        return svg_charts.svg_scenario_valuation(valuation, currency)
 
     @staticmethod
-    def plotly_peer_comparison(
-        target_ticker: str,
-        peers: list[Competitor],
-    ) -> ReportVisual | None:
-        """Peer comparison bar chart as Plotly.js JSON."""
-        if not peers:
-            return None
-
-        tickers = [p.ticker for p in peers[:6]]
-        metrics = {
-            "Gross Margin %": [p.gross_margin * 100 if p.gross_margin else None for p in peers[:6]],
-            "Op Margin %": [p.operating_margin * 100 if p.operating_margin else None for p in peers[:6]],
-            "ROE %": [p.roe * 100 if p.roe else None for p in peers[:6]],
-        }
-
-        traces = []
-        for name, vals in metrics.items():
-            traces.append({
-                "x": tickers, "y": vals, "name": name, "type": "bar",
-                "marker": {"color": {
-                    "Gross Margin %": PLOTLY_COLORS["green"],
-                    "Op Margin %": PLOTLY_COLORS["blue"],
-                    "ROE %": PLOTLY_COLORS["violet"],
-                }.get(name, PLOTLY_COLORS["slate"]), "opacity": 0.85},
-                "hovertemplate": "%{x}: %{y:.1f}%<extra></extra>",
-            })
-
-        layout = _base_layout("Peer Comparison — Key Metrics", height=400)
-        layout["barmode"] = "group"
-        layout["yaxis"] = {"title": "%", "gridcolor": PLOTLY_GRID_COLOR}
-        layout.update(_hover_template())
-
-        return ReportVisual(
-            visual_type="plotly_json",
-            title="Peer Comparison — Key Metrics",
-            content=json.dumps({"traces": traces, "layout": layout}),
-            ties_to="Competitive positioning (Step 3)",
-            caption=f"Comparison of {target_ticker} sector peers.",
-        )
+    def svg_peer_comparison(target_ticker, peers, currency=None):
+        """Peer comparison margins/ROE as server-rendered SVG."""
+        return svg_charts.svg_peer_comparison(target_ticker, peers, currency)
 
     @staticmethod
-    def plotly_risk_heatmap(risk_matrix: RiskMatrix) -> ReportVisual | None:
-        """Risk heatmap (Probability x Impact) as Plotly.js JSON."""
-        if not risk_matrix.risks:
+    def svg_risk_heatmap(risk_matrix):
+        """Risk matrix probability x impact as server-rendered SVG."""
+        if not risk_matrix or not risk_matrix.risks:
             return None
-
-        prob_map = {"Low (<20%)": 1, "Medium (20-50%)": 2, "High (>50%)": 3}
-        impact_map = {"Low": 1, "Medium": 2, "High": 3, "Critical": 4}
-
-        x_vals = []
-        y_vals = []
-        labels = []
-        sizes = []
-        colors = []
-
-        for r in risk_matrix.risks:
-            x = prob_map.get(r.probability, 1)
-            y = impact_map.get(r.impact, 1)
-            x_vals.append(x)
-            y_vals.append(y)
-            labels.append(r.title[:30])
-            sizes.append(20 + x * y * 5)
-            severity = x * y
-            colors.append(
-                PLOTLY_COLORS["red"] if severity >= 8
-                else PLOTLY_COLORS["orange"] if severity >= 4
-                else PLOTLY_COLORS["green"]
-            )
-
-        traces = [{
-            "x": x_vals, "y": y_vals, "mode": "markers+text", "type": "scatter",
-            "marker": {"size": sizes, "color": colors, "opacity": 0.75, "line": {"width": 1, "color": "white"}},
-            "text": labels, "textposition": "top center", "textfont": {"size": 9},
-            "hovertemplate": "%{text}<br>Prob %{x}<br>Impact %{y}<extra></extra>",
-        }]
-
-        layout = _base_layout("Risk Matrix — Probability vs Impact", height=380, showlegend=False)
-        layout["xaxis"] = {
-            "title": "Probability", "tickvals": [1, 2, 3],
-            "ticktext": ["Low", "Medium", "High"], "range": [0.5, 3.5],
-            "gridcolor": PLOTLY_GRID_COLOR,
-        }
-        layout["yaxis"] = {
-            "title": "Impact", "tickvals": [1, 2, 3, 4],
-            "ticktext": ["Low", "Medium", "High", "Critical"], "range": [0.5, 4.5],
-            "gridcolor": PLOTLY_GRID_COLOR,
-        }
-        layout.update(_hover_template())
-
-        return ReportVisual(
-            visual_type="plotly_json",
-            title="Risk Matrix — Probability vs Impact",
-            content=json.dumps({"traces": traces, "layout": layout}),
-            ties_to="Risk assessment (Step 5/6)",
-            caption=f"Overall risk score: {risk_matrix.overall_risk_score}/10.",
-        )
+        return svg_charts.svg_risk_heatmap(risk_matrix)
 
     # ------------------------------------------------------------------
     # Mermaid diagrams — raw syntax, frontend calls mermaid.render()
@@ -690,30 +446,9 @@ class VisualEngine:
         )
 
     @staticmethod
-    def plotly_dividend_history(div: DividendAnalysis, currency: str | None = None) -> ReportVisual | None:
-        """Annual dividend-per-share history as a Plotly.js bar chart."""
-        annual = div.annual_dividends or {}
+    def svg_dividend_history(div, currency=None):
+        """Annual dividend-per-share history as server-rendered SVG."""
+        annual = getattr(div, "annual_dividends", {}) or {}
         if len(annual) < 3:
             return None
-
-        sym = currency_symbol(currency)
-
-        years = sorted(annual.keys(), key=lambda y: int(y))[-10:]
-        values = [round(annual[y], 4) for y in years]
-
-        traces = [{
-            "x": years, "y": values, "type": "bar", "name": "DPS",
-            "marker": {"color": PLOTLY_COLORS["green"], "opacity": 0.85},
-            "hovertemplate": "%{x}: " + f"{sym}" + "%{y:.4f}<extra></extra>",
-        }]
-        layout = _base_layout(f"{div.ticker} — Dividend Per Share by Year", height=320)
-        layout["yaxis"] = {"title": f"DPS ({sym})", "gridcolor": PLOTLY_GRID_COLOR}
-        layout["xaxis"] = {"title": "Year", "type": "category", "gridcolor": PLOTLY_GRID_COLOR}
-        layout.update(_hover_template())
-        return ReportVisual(
-            visual_type="plotly_json",
-            title=f"{div.ticker} — Dividend History",
-            content=json.dumps({"traces": traces, "layout": layout}),
-            ties_to="Dividend growth & consistency",
-            caption="Annual dividends per share (calendar-year sums). The most recent year may be partial.",
-        )
+        return svg_charts.svg_dividend_history(div, currency)
