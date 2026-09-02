@@ -267,7 +267,7 @@ test("compare 2 tickers: renders scorecard + per-dimension tables, 3-button tool
 
   const toolbar = env.el("export-toolbar");
   assert.ok(toolbar, "export toolbar present");
-  assert.strictEqual(toolbar.children.length, 3, "3-button toolbar");
+  assert.strictEqual(toolbar.children.length, 3, "3-button toolbar (compare mode has no data button)");
   assert.deepStrictEqual(toolbar.children.map((b) => b.textContent), ["Download MD", "Download HTML", "Download PDF"]);
 
   // MD export
@@ -308,7 +308,7 @@ test("compare 5 tickers: request carries 5 tickers and render present", async ()
   assert.strictEqual(sentBody.tickers.length, 5, "5 tickers sent");
   const rc = env.el("report-content").innerHTML;
   assert.ok(/Scorecard/.test(rc) && /<table/.test(rc), "5-ticker comparison rendered");
-  assert.ok(env.el("export-toolbar").children.length === 3, "toolbar present for 5-ticker");
+  assert.ok(env.el("export-toolbar").children.length === 3, "toolbar present for 5-ticker (compare mode)");
 });
 
 // --- Compare: dedupe collapses to invalid count ---
@@ -368,7 +368,7 @@ test("regression: single-ticker /api/research still renders + exports", async ()
   const rc = env.el("report-content").innerHTML;
   assert.ok(/Apple/.test(rc) && /Valuation/.test(rc), "single-ticker report rendered");
   const toolbar = env.el("export-toolbar");
-  assert.strictEqual(toolbar.children.length, 3, "single-ticker export toolbar intact");
+  assert.strictEqual(toolbar.children.length, 4, "single-ticker export toolbar intact (incl. data download)");
   env.context.exportMD();
   const md = await env.lastBlob().text();
   assert.ok(/Apple/.test(md), "single-ticker MD export has content");
