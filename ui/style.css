@@ -336,6 +336,10 @@ body {
     padding: var(--sp-2);
 }
 .chart-svg svg { display: block; }
+.chart-svg svg text { font-family: var(--ff-sans), -apple-system, sans-serif; }
+@media print {
+    .chart-svg { break-inside: avoid; page-break-inside: avoid; }
+}
 .report h1, .report h2, .report h3, .report h4 { scroll-margin-top: 96px; }
 .report { animation: ra-fade 0.25s ease; }
 @keyframes ra-fade { from { opacity: 0; } to { opacity: 1; } }
