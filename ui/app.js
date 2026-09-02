@@ -191,7 +191,10 @@ function renderPlotlyCharts(){
         var raw=div.getAttribute("data-plotly");
         if(!raw)return;
         try{
-            var data=JSON.parse(raw);
+            var data;
+            // b64-encoded payloads (current) or raw JSON (legacy cached reports)
+            if(raw.charAt(0)==="{"){data=JSON.parse(raw)}
+            else{data=JSON.parse(atob(raw))}
             var layout=data.layout||{};
             // Fluid charts/maps: fill the column and let Plotly own sizing rather
             // than honoring any fixed width/height the server baked in.

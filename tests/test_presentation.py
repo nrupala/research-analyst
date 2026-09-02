@@ -12,7 +12,7 @@ Guards the "institutional, client-ready polish" so it doesn't rot:
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timezone
 
 from research_analyst.enums import ReportType, SecurityType
 from research_analyst.models import (
@@ -210,9 +210,42 @@ def test_report_markdown_unchanged_structure():
     report = ReportOutput(
         report_type=ReportType.COMPREHENSIVE,
         ticker="AAPL", title="AAPL — Comprehensive",
-        generated_at=datetime(2026, 1, 1, tzinfo=UTC),
+        generated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         sections=[],
     )
     md = report.to_markdown()
     assert "# AAPL — Comprehensive" in md
     assert "**Disclaimer:**" in md
+
+
+def test_plotly_emission_base64_quote_safe():
+    """Chart JSON with embedded ' and " (e.g. font family) must never truncate
+    the data-plotly attribute — it is base64-encoded like mermaid."""
+    import base64
+    from research_analyst.models import ReportSection, ReportVisual
+
+    payload = '{"traces": [], "layout": {"font": {"family": "-apple-system, \'Segoe UI\', Roboto"}}}'
+    assert "'" in payload and '"' in payload  # the exact quote-trapping input
+
+    visual = ReportVisual(
+        visual_type="plotly_json", title="Chart",
+        content=payload, ties_to="test", caption="",
+    )
+    section = ReportSection(
+        step_number=1, title="Step 1", content="body", visuals=[visual],
+    )
+    report = ReportOutput(
+        report_type=ReportType.COMPREHENSIVE,
+        ticker="AAPL", title="AAPL — Comprehensive",
+        generated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        sections=[section],
+    )
+    md = report.to_markdown()
+    marker = 'data-plotly="'
+    assert marker in md
+    start = md.index(marker) + len(marker)
+    end = md.index('"', start)
+    encoded = md[start:end]
+    assert "'" not in encoded and '"' not in encoded  # attribute can't break
+    decoded = base64.b64decode(encoded).decode()
+    assert decoded == payload
