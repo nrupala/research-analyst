@@ -340,6 +340,38 @@ body {
 @media print {
     .chart-svg { break-inside: avoid; page-break-inside: avoid; }
 }
+
+/* === v0.3.4: on-demand interactive chart view (lazy Plotly modal) === */
+.chart-interactive {
+    display: inline-flex; align-items: center; gap: var(--sp-1);
+    margin-top: var(--sp-2); padding: var(--sp-1) var(--sp-3);
+    font-family: var(--ff-sans); font-size: var(--fs-xs); font-weight: 600;
+    color: var(--c-primary); background: var(--c-bg);
+    border: 1px solid var(--c-border); border-radius: var(--r-sm);
+    cursor: pointer; transition: all 0.15s ease;
+}
+.chart-interactive:hover { background: var(--c-surface); border-color: var(--c-primary); }
+.chart-modal {
+    position: fixed; inset: 0; z-index: 2000;
+    background: rgba(15,23,42,0.6);
+    display: flex; align-items: center; justify-content: center; padding: var(--sp-6);
+}
+.chart-modal__box {
+    background: var(--c-surface); border-radius: var(--r-lg);
+    padding: var(--sp-6); max-width: 960px; width: 100%; max-height: 90vh;
+    box-shadow: var(--sh-lg); position: relative; overflow: auto;
+}
+.chart-modal__close {
+    position: absolute; top: var(--sp-2); right: var(--sp-4);
+    font-size: var(--fs-2xl); line-height: 1; color: var(--c-text-2);
+    background: none; border: none; cursor: pointer;
+}
+.chart-modal__close:hover { color: var(--c-text); }
+.chart-modal__plot { width: 100%; }
+@media (max-width: 640px) {
+    .chart-modal { padding: var(--sp-2); }
+    .chart-modal__box { padding: var(--sp-4); }
+}
 .report h1, .report h2, .report h3, .report h4 { scroll-margin-top: 96px; }
 .report { animation: ra-fade 0.25s ease; }
 @keyframes ra-fade { from { opacity: 0; } to { opacity: 1; } }

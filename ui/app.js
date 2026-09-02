@@ -207,6 +207,79 @@ function renderMermaidDiagrams(){
     return
 }
 
+// ---- Phase G: on-demand interactive chart view (lazy Plotly, never on the
+// main page — the report stays zero-JS/stable; the modal loads Plotly only
+// when an analyst asks for it) ----
+var raPlotlyPromise = null;
+function ensurePlotly(){
+    if (typeof window.Plotly !== "undefined") return Promise.resolve(window.Plotly);
+    if (raPlotlyPromise) return raPlotlyPromise;
+    raPlotlyPromise = new Promise(function(resolve, reject){
+        var s = document.createElement("script");
+        s.src = "https://cdn.plot.ly/plotly-2.32.0.min.js";
+        s.onload = function(){ resolve(window.Plotly); };
+        s.onerror = function(){ reject(new Error("Plotly CDN failed to load")); };
+        document.head.appendChild(s);
+    });
+    return raPlotlyPromise;
+}
+
+function buildInteractiveFigure(data){
+    var fig = {traces: [], layout: {}};
+    var sym = data.currency === "INR" ? "\u20B9" : data.currency === "EUR" ? "\u20AC" : "$";
+    if (data.type === "financial_trends") {
+        fig.traces.push({x: data.periods, y: data.revenue_b, name: "Revenue (" + sym + "B)", type: "bar", yaxis: "y"});
+        for (var k in data.margins_pct) {
+            fig.traces.push({x: data.periods, y: data.margins_pct[k], name: k + " margin %", type: "scatter", mode: "lines+markers", yaxis: "y2"});
+        }
+        fig.layout = {title: data.ticker + " — Revenue & Margin Trends", yaxis: {title: "Revenue (" + sym + "B)"}, yaxis2: {title: "Margin %", overlaying: "y", side: "right"}};
+    } else if (data.type === "scenario") {
+        var labels = data.scenarios.map(function(s){ return s.label; });
+        fig.traces.push({y: labels, x: data.scenarios.map(function(s){ return s.high - s.low; }), base: data.scenarios.map(function(s){ return s.low; }), type: "bar", orientation: "h", text: data.scenarios.map(function(s){ return sym + s.low.toLocaleString() + " \u2013 " + sym + s.high.toLocaleString(); }), textposition: "inside"});
+        fig.layout = {title: "Scenario-Based Valuation Range", xaxis: {title: "Price (" + sym + ")"}, barmode: "overlay"};
+    } else if (data.type === "peers") {
+        var w = 0.25, x = data.tickers.map(function(_, i){ return i; });
+        fig.traces.push({x: x.map(function(v){ return v - w; }), y: data.gross_margin_pct, name: "Gross margin %", type: "bar"});
+        fig.traces.push({x: x, y: data.op_margin_pct, name: "Operating margin %", type: "bar"});
+        fig.traces.push({x: x.map(function(v){ return v + w; }), y: data.roe_pct, name: "ROE %", type: "bar"});
+        fig.layout = {title: "Peer Comparison", xaxis: {tickvals: x, ticktext: data.tickers}, barmode: "group"};
+    } else if (data.type === "risks") {
+        fig.traces.push({x: data.risks.map(function(r){ return r.probability; }), y: data.risks.map(function(r){ return r.impact; }), text: data.risks.map(function(r){ return r.title; }), mode: "markers+text", type: "scatter", textposition: "top center", marker: {size: data.risks.map(function(r){ return 120 + r.probability * r.impact * 30; }), opacity: 0.7}});
+        fig.layout = {title: "Risk Matrix", xaxis: {tickvals: [1,2,3], ticktext: ["Low","Medium","High"]}, yaxis: {tickvals: [1,2,3,4], ticktext: ["Low","Medium","High","Critical"]}};
+    } else if (data.type === "dividends") {
+        fig.traces.push({x: data.years, y: data.dps, name: "DPS (" + sym + ")", type: "bar"});
+        fig.layout = {title: data.ticker + " — Dividend Per Share by Year"};
+    }
+    fig.layout.height = 420;
+    return fig;
+}
+
+function openInteractiveView(button){
+    var encoded = button.getAttribute("data-interactive");
+    if (!encoded) return;
+    var data;
+    try { data = JSON.parse(atob(encoded)); } catch(e) { alert("Interactive data unavailable."); return; }
+    ensurePlotly().then(function(Plotly){
+        var overlay = document.createElement("div");
+        overlay.className = "chart-modal";
+        overlay.innerHTML = '<div class="chart-modal__box"><button type="button" class="chart-modal__close" aria-label="Close">&times;</button><div class="chart-modal__plot"></div></div>';
+        overlay.querySelector(".chart-modal__close").addEventListener("click", function(){ overlay.remove(); });
+        document.body.appendChild(overlay);
+        try {
+            Plotly.newPlot(overlay.querySelector(".chart-modal__plot"), buildInteractiveFigure(data).traces, buildInteractiveFigure(data).layout, {displaylogo: false, responsive: true});
+        } catch(e) {
+            overlay.querySelector(".chart-modal__plot").textContent = "Could not render interactive view.";
+        }
+    }).catch(function(e){
+        alert("Interactive view requires the Plotly library (CDN blocked?).");
+    });
+}
+
+document.addEventListener("click", function(e){
+    var b = e.target.closest ? e.target.closest(".chart-interactive") : null;
+    if (b) openInteractiveView(b);
+});
+
 // ---- v0.2.0 export: MD / HTML / PDF (client-side, no server) ----
 var BMC_URL="https://buymeacoffee.com/nrupalakolt";
 var PREPARED_URL="https://ra.devinfo.dev";
