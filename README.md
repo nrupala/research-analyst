@@ -84,25 +84,23 @@ ETFs are valid research subjects, not just peer-discovery tools — enter an ETF
 ## Architecture
 
 ```
-research_analyst/
 ├── pyproject.toml                 # Project config, dependencies
 ├── README.md                      # This file
-├── Dockerfile                     # Multi-stage production build
-├── docker-compose.yml             # One-command local development
+├── deploy/native/                 # Native installs: systemd / launchd / NSSM (no Docker)
 ├── capacitor.config.ts            # Mobile app (APK/IPA) via Capacitor
 ├── research_analyst/
 │   ├── __init__.py
 │   ├── config.py                  # Environment-driven settings (Pydantic)
 │   ├── models.py                  # All data models (Pydantic v2, strict typing)
 │   ├── enums.py                   # Report types, risk categories, domains
-│   ├── cli.py                     # CLI entry point (serve / research / health)
+│   ├── cli.py                     # CLI entry (serve / research / sync / tui / billing)
 │   ├── server.py                  # FastAPI server (REST API + static UI)
 │   ├── orchestrator.py            # Main pipeline (fetch → analyze → render)
-│   ├── providers/
-│   │   ├── sec_edgar.py           # SEC EDGAR (rate-limited, cached, async)
-│   │   ├── market_data.py         # yfinance (threaded, disk-cached)
-│   │   └── technical.py           # Technical indicators (pure NumPy, O(n))
+│   ├── data_export.py             # Paid source-data bundle (CSV/JSON)
+│   ├── sync.py                    # Local-first batch sync (SQLite + NDJSON)
+│   ├── tui.py / tui_app.py        # Terminal interface (Textual, keyboard-first)
 │   ├── engines/
+│   │   ├── lenses/                # 7 mental-model lenses (Graham..Marks, typed)
 │   │   ├── fundamental.py         # Growth, margins, balance sheet, earnings quality
 │   │   ├── technical.py           # Signal scoring, regime classification
 │   │   ├── macro.py               # Regime classification, sector sensitivity mapping
@@ -111,7 +109,9 @@ research_analyst/
 │   │   └── risk.py                # Structured risk (Prob x Impact x Timing)
 │   └── reports/
 │       ├── templates.py           # 7-step templates (all 3 modes, verbatim titles)
-│       ├── visuals.py             # Plotly codegen, Mermaid, ASCII, Markdown tables
+│       ├── visuals.py             # SVG charts (matplotlib) + D2 diagrams + Markdown tables
+│       ├── svg_charts.py          # Server-rendered SVG charts (institutional theme)
+│       ├── diagrams.py            # Server-rendered D2 diagrams
 │       └── renderer.py            # Report assembler (template + analysis → Markdown)
 ├── ui/
 │   ├── index.html                 # Single-page app (vanilla HTML)
@@ -123,8 +123,6 @@ research_analyst/
 │   └── test_models.py
 ├── .github/workflows/ci.yml       # GitHub Actions CI/CD
 ├── .gitignore
-├── .editorconfig
-├── LICENSE                        # AGPL-3.0
 └── CONTRIBUTING.md
 ```
 
@@ -135,11 +133,11 @@ research_analyst/
 | **Backend** | Python 3.11+, FastAPI, Pydantic v2 | Async, typed, fast serialization |
 | **Data** | yfinance, SEC EDGAR (XBRL) | Free, comprehensive, no API keys required |
 | **Compute** | NumPy, SciPy, Pandas | O(n) indicator algorithms, financial math |
-| **Visuals** | Plotly.js, Mermaid.js | Copy-paste-ready charts, syntax-valid diagrams |
+| **Visuals** | matplotlib SVG + D2 (server-rendered), Markdown tables | Zero chart JS on the page, crisp vector in print/PDF |
 | **UI** | Vanilla HTML/CSS/JS | Zero dependencies, instant load, platform agnostic |
 | **PWA** | Service worker, manifest.json | Installable, offline shell, mobile-ready |
 | **Mobile** | Capacitor (optional) | APK/IPA builds from the same web codebase |
-| **Deploy** | Docker, GitHub Actions | One-command deploy, automated CI/CD |
+| **Deploy** | Native services (systemd/launchd/NSSM), GitHub Actions | No Docker — OS-native + automated CI/CD |
 
 ### Design Principles
 
@@ -148,7 +146,7 @@ research_analyst/
 3. **Error handling** — every external call has retry, timeout, graceful degradation
 4. **Security** — input sanitization, rate limiting, CSP headers, no eval()
 5. **DSA discipline** — LRU caches (O(1)), token bucket rate limiters, sliding window indicators
-6. **Platform agnostic** — browser, mobile (PWA/Capacitor), CLI, Docker
+6. **Platform agnostic** - browser, mobile (PWA/Capacitor), CLI/TUI, native services
 
 ---
 
@@ -205,14 +203,31 @@ research-analyst research RELIANCE.NS
 
 # Don't know the ticker? Resolve a company name first
 research-analyst resolve "Reliance Industries"
+
+# Terminal (keyboard-first TUI) — or headless to stdout
+research-analyst tui
+research-analyst tui --query AAPL
+
+# Local-first batch sync (SQLite + NDJSON bundles, incremental)
+research-analyst sync watchlist.json --out ./data
+
+# Typed schemas (JSON Schema + TypeScript .d.ts)
+research-analyst schema-export --out exports/
+
+# Paid API keys (operator)
+research-analyst billing generate-key
 ```
 
-### Run (Docker)
+### Run natively (no Docker)
 
 ```bash
-docker compose up
+uvicorn research_analyst.server:app --host 127.0.0.1 --port 8700
 # Open http://127.0.0.1:8700
 ```
+
+Production installs use the OS's native service manager — see
+`deploy/native/` (systemd on Linux, launchd on macOS, NSSM on Windows) and
+`docs/DISTRIBUTION.md`. **No containers anywhere.**
 
 ---
 
@@ -345,6 +360,27 @@ research-analyst serve --reload --debug
 ## License
 
 AGPL-3.0 — See [LICENSE](LICENSE).
+
+### Open-Core Model
+
+The engine is **open source (AGPL-3.0)** and free: all research reports, the
+web/PWA app, CLI, TUI, sync, and typed-export layer are open.
+
+**Commercial (paid) surfaces** are separate entitlements, not binaries:
+- **Source-data downloads** — the raw CSV/JSON bundle behind any report
+  (`POST /api/research/data`, X-RA-Key gate) for all paid customers.
+- **API keys / higher volume** — per-key entitlements for B2B integration.
+- **White-label** — branded reports for advisor/enterprise use.
+
+See `docs/MONETIZATION.md` + `docs/API-REFERENCE.md` for the mapping.
+Nothing in the free tier is paywalled; the paid tiers add convenience and
+workflow features on top of the same engine.
+
+### Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). All changes flow through
+**feature branches + PRs** (phased-delivery): tests gate CI (pytest + headless
+UI suites), no direct-to-main, each PR is revertible.
 
 ---
 
