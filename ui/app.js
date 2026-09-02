@@ -1,6 +1,6 @@
 "use strict";
 var dom={form:document.getElementById("research-form"),ticker:document.getElementById("ticker"),reportType:document.getElementById("report-type"),timeframe:document.getElementById("timeframe"),btnSubmit:document.getElementById("btn-submit"),btnText:document.getElementById("btn-text"),btnSpinner:document.getElementById("btn-spinner"),status:document.getElementById("status"),statusText:document.getElementById("status-text"),progressBar:document.getElementById("progress-bar"),errorPanel:document.getElementById("error-panel"),errorMessage:document.getElementById("error-message"),btnRetry:document.getElementById("btn-retry"),results:document.getElementById("results"),metaBar:document.getElementById("meta-bar"),reportTabs:document.getElementById("report-tabs"),reportContent:document.getElementById("report-content"),btnAbout:document.getElementById("btn-about"),aboutModal:document.getElementById("about-modal"),btnCloseAbout:document.getElementById("btn-close-about"),modeSingle:document.getElementById("mode-single"),modeCompare:document.getElementById("mode-compare"),compareForm:document.getElementById("compare-form"),compareTickers:document.getElementById("compare-tickers"),compareTimeframe:document.getElementById("compare-timeframe"),compareError:document.getElementById("compare-error"),btnCompare:document.getElementById("btn-compare"),btnCompareText:document.getElementById("btn-compare-text"),btnCompareSpinner:document.getElementById("btn-compare-spinner"),btnGetApp:document.getElementById("btn-getapp"),getappModal:document.getElementById("getapp-modal"),btnCloseGetapp:document.getElementById("btn-close-getapp"),resolveCandidates:document.getElementById("resolve-candidates")};
-var currentReports=[],activeTabIndex=0,isLoading=false,currentMode="single";
+var currentReports=[],activeTabIndex=0,isLoading=false,currentMode="single",activeTicker="";
 // ---- v0.2.2: first-use disclaimer acknowledgment gate ----
 function initDisclaimerGate() {
   const gate = document.getElementById('ra-disclaimer-gate');
@@ -112,6 +112,7 @@ async function runResearchTicker(ticker){
         var data=await resp.json();
         showStatus("Rendering...",90);
         currentReports=data.reports_markdown||[];
+        activeTicker=(data.ticker||ticker||"").trim();
         renderMetaBar(data);
         renderTabs(data.reports||[]);
         await renderReport(0);
@@ -350,6 +351,10 @@ function addExportToolbar(){
     var bar=document.createElement("div");
     bar.id="export-toolbar";bar.className="export-toolbar";
     var defs=[["Download MD",exportMD],["Download HTML",exportHTML],["Download PDF",exportPDF]];
+    // Paid feature (8c-2): source-data bundle (CSV/JSON) behind the report
+    if(typeof activeTicker!=="undefined"&&activeTicker){
+        defs.push(["Download data (CSV/JSON)",downloadSourceData]);
+    }
     defs.forEach(function(d){
         var b=document.createElement("button");
         b.type="button";b.className="btn btn--secondary";b.textContent=d[0];
@@ -357,6 +362,34 @@ function addExportToolbar(){
         bar.appendChild(b)
     });
     dom.reportContent.parentNode.insertBefore(bar,dom.reportContent)
+}
+
+// Paid source-data download (CSV/JSON). The endpoint is gated server-side by
+// X-RA-Key when paid keys are configured; the UI asks for a key if the first
+// attempt is rejected with 401.
+function downloadSourceData(){
+    var ticker=typeof activeTicker!=="undefined"&&activeTicker?activeTicker:(dom.ticker.value||"").trim();
+    if(!ticker){alert("Run a report first, or enter a ticker.");return}
+    var attempt=function(key){
+        var headers={"Content-Type":"application/json"};
+        if(key)headers["X-RA-Key"]=key;
+        fetch("/api/research/data?format=json",{method:"POST",headers:headers,body:JSON.stringify({ticker:ticker,report_type:dom.reportType.value||null})})
+        .then(function(res){
+            if(res.status===401){
+                var k=prompt("This is a paid feature.\nEnter your API key (X-RA-Key):");
+                if(k)attempt(k.trim());
+                return;
+            }
+            if(!res.ok)throw new Error("HTTP "+res.status);
+            return res.json();
+        })
+        .then(function(data){
+            if(!data)return;
+            downloadBlob(JSON.stringify(data,null,2),"application/json",ticker+"_source_data.json");
+        })
+        .catch(function(e){alert("Source-data download failed: "+e.message)});
+    };
+    attempt(null)
 }
 
 // ---- v0.2.0 comparative: multi-ticker input, validation, /api/compare ----
