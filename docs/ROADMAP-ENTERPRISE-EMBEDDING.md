@@ -215,6 +215,11 @@ native service with zero Docker; install scripts documented + smoke-tested.
   system needed to start); the existing entitlement shadow module gets teeth.
 - **8c. Pricing artifacts:** per-seat tiers ($5k–15k/yr enterprise framing per the docx),
   white-label footer option (reuses watermark infra).
+- **8c-2. Source-data download (all paid tiers):** per-report source data bundle (CSV +
+  JSON of the underlying data: prices, financials, metrics, scenarios, peer values) —
+  a paid-customer feature; the free data itself stays free, this is an additional
+  convenience/workflow feature for paid customers. Endpoint `GET /api/research/data`
+  (key-gated) + `Download data (CSV/JSON)` button in the UI toolbar.
 - **8d. Compliance:** educational-only framing enforced (disclaimer + "no prescriptive advice"
   copy audit); attribution phrasing audit (Phase 5c).
 
