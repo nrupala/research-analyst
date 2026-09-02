@@ -37,6 +37,7 @@ from ..models import (
     ValuationRange,
 )
 from .templates import ReportTemplate, StepTemplate, get_template
+from .. import education
 from .visuals import VisualEngine
 from .currency import money
 
@@ -445,6 +446,13 @@ class ReportRenderer:
 
         table = VisualEngine.table_key_metrics(profile, financials, prices.current_price, pe)
         visuals.append(table)
+
+        # Phase 4: educational context — per-metric "what it means / what it
+        # indicates" for the key metrics just shown (deterministic templates).
+        for metric in ("pe_ratio", "debt_to_equity", "roe"):
+            block = education.context_block(metric)
+            if block:
+                parts.append(block)
 
         # Fundamental headline
         if fundamental:
@@ -877,6 +885,11 @@ class ReportRenderer:
                 parts.append(f"- **Consensus:** {vp.consensus_view}")
                 parts.append(f"- **Variant View:** {vp.variant_view}")
                 parts.append(f"- **Why It Matters:** {vp.why_it_matters}")
+
+            # Phase 4: educational playbook + framework note in the valuation step
+            parts.append("")
+            parts.append(education.render_playbook("valuation_sanity"))
+            parts.append(education.EDUCATIONAL_NOTE)
         else:
             gaps.append("Valuation range not available.")
 
