@@ -67,6 +67,9 @@ jobs:
 
       - name: UI markdown link rendering test (headless, gating)
         run: node ui/tests/markdown_links.test.mjs
+
+      - name: UI collapsible sections test (headless, gating)
+        run: node ui/tests/collapsible_sections.test.mjs
   deploy-fly:
     name: Deploy to Fly.io
     runs-on: ubuntu-latest
