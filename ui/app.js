@@ -194,44 +194,15 @@ async function renderReport(idx){
     var html=mdToHTML(md);
     dom.reportContent.innerHTML=html;
     await new Promise(function(r){requestAnimationFrame(r)});
-    renderPlotlyCharts();
     await renderMermaidDiagrams();
     addExportToolbar();
     updateExportFooter()
 }
 
+// Phase F: charts are server-rendered static SVG — nothing to instantiate.
+// Kept as a named no-op for export/print stripping hooks and legacy safety.
 function renderPlotlyCharts(){
-    if(typeof Plotly==="undefined")return;
-    var isMobile=window.matchMedia&&window.matchMedia("(max-width: 640px)").matches;
-    var divs=document.querySelectorAll(".plotly-chart-data");
-    divs.forEach(function(div,i){
-        var raw=div.getAttribute("data-plotly");
-        if(!raw)return;
-        try{
-            var data;
-            // b64-encoded payloads (current) or raw JSON (legacy cached reports)
-            if(raw.charAt(0)==="{"){data=JSON.parse(raw)}
-            else{data=JSON.parse(atob(raw))}
-            var layout=data.layout||{};
-            // Fluid charts/maps: fill the column and let Plotly own sizing rather
-            // than honoring any fixed width/height the server baked in.
-            layout.autosize=true;delete layout.width;
-            if(!layout.height)layout.height=isMobile?300:420;
-            layout.margin=layout.margin||(isMobile?{l:40,r:12,t:30,b:34}:{l:52,r:18,t:38,b:42});
-            layout.font=layout.font||{family:"Inter, system-ui, -apple-system, sans-serif"};
-            if(isMobile&&layout.legend)layout.legend.orientation="h";
-            var chartId="plotly-r-"+Date.now()+"-"+i;
-            var chartDiv=document.createElement("div");
-            chartDiv.id=chartId;chartDiv.className="ra-chart";chartDiv.style.width="100%";chartDiv.style.marginBottom="1rem";
-            div.parentNode.insertBefore(chartDiv,div);
-            var config={responsive:true,displayModeBar:true,displaylogo:false,scrollZoom:false,modeBarButtonsToRemove:["lasso2d","select2d"],toImageButtonOptions:{format:"png",scale:2}};
-            Plotly.newPlot(chartId,data.traces,layout,config);
-            // Container width can change without a window resize (tab switches,
-            // orientation, dialogs). ResizeObserver keeps charts/maps crisp and fitted.
-            if(typeof ResizeObserver!=="undefined"){var ro=new ResizeObserver(function(){try{Plotly.Plots.resize(chartDiv)}catch(e){}});ro.observe(chartDiv)}
-            div.style.display="none"
-        }catch(e){console.warn("Plotly render failed:",e);div.textContent="Chart could not be rendered.";div.style.color="#94a3b8";div.style.display="block"}
-    })
+    return
 }
 
 async function renderMermaidDiagrams(){
@@ -436,7 +407,7 @@ function renderCompareTabs(data){
 function mdToHTML(md){
     var h=md;
     var preserved=[];
-    h=h.replace(/<div class="(?:plotly-chart-data|mermaid-data)"[\s\S]*?<\/div>/g,function(match){preserved.push(match);return"___PRESERVED_"+(preserved.length-1)+"___"});
+    h=h.replace(/<div class="(?:plotly-chart-data|mermaid-data|chart-svg)"[\s\S]*?<\/div>/g,function(match){preserved.push(match);return"___PRESERVED_"+(preserved.length-1)+"___"});
     h=h.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     h=h.replace(/```(\w*)\n([\s\S]*?)```/g,function(_,lang,code){return'<pre><code class="language-'+(lang||"text")+'">'+code.trim()+"</code></pre>"});
     h=h.replace(/^#### (.+)$/gm,"<h4>$1</h4>");

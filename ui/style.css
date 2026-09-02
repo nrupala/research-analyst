@@ -331,12 +331,13 @@ body {
 }
 
 /* === v0.3.3: presentation polish — chart cards, print pagination, anchors === */
-.ra-chart {
+.ra-chart, .chart-svg {
     border: 1px solid var(--c-border);
     border-radius: var(--r-md);
     background: var(--c-surface);
     padding: var(--sp-2);
 }
+.chart-svg svg { display: block; }
 .report h1, .report h2, .report h3, .report h4 { scroll-margin-top: 96px; }
 .report { animation: ra-fade 0.25s ease; }
 @keyframes ra-fade { from { opacity: 0; } to { opacity: 1; } }

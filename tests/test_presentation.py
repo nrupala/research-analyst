@@ -11,8 +11,7 @@ Guards the "institutional, client-ready polish" so it doesn't rot:
 
 from __future__ import annotations
 
-import json
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 
 from research_analyst.enums import ReportType, SecurityType
 from research_analyst.models import (
@@ -26,7 +25,10 @@ from research_analyst.models import (
     ValuationRange,
     ValuationScenario,
 )
-from research_analyst.reports.visuals import PLOTLY_COLORS, VisualEngine
+from research_analyst.reports.svg_charts import C
+from research_analyst.reports.visuals import VisualEngine
+
+C_NAVY, C_GREEN, C_RED, C_VIOLET = C["navy"], C["green"], C["red"], C["violet"]
 
 
 def _financials(n: int = 3) -> list[FinancialStatement]:
@@ -52,31 +54,26 @@ def _financials(n: int = 3) -> list[FinancialStatement]:
     return fs
 
 
-def _load_plotly(visual):
+def _load_svg(visual):
     assert visual is not None
-    return json.loads(visual.content)
+    assert visual.visual_type == "svg"
+    return visual.content
 
 
 # ---------------------------------------------------------------------------
-# Shared visual language
+# Shared visual language (server-rendered SVG charts — Phase F)
 # ---------------------------------------------------------------------------
 
 
-def test_financial_trends_uses_shared_palette():
-    data = _load_plotly(VisualEngine.plotly_financial_trends(_financials(), "AAPL"))
-    layout = data["layout"]
-    # Common foundation
-    assert layout["template"] == "plotly_white"
-    assert layout["height"] == 420
-    assert layout["font"]["family"].startswith("-apple-system")
-    assert layout["margin"]["l"] == 68  # shared PLOTLY_MARGIN
-    assert "hoverlabel" in layout
-    # Traces use the shared palette, not raw hex
-    trace_colors = [t["marker"]["color"] for t in data["traces"] if t["type"] == "bar"]
-    assert trace_colors == [PLOTLY_COLORS["blue"]]
+def test_financial_trends_renders_svg():
+    svg = _load_svg(VisualEngine.svg_financial_trends(_financials(), "AAPL"))
+    assert svg.startswith("<svg")
+    assert "Margin Trends" in svg  # title present (ampersand is SVG-escaped)
+    assert "width:100%" in svg  # fluid
+    assert C_NAVY in svg  # revenue bars use the navy primary
 
 
-def test_scenario_valuation_uses_shared_palette_and_em_dash():
+def test_scenario_valuation_uses_palette_and_em_dash():
     v = ValuationRange(
         ticker="AAPL",
         current_price=100.0,
@@ -96,17 +93,14 @@ def test_scenario_valuation_uses_shared_palette_and_em_dash():
             ),
         ],
     )
-    data = _load_plotly(VisualEngine.plotly_scenario_valuation(v))
-    layout = data["layout"]
-    assert layout["template"] == "plotly_white"
-    # Em-dash in the bar text, not a hyphen
-    assert " – " in data["traces"][0]["text"][0]
-    # Colors come from the shared palette
-    bar_colors = {t["marker"]["color"] for t in data["traces"]}
-    assert PLOTLY_COLORS["green"] in bar_colors and PLOTLY_COLORS["blue"] in bar_colors
+    svg = _load_svg(VisualEngine.svg_scenario_valuation(v))
+    # Em-dash in the range label, not a hyphen
+    assert "\u2013" in svg
+    # Institutional palette present
+    assert C_GREEN in svg and C_NAVY in svg
 
 
-def test_peer_comparison_uses_shared_palette():
+def test_peer_comparison_uses_palette():
     from research_analyst.models import Competitor
 
     peers = [
@@ -121,13 +115,12 @@ def test_peer_comparison_uses_shared_palette():
             ev_ebitda=18.0, revenue_growth_yoy=0.12, roe=0.30, debt_to_equity=0.2,
         ),
     ]
-    data = _load_plotly(VisualEngine.plotly_peer_comparison("MSFT", peers))
-    assert data["layout"]["barmode"] == "group"
-    colors = {t["marker"]["color"] for t in data["traces"]}
-    assert colors == {PLOTLY_COLORS["green"], PLOTLY_COLORS["blue"], PLOTLY_COLORS["violet"]}
+    svg = _load_svg(VisualEngine.svg_peer_comparison("MSFT", peers))
+    for color in (C_GREEN, C_NAVY, C_VIOLET):
+        assert color in svg
 
 
-def test_risk_heatmap_uses_shared_palette():
+def test_risk_heatmap_uses_palette():
     risks = [
         StructuredRisk(title="Regulatory", description="", category="regulatory",
                        probability="High (>50%)", impact="Critical",
@@ -137,10 +130,9 @@ def test_risk_heatmap_uses_shared_palette():
                        timing="long_term", nature="transitory"),
     ]
     matrix = RiskMatrix(ticker="AAPL", overall_risk_score=6, key_risk_summary="x", risks=risks)
-    data = _load_plotly(VisualEngine.plotly_risk_heatmap(matrix))
-    colors = data["traces"][0]["marker"]["color"]
-    assert PLOTLY_COLORS["red"] in colors  # high-prob × critical => red
-    assert data["layout"]["template"] == "plotly_white"
+    svg = _load_svg(VisualEngine.svg_risk_heatmap(matrix))
+    assert C_RED in svg  # high-prob × critical => red
+    assert "Risk Matrix" in svg
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +202,7 @@ def test_report_markdown_unchanged_structure():
     report = ReportOutput(
         report_type=ReportType.COMPREHENSIVE,
         ticker="AAPL", title="AAPL — Comprehensive",
-        generated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 1, 1, tzinfo=UTC),
         sections=[],
     )
     md = report.to_markdown()
@@ -218,18 +210,18 @@ def test_report_markdown_unchanged_structure():
     assert "**Disclaimer:**" in md
 
 
-def test_plotly_emission_base64_quote_safe():
-    """Chart JSON with embedded ' and " (e.g. font family) must never truncate
-    the data-plotly attribute — it is base64-encoded like mermaid."""
-    import base64
+def test_svg_emission_embedded_in_report_markdown():
+    """SVG visuals embed as raw markup inside a .chart-svg div (no JSON attr
+    to truncate, no client-side rendering needed)."""
     from research_analyst.models import ReportSection, ReportVisual
 
-    payload = '{"traces": [], "layout": {"font": {"family": "-apple-system, \'Segoe UI\', Roboto"}}}'
-    assert "'" in payload and '"' in payload  # the exact quote-trapping input
-
+    svg_markup = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">'
+        '<rect width="10" height="10"/></svg>'
+    )
     visual = ReportVisual(
-        visual_type="plotly_json", title="Chart",
-        content=payload, ties_to="test", caption="",
+        visual_type="svg", title="Chart",
+        content=svg_markup, ties_to="test", caption="",
     )
     section = ReportSection(
         step_number=1, title="Step 1", content="body", visuals=[visual],
@@ -237,15 +229,10 @@ def test_plotly_emission_base64_quote_safe():
     report = ReportOutput(
         report_type=ReportType.COMPREHENSIVE,
         ticker="AAPL", title="AAPL — Comprehensive",
-        generated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 1, 1, tzinfo=UTC),
         sections=[section],
     )
     md = report.to_markdown()
-    marker = 'data-plotly="'
-    assert marker in md
-    start = md.index(marker) + len(marker)
-    end = md.index('"', start)
-    encoded = md[start:end]
-    assert "'" not in encoded and '"' not in encoded  # attribute can't break
-    decoded = base64.b64decode(encoded).decode()
-    assert decoded == payload
+    assert '<div class="chart-svg">' in md
+    assert "<svg" in md and "</svg>" in md
+    assert "data-plotly" not in md

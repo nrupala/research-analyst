@@ -96,16 +96,15 @@ def _txt(rv) -> str:
 
 class TestVisualsCurrencyUSD:
     def test_financial_trends(self):
-        t = _txt(VisualEngine.plotly_financial_trends(_financials(), "TEST"))
+        t = _txt(VisualEngine.svg_financial_trends(_financials(), "TEST"))
         assert "Revenue ($B)" in t
         assert "Revenue in billions USD" in t
         assert RUPEE not in t
 
     def test_scenario_valuation(self):
-        t = _txt(VisualEngine.plotly_scenario_valuation(_valuation()))
+        t = _txt(VisualEngine.svg_scenario_valuation(_valuation()))
         assert "Price ($)" in t
         assert "$90 \u2013 $110" in t  # em-dash range (Phase 3 presentation polish)
-        assert "Current price: $100.00" in t
         assert RUPEE not in t
 
     def test_ascii_scenario(self):
@@ -135,26 +134,26 @@ class TestVisualsCurrencyUSD:
         assert RUPEE not in t
 
     def test_dividend_history(self):
-        t = _txt(VisualEngine.plotly_dividend_history(_div()))
+        t = _txt(VisualEngine.svg_dividend_history(_div()))
         assert "DPS ($)" in t
         assert RUPEE not in t
 
 
 class TestVisualsCurrencyINR:
     def test_financial_trends(self):
-        t = _txt(VisualEngine.plotly_financial_trends(_financials(), "TEST", currency="INR"))
+        t = _txt(VisualEngine.svg_financial_trends(_financials(), "TEST", currency="INR"))
         assert f"Revenue ({RUPEE}B)" in t
         assert "Revenue in billions INR" in t
         assert "($B)" not in t
 
     def test_scenario_valuation(self):
-        t = _txt(VisualEngine.plotly_scenario_valuation(_valuation(), currency="INR"))
+        t = _txt(VisualEngine.svg_scenario_valuation(_valuation(), currency="INR"))
         assert f"Price ({RUPEE})" in t
         assert f"{RUPEE}90 \u2013 {RUPEE}110" in t  # em-dash range (Phase 3 polish)
-        assert f"Current price: {RUPEE}100.00" in t
 
     def test_ascii_scenario(self):
-        assert f"Current price: {RUPEE}100.00." in _txt(VisualEngine.ascii_scenario_chart(_valuation(), currency="INR"))
+        out = _txt(VisualEngine.ascii_scenario_chart(_valuation(), currency="INR"))
+        assert f"Current price: {RUPEE}100.00." in out
 
     def test_key_metrics(self):
         t = _txt(VisualEngine.table_key_metrics(_profile("INR"), _financials(), 100.0, 20.0))
@@ -176,7 +175,7 @@ class TestVisualsCurrencyINR:
         assert f"| **Annual Rate** | {RUPEE}2.50/share |" in t
 
     def test_dividend_history(self):
-        t = _txt(VisualEngine.plotly_dividend_history(_div(), currency="INR"))
+        t = _txt(VisualEngine.svg_dividend_history(_div(), currency="INR"))
         assert f"DPS ({RUPEE})" in t
 
 

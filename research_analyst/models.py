@@ -656,13 +656,10 @@ class ReportOutput(BaseModel):
 
             for visual in section.visuals:
                 parts.append(f"\n### {visual.title}")
-                if visual.visual_type == "plotly_json":
-                    # base64-encode the JSON (same pattern as mermaid) so the
-                    # attribute can never be truncated by embedded quotes —
-                    # the raw JSON contains ' and " (e.g. font family names).
-                    import base64 as _b64
-                    _enc = _b64.b64encode(visual.content.encode()).decode()
-                    parts.append(f'<div class="plotly-chart-data" data-plotly="{_enc}"></div>')
+                if visual.visual_type == "svg":
+                    parts.append('<div class="chart-svg">')
+                    parts.append(visual.content)
+                    parts.append("</div>")
                 elif visual.visual_type == "mermaid":
                     import base64 as _b64
                     _enc = _b64.b64encode(visual.content.encode()).decode()
