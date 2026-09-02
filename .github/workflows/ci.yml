@@ -61,6 +61,9 @@ jobs:
 
       - name: UI disclaimer gate test (headless, gating)
         run: node ui/tests/disclaimer_gate.test.mjs
+
+      - name: UI chart HTML preservation test (headless, gating)
+        run: node ui/tests/chart_html_preservation.test.mjs
   deploy-fly:
     name: Deploy to Fly.io
     runs-on: ubuntu-latest
