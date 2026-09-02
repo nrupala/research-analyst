@@ -9,7 +9,6 @@ from typing import Any
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
-
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -104,13 +103,35 @@ class ServerConfig(BaseSettings):
     model_config = {"env_prefix": "RA_SERVER_"}
 
 
+class BillingConfig(BaseSettings):
+    """Paid-feature gating (Phase 8 - simple key issuance, no account system).
+
+    When RA_BILLING_PAID_KEYS is set (comma-separated keys), paid endpoints
+    (e.g. source-data download) require a valid X-RA-Key header. When unset,
+    the operator has not activated paid gating and the endpoints stay open
+    (local/demo use) - activation = setting the env var. No secrets here.
+    """
+
+    paid_keys: list[str] = Field(default_factory=list, description="Comma-separated paid API keys.")
+
+    model_config = {"env_prefix": "RA_BILLING_"}
+
+    @field_validator("paid_keys", mode="before")
+    @classmethod
+    def _parse_keys(cls, v: Any) -> list[str]:
+        if isinstance(v, str):
+            return [k.strip() for k in v.split(",") if k.strip()]
+        return v or []
+
+
 class Settings(BaseSettings):
-    """Root settings — aggregates all sub-configs."""
+    """Root settings - aggregates all sub-configs."""
 
     sec: SECConfig = Field(default_factory=SECConfig)
     market: MarketDataConfig = Field(default_factory=MarketDataConfig)
     analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
+    billing: BillingConfig = Field(default_factory=BillingConfig)
 
     # Global
     debug: bool = False
