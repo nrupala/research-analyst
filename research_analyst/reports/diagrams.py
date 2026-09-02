@@ -34,16 +34,15 @@ def d2_business_model(
     revenue_segments: list[str] | None = None,
     customers: list[str] | None = None,
 ) -> str:
-    """D2 source: segments -> {ticker} -> customers."""
+    """D2 source: segments -> {ticker} -> customers (simple edges)."""
     segments = revenue_segments or ["Product sales", "Services"]
     customers = customers or ["Consumers", "Enterprises", "Government"]
-    seg_node = _join_nodes(segments)
-    cust_node = _join_nodes(customers)
-    return "\n".join([
-        f'"company": {ticker}',
-        "direction: right",
-        f"{seg_node} -> \"company\" -> {cust_node}",
-    ]) + "\n"
+    lines = [f"company: {ticker}", "direction: right"]
+    for seg in segments:
+        lines.append(f'"{seg}" -> company')
+    for cust in customers:
+        lines.append(f'company -> "{cust}"')
+    return "\n".join(lines) + "\n"
 
 
 def _join_nodes(items: list[str]) -> str:
@@ -92,19 +91,13 @@ def d2_decision_framework(
     favors = favors or []
     disfavors = disfavors or []
     catalysts = catalysts or []
-    lines: list[str] = []
-    if favors:
-        lines.append("favors: {" + " | ".join(f'"{f[:40]}"' for f in favors[:4]) + "}")
-    if disfavors:
-        lines.append("disfavors: {" + " | ".join(f'"{f[:40]}"' for f in disfavors[:4]) + "}")
-    if catalysts:
-        lines.append("catalysts: {" + " | ".join(f'"{c[:40]}"' for c in catalysts[:3]) + "}")
-    edges = []
-    for grp in ("favors", "disfavors", "catalysts"):
-        if grp in "\n".join(lines):
-            edges.append(f'"{grp}" -> "decision"')
-    lines.extend(edges)
-    lines.append(f'"decision": "{ticker} — monitoring framework"')
+    lines = [f'decision: "{ticker} — monitoring framework"']
+    for f in favors[:4]:
+        lines.append(f'"favors: {f[:40]}" -> decision')
+    for d in disfavors[:4]:
+        lines.append(f'"disfavors: {d[:40]}" -> decision')
+    for c in catalysts[:3]:
+        lines.append(f'"catalyst: {c[:40]}" -> decision')
     return "\n".join(lines) + "\n"
 
 
