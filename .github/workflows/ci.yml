@@ -64,6 +64,9 @@ jobs:
 
       - name: UI chart HTML preservation test (headless, gating)
         run: node ui/tests/chart_html_preservation.test.mjs
+
+      - name: UI markdown link rendering test (headless, gating)
+        run: node ui/tests/markdown_links.test.mjs
   deploy-fly:
     name: Deploy to Fly.io
     runs-on: ubuntu-latest
