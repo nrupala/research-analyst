@@ -253,7 +253,7 @@ async function exportHTML(){
     var src=dom.reportContent;
     if(!src)return;
     var clone=src.cloneNode(true);
-    clone.querySelectorAll(".plotly-chart-data,.mermaid-data,.modebar,.modebar-container,script").forEach(function(n){n.remove()});
+    clone.querySelectorAll(".modebar,.modebar-container,script").forEach(function(n){n.remove()});
     clone.querySelectorAll("details.report-section").forEach(function(d){d.open=true});
     var cssText="";
     try{var r=await fetch("/style.css");if(r.ok)cssText=await r.text()}catch(e){}
