@@ -73,6 +73,9 @@ jobs:
 
       - name: UI tabs + empty-state test (headless, gating)
         run: node ui/tests/tabs_empty_state.test.mjs
+
+      - name: UI interactive chart test (headless, gating)
+        run: node ui/tests/interactive_chart.test.mjs
   deploy-fly:
     name: Deploy to Fly.io
     runs-on: ubuntu-latest
