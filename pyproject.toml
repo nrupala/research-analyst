@@ -38,6 +38,9 @@ dev = [
     "mypy>=1.8",
     "ruff>=0.3",
 ]
+tui = [
+    "textual>=0.60",
+]
 
 [project.scripts]
 research-analyst = "research_analyst.cli:main"

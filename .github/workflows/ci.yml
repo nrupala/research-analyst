@@ -76,6 +76,9 @@ jobs:
 
       - name: UI interactive chart test (headless, gating)
         run: node ui/tests/interactive_chart.test.mjs
+
+      - name: UI paid data download test (headless, gating)
+        run: node ui/tests/download_data.test.mjs
   deploy-fly:
     name: Deploy to Fly.io
     runs-on: ubuntu-latest

@@ -1,0 +1,5 @@
+{
+  "tickers": ["AAPL", "MSFT", "NVDA", "RELIANCE.NS", "SPY"],
+  "report_type": "comprehensive",
+  "timeframe": "1Y"
+}

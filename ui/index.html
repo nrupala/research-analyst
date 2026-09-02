@@ -164,6 +164,14 @@
                 <li>Technical indicators (computed from price data)</li>
                 <li>Macro proxies (yields, VIX, indices)</li>
             </ul>
+            <h3>Integrations &amp; Developer Surfaces</h3>
+            <ul>
+                <li><strong>API:</strong> <code>POST /api/research</code>, <code>/api/compare</code>, <code>/api/resolve</code>, <code>/api/disclaimer</code> — formats <code>json</code>, <code>xml</code>, <code>markdown</code>, <code>html</code>, <code>ts</code> (<code>?format=</code> or Accept header; <code>schema_version</code> on every payload).</li>
+                <li><strong>Typed schemas:</strong> JSON Schema + TypeScript <code>.d.ts</code> — <code>research-analyst schema-export --out exports/</code>.</li>
+                <li><strong>Terminal (TUI):</strong> <code>research-analyst tui</code> (keyboard-first) or headless <code>research-analyst tui --query AAPL</code>.</li>
+                <li><strong>Local sync:</strong> <code>research-analyst sync watchlist.json --out ./data</code> — overnight SQLite/NDJSON bundles, incremental.</li>
+                <li><strong>Source data (paid):</strong> the raw CSV/JSON behind any report via the <em>Download data</em> button or <code>POST /api/research/data</code> (X-RA-Key gate).</li>
+            </ul>
             <p class="modal__disclaimer"><strong>Disclaimer:</strong> For informational and educational purposes only. Not financial advice or a recommendation to buy or sell any security.</p>
             <button class="btn btn--secondary" id="btn-close-about" type="button">Close</button>
         </div>
