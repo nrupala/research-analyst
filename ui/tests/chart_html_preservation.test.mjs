@@ -144,6 +144,15 @@ test("the SVG chart block is preserved verbatim", () => {
   assert.ok(html.includes("<svg"), "svg markup lost");
 });
 
+test("the interactive-view button is preserved verbatim (never raw base64 text)", () => {
+  const ctx = loadApp();
+  const btn = '<button type="button" class="chart-interactive" data-interactive="eyJ0eXBlIjogInNjZW5hcmlvIn0=">Interactive view \u2197</button>';
+  const html = ctx.mdToHTML("## Step 1\n\n" + CHART_DIV + "\n\n" + btn + "\n\nTail text.");
+  assert.ok(html.includes(btn), "chart-interactive button was not preserved verbatim");
+  assert.ok(!html.includes("data-interactive=&quot;"), "button attribute was HTML-escaped");
+  assert.ok(!html.includes("&lt;button"), "button tag was escaped to text");
+});
+
 test("the Mermaid/D2 block is preserved verbatim", () => {
   const html = loadApp().mdToHTML(FIXTURE);
   assert.ok(html.includes(DIAGRAM_DIV), "diagram block was not preserved verbatim");
