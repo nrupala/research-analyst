@@ -64,6 +64,25 @@ if (existsSync(cl)) {
   }
 }
 
+// 6) pyproject.toml - the Python package version (server side)
+const py = "pyproject.toml";
+if (existsSync(py)) {
+  const src = readFileSync(py, "utf8");
+  const out = src.replace(/^version = "[^"]*"/m, `version = "${ver}"`);
+  writeFileSync(py, out);
+  log.push(`pyproject.toml  ${out !== src ? "version -> " + ver : "NO MATCH"}`);
+}
+
+// 7) research_analyst/__init__.py - the runtime __version__ the API serves
+const init = "research_analyst/__init__.py";
+if (existsSync(init)) {
+  const src = readFileSync(init, "utf8");
+  let out = src.replace(/__version__ = "[^"]*"/, `__version__ = "${ver}"`);
+  out = out.replace(/Version: \d+\.\d+\.\d+/, `Version: ${ver}`);
+  writeFileSync(init, out);
+  log.push(`research_analyst/__init__.py  __version__ -> ${ver}`);
+}
+
 console.log("bumped to " + ver + ":");
 for (const line of log) console.log("  " + line);
 console.log(`next: git commit -am "chore: v${ver}" && git tag v${ver} && git push --follow-tags`);
