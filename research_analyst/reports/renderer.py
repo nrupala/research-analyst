@@ -167,6 +167,9 @@ class ReportRenderer:
 
         title = template.title_format.format(ticker=profile.ticker)
 
+        # Phase 5: mental-model lenses (typed results ride on ReportOutput)
+        lenses = self._compute_lenses(ctx)
+
         return ReportOutput(
             report_type=report_type,
             ticker=profile.ticker,
@@ -178,7 +181,39 @@ class ReportRenderer:
             capital_allocation=capital_allocation,
             dividend=dividend,
             security_type=profile.security_type,
+            lenses=lenses,
         )
+
+    def _compute_lenses(self, ctx: dict[str, Any]) -> list[Any]:
+        """Compute all mental-model lenses over the available typed data."""
+        from ..engines.lenses import LensInput, run_all
+
+        profile: CompanyProfile = ctx["profile"]
+        financials = ctx.get("financials") or []
+        latest = financials[-1] if financials else None
+        prior = financials[-2] if len(financials) > 1 else None
+        prices = ctx.get("prices")
+        analyst = None
+        fundamental = ctx.get("fundamental")
+        if fundamental is not None:
+            analyst = getattr(fundamental, "analyst_estimates", None)
+
+        lens_input = LensInput(
+            ticker=profile.ticker,
+            current_price=prices.current_price if prices else None,
+            latest=latest,
+            prior=prior,
+            shares_outstanding=latest.shares_outstanding if latest else None,
+            currency=profile.currency,
+            analyst=analyst,
+            fundamental=fundamental,
+            valuation=ctx.get("valuation"),
+            raw={
+                "beta": getattr(ctx.get("technical_indicators"), "beta", None),
+                "dividend_yield": getattr(ctx.get("dividend"), "current_yield", None),
+            },
+        )
+        return run_all(lens_input)
 
     # ------------------------------------------------------------------
     # Step renderers — dispatch by report type + step number
