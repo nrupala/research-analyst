@@ -113,7 +113,7 @@ test("crossref-style line with italic wrapper still links", () => {
 
 test("chart blocks unaffected by the link pass", () => {
   const ctx = loadApp();
-  const chart = `<div class="plotly-chart-data" data-plotly="e30="></div>`;
+  const chart = `<div class="chart-svg"><svg xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto" viewBox="0 0 10 10"></svg></div>`;
   const html = ctx.mdToHTML("Intro with [link](https://x.example).\n\n" + chart + "\n\nTail.");
   assert.ok(html.includes(chart), "chart block was mangled by the link converter");
   assert.ok(html.includes("<a href=\"https://x.example\""), "prose link did not convert");
