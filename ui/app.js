@@ -299,6 +299,7 @@ async function exportHTML(){
     if(!src)return;
     var clone=src.cloneNode(true);
     clone.querySelectorAll(".plotly-chart-data,.mermaid-data,.modebar,.modebar-container,script").forEach(function(n){n.remove()});
+    clone.querySelectorAll("details.report-section").forEach(function(d){d.open=true});
     var cssText="";
     try{var r=await fetch("/style.css");if(r.ok)cssText=await r.text()}catch(e){}
     var doc="<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n"+
@@ -442,6 +443,13 @@ function mdToHTML(md){
     h=h.replace(/<p>(<pre>)/g,"$1");h=h.replace(/(<\/pre>)<\/p>/g,"$1");
     h=h.replace(/<p>(<div)/g,"$1");h=h.replace(/(<\/div>)<\/p>/g,"$1");
     for(var i=0;i<preserved.length;i++){h=h.replace("___PRESERVED_"+i+"___",preserved[i])}
+    // Phase C: collapsible report sections — wrap every <h2> block in a
+    // <details class="report-section" open> so analysts can collapse steps.
+    // Open by default (nothing hidden on first load); beforeprint + export
+    // force-open so print/PDF never drops content.
+    h=h.replace(/<h2>([^<]*)<\/h2>([\s\S]*?)(?=<h2>|$)/g,function(_,head,body){
+      return '<details class="report-section" open><summary><h2>'+head+'</h2></summary><div class="report-section__body">'+body+'</div></details>';
+    });
     return h
 }
 
@@ -453,3 +461,12 @@ function esc(s){var d=document.createElement("div");d.textContent=s;return d.inn
 if (typeof requestAnimationFrame === 'function') requestAnimationFrame(initDisclaimerGate);
 else if (typeof setTimeout === 'function') setTimeout(initDisclaimerGate, 0);
 else initDisclaimerGate();
+
+// Print: open every collapsible section so the paper/PDF copy is complete.
+if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('beforeprint', function () {
+        if (typeof document !== 'undefined' && document.querySelectorAll) {
+            document.querySelectorAll('details.report-section').forEach(function (d) { d.open = true; });
+        }
+    });
+}
