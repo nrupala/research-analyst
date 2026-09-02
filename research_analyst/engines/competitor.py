@@ -19,11 +19,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from decimal import Decimal
-
 from typing import TYPE_CHECKING
 
-from ..models import Assumption, CompanyProfile, Competitor, CompetitiveLandscape
+from ..models import Assumption, CompanyProfile, CompetitiveLandscape, Competitor
 
 if TYPE_CHECKING:
     from .fundamental import FundamentalAnalysis
@@ -96,7 +94,7 @@ class CompetitorEngine:
         self,
         profile: CompanyProfile,
         peers: list[Competitor],
-        fundamental: "FundamentalAnalysis | None" = None,
+        fundamental: FundamentalAnalysis | None = None,
     ) -> CompetitiveAnalysis:
         """Run competitive analysis.
 
@@ -317,7 +315,7 @@ class CompetitorEngine:
     def _target_from_profile(
         profile: CompanyProfile,
         peers: list[Competitor],
-        fundamental: "FundamentalAnalysis | None" = None,
+        fundamental: FundamentalAnalysis | None = None,
     ) -> Competitor:
         """Create a Competitor for the target, populated with its own
         comparable metrics from fundamental analysis.

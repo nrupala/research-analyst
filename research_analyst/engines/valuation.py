@@ -19,10 +19,8 @@ Design:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from decimal import Decimal
 
-from ..config import settings
 from ..models import (
     Assumption,
     CompanyProfile,
@@ -415,9 +413,9 @@ class ValuationEngine:
                     f"Our base case (${base_mid:.0f}) is {diff_pct:.1f}% above consensus."
                 )
                 variant = (
-                    f"Our assumptions imply more favorable outcomes than the street. "
-                    f"Key differentiators: the operating assumptions in our base case "
-                    f"may embed growth or margin expansion the consensus has not yet priced."
+                    "Our assumptions imply more favorable outcomes than the street. "
+                    "Key differentiators: the operating assumptions in our base case "
+                    "may embed growth or margin expansion the consensus has not yet priced."
                 )
                 why = (
                     f"If our assumptions prove correct, the current price "

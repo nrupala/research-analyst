@@ -11,7 +11,16 @@ from __future__ import annotations
 import math
 from decimal import Decimal
 
-from research_analyst.engines.lenses import graham, greenblatt, lynch, run_all
+from research_analyst.engines.lenses import (
+    buffett,
+    dalio,
+    damodaran,
+    graham,
+    greenblatt,
+    lynch,
+    marks,
+    run_all,
+)
 from research_analyst.engines.lenses.base import ATTRIBUTION, LensInput, bvps, ncav, pct_change
 
 
@@ -134,13 +143,104 @@ def test_lynch_declining_eps_no_peg():
 
 
 # ---------------------------------------------------------------------------
+# Damodaran
+# ---------------------------------------------------------------------------
+
+
+def test_damodaran_intrinsic_value():
+    # FCF 9B, growth 20% (capped at 15% for stage), WACC 10%, 2B shares
+    result = damodaran.run(_input())
+    assert result.raw_values["fcf"] == 9_000_000_000
+    assert result.raw_values["intrinsic_value_per_share"] is not None
+    assert any(s.label == "Assumptions" for s in result.signals)
+    assert "Damodaran" in result.attribution
+
+
+def test_damodaran_missing_data_gaps():
+    result = damodaran.run(_input(current_price=None, latest=None))
+    assert result.raw_values["intrinsic_value_per_share"] is None
+
+
+# ---------------------------------------------------------------------------
+# Buffett
+# ---------------------------------------------------------------------------
+
+
+def test_buffett_owner_earnings():
+    # OCF 10B - capex 1B = 9B owner earnings -> favor
+    from decimal import Decimal
+
+    result = buffett.run(_input(latest=_stmt(
+        operating_cash_flow=Decimal("10_000_000_000"), capex=Decimal("1_000_000_000"),
+        free_cash_flow=Decimal("9_000_000_000"), gross_margin=0.50, roe=0.25,
+        debt_to_equity=0.3,
+    )))
+    assert result.raw_values["owner_earnings"] == 9_000_000_000
+    assert any(s.label == "Owner Earnings" and s.read == "favor" for s in result.signals)
+    assert any(s.label == "Gross Margin Persistence" and s.read == "favor" for s in result.signals)
+    assert "Buffett" in result.attribution
+
+
+def test_buffett_caution_when_weak():
+    from decimal import Decimal
+
+    result = buffett.run(_input(latest=_stmt(
+        operating_cash_flow=Decimal("1_000_000_000"), capex=Decimal("3_000_000_000"),
+        free_cash_flow=Decimal("-2_000_000_000"), gross_margin=0.10, roe=0.04,
+        debt_to_equity=1.5,
+    )))
+    assert any(s.label == "Owner Earnings" and s.read == "caution" for s in result.signals)
+    assert any(s.label == "Return on Equity" and s.read == "caution" for s in result.signals)
+
+
+# ---------------------------------------------------------------------------
+# Dalio
+# ---------------------------------------------------------------------------
+
+
+def test_dalio_yield_framing():
+    result = dalio.run(_input(raw={"dividend_yield": 0.07}))
+    assert result.raw_values["dividend_yield"] == 0.07
+    assert any(s.label == "Income vs Rate Regime" for s in result.signals)
+    assert any("Allocation Lever" == s.label for s in result.signals)
+    assert "Dalio" in result.attribution
+
+
+def test_dalio_beta_framing():
+    result = dalio.run(_input(raw={"beta": 1.6}))
+    assert any(s.label == "Market Sensitivity (Beta)" and s.read == "caution" for s in result.signals)
+
+
+# ---------------------------------------------------------------------------
+# Marks
+# ---------------------------------------------------------------------------
+
+
+def test_marks_cycle_position():
+    # P/E = 50/3 = 16.67 -> mid-band (12-22) -> neutral position ~47%
+    result = marks.run(_input())
+    assert result.raw_values["pe_ttm"] == round(50 / 3, 2)
+    assert 0.3 < result.raw_values["cycle_position"] < 0.7
+    assert any(s.label == "Second-Level Question" for s in result.signals)
+    assert "Marks" in result.attribution
+
+
+def test_marks_caution_when_extreme():
+    result = marks.run(_input(latest=_stmt(eps_diluted=1.0)))  # P/E 50 -> top of band
+    assert result.raw_values["cycle_position"] >= 0.7
+    assert any(s.label == "Cycle Position (P/E vs band)" and s.read == "caution" for s in result.signals)
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
 
 def test_run_all_returns_typed_results():
     results = run_all(_input())
-    assert [r.lens for r in results] == ["graham", "greenblatt", "lynch"]
+    assert [r.lens for r in results] == [
+        "graham", "greenblatt", "lynch", "damodaran", "buffett", "dalio", "marks",
+    ]
     for r in results:
         assert r.educational_only
         assert "not affiliated with or endorsed by" in r.attribution
@@ -157,4 +257,34 @@ def test_run_all_isolates_lens_failure():
     # each result is still a typed LensResult (with an error note where failed)
     for r in results:
         assert isinstance(r, object)  # type discipline: all are LensResult-shaped
-    assert len(results) == 3
+    assert len(results) == 7
+
+
+def test_report_output_renders_lenses_section():
+    """A rendered ReportOutput carries the typed lenses + markdown section."""
+    from datetime import UTC, datetime
+
+    from research_analyst.engines.lenses import LensResult, LensSignal
+    from research_analyst.enums import ReportType
+    from research_analyst.models import ReportOutput
+
+    report = ReportOutput(
+        report_type=ReportType.COMPREHENSIVE,
+        ticker="AAPL", title="AAPL — Comprehensive",
+        generated_at=datetime(2026, 1, 1, tzinfo=UTC),
+        sections=[],
+        lenses=[
+            LensResult(
+                lens="graham", name="Graham — Margin of Safety",
+                summary="screen applied", signals=[
+                    LensSignal(label="Graham Number", value="34.37", read="caution", note="x"),
+                ],
+                attribution="public-domain methodology",
+            )
+        ],
+    )
+    md = report.to_markdown()
+    assert "Mental-Model Lenses (Educational Frameworks)" in md
+    assert "Graham — Margin of Safety" in md
+    assert "▼ Caution" in md
+    assert "public-domain methodology" in md

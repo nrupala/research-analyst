@@ -342,6 +342,7 @@ def test_wire_payload_unchanged_by_typing():
                 "dividend": None,
                 "security_type": None,
                 "disclaimer": "",
+                "lenses": [],
             }
         ],
         "metadata": {
