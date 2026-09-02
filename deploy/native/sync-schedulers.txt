@@ -1,0 +1,76 @@
+# Local-first sync scheduling — native hooks (no Docker), one per OS.
+#
+# All four run: `research-analyst sync /opt/watchlist.json --out /data/ra-bundles`
+# with the venv python. Adjust paths for your install.
+
+# ---------------------------------------------------------------------------
+# 1) Linux — systemd timer (Aetheris pattern)
+#    /etc/systemd/system/ra-sync.service
+# ---------------------------------------------------------------------------
+[Unit]
+Description=Research Analyst — overnight bundle sync
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ra
+ExecStart=/opt/research-analyst/.venv/bin/python -m research_analyst.cli sync /opt/watchlist.json --out /data/ra-bundles --max-age-hours 20
+WorkingDirectory=/opt/research-analyst
+
+# ---------------------------------------------------------------------------
+#    /etc/systemd/system/ra-sync.timer
+# ---------------------------------------------------------------------------
+[Unit]
+Description=Run ra-sync nightly at 03:00
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+
+# enable:  sudo systemctl enable --now ra-sync.timer
+
+# ---------------------------------------------------------------------------
+# 2) Linux — cron (drop-in /etc/cron.d/ra-sync)
+# ---------------------------------------------------------------------------
+# 0 3 * * *  ra  /opt/research-analyst/.venv/bin/python -m research_analyst.cli sync /opt/watchlist.json --out /data/ra-bundles --max-age-hours 20
+
+# ---------------------------------------------------------------------------
+# 3) macOS — launchd user agent
+#    ~/Library/LaunchAgents/com.ra.sync.plist
+# ---------------------------------------------------------------------------
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.ra.sync</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/YOU/.venv/bin/python</string>
+    <string>-m</string>
+    <string>research_analyst.cli</string>
+    <string>sync</string>
+    <string>/Users/YOU/watchlist.json</string>
+    <string>--out</string>
+    <string>/Users/YOU/data/ra-bundles</string>
+    <string>--max-age-hours</string>
+    <string>20</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>0</integer></dict>
+  <key>StandardOutPath</key><string>/tmp/ra-sync.log</string>
+  <key>StandardErrorPath</key><string>/tmp/ra-sync.err</string>
+</dict>
+</plist>
+# load:  launchctl load ~/Library/LaunchAgents/com.ra.sync.plist
+
+# ---------------------------------------------------------------------------
+# 4) Windows — Task Scheduler (native, no NSSM needed for a oneshot sync)
+#    powershell -Command:
+# ---------------------------------------------------------------------------
+#   $action = New-ScheduledTaskAction -Execute "C:\path\to\venv\Scripts\python.exe" `
+#       -Argument "-m research_analyst.cli sync C:\watchlist.json --out C:\data\ra-bundles --max-age-hours 20"
+#   $trigger = New-ScheduledTaskTrigger -Daily -At 3:00AM
+#   Register-ScheduledTask -TaskName "ra-sync" -Action $action -Trigger $trigger -Force
