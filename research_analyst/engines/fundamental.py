@@ -22,7 +22,6 @@ import logging
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
-from typing import Any
 
 from ..models import (
     Assumption,
