@@ -160,18 +160,35 @@ function renderTabs(reports){
         var btn=document.createElement("button");
         btn.className="tab"+(i===0?" tab--active":"");
         btn.setAttribute("role","tab");
-        btn.textContent=r.report_type||"Report "+(i+1);
+        btn.textContent=humanReportType(r.report_type)||("Report "+(i+1));
         btn.addEventListener("click",function(){
             document.querySelectorAll(".tab").forEach(function(t){t.classList.remove("tab--active")});
             btn.classList.add("tab--active");
             renderReport(i)
         });
         dom.reportTabs.appendChild(btn)
-    })
+    });
+    if(!reports.length){dom.reportTabs.style.display="none"}else{dom.reportTabs.style.display=""}
+}
+
+function humanReportType(t){
+    if(!t)return null;
+    var map={comprehensive:"Comprehensive",tactical:"Tactical / Near-Term",long_term:"Long-Term",longterm:"Long-Term"};
+    return map[t]||t.replace(/_/g," ").replace(/\b\w/g,function(c){return c.toUpperCase()});
+}
+
+function renderEmptyState(){
+    dom.reportContent.innerHTML=
+        '<div class="empty-state" role="status">'+
+        '<div class="empty-state__icon" aria-hidden="true">\u2316</div>'+
+        '<h3 class="empty-state__title">No report to display</h3>'+
+        '<p class="empty-state__body">Enter a ticker above (e.g. AAPL, RELIANCE.NS, SPY) and run a report, or choose a different report type.</p>'+
+        "</div>"
 }
 
 async function renderReport(idx){
     activeTabIndex=idx;
+    if(!currentReports[idx]){renderEmptyState();return}
     dom.reportContent.innerHTML='<p class="status__text">Rendering report...</p>';
     var md=currentReports[idx]||"*No report content.*";
     var html=mdToHTML(md);
