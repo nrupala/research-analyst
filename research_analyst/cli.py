@@ -102,6 +102,22 @@ def main() -> None:
     from .tui import add_tui_parser
     add_tui_parser(subparsers)
 
+    # --- billing ---
+    billing_parser = subparsers.add_parser(
+        "billing",
+        help="Paid-feature key management (Phase 8).",
+    )
+    billing_sub = billing_parser.add_subparsers(dest="billing_cmd")
+    gen = billing_sub.add_parser("generate-key", help="Mint a new paid API key.")
+    gen.add_argument(
+        "--label", default="",
+        help="Optional label for the key (printed with the key for bookkeeping).",
+    )
+    billing_sub.add_parser("list-keys", help="List current paid keys (names only).")
+    billing_sub.add_parser(
+        "rotate", help="Regenerate all paid keys (print new value; rotate via env)."
+    )
+
     args = parser.parse_args()
 
     # Configure logging
@@ -132,6 +148,8 @@ def main() -> None:
         from .tui import run_tui_command
 
         run_tui_command(args)
+    elif args.command == "billing":
+        _cmd_billing(args)
     else:
         parser.print_help()
         sys.exit(1)
@@ -304,6 +322,41 @@ def _cmd_sync(args: argparse.Namespace) -> None:
         for ticker, err in result.failed.items():
             print(f"    - {ticker}: {err}")
     print(f"\nBundles written to {out_dir.resolve()} (bundle.db + *.ndjson)")
+
+
+def _cmd_billing(args: argparse.Namespace) -> None:
+    """Paid-feature key management: generate / list / rotate."""
+    import secrets
+
+    from .config import settings
+
+    cmd = args.billing_cmd
+    if cmd == "generate-key":
+        key = "ra_" + secrets.token_urlsafe(24)
+        print(f"Paid API key: {key}")
+        if args.label:
+            print(f"Label       : {args.label}")
+        print(
+            "Activate by setting the environment variable:\n"
+            "  RA_BILLING_PAID_KEYS=<key[,key2,...]>\n"
+            "(on the box: /etc/research-analyst/ra.env, then restart ra)"
+        )
+    elif cmd == "list-keys":
+        keys = settings.billing.paid_keys
+        if not keys:
+            print("No paid keys configured (RA_BILLING_PAID_KEYS unset). Paid endpoints are OPEN.")
+        else:
+            print(f"{len(keys)} paid key(s) configured:")
+            for k in keys:
+                print(f"  - {k[:8]}...{k[-4:]}" if len(k) > 12 else f"  - {k}")
+    elif cmd == "rotate":
+        print(
+            "Rotation: mint new key(s) with 'billing generate-key', set "
+            "RA_BILLING_PAID_KEYS to the new value, restart the service, "
+            "then distribute. Old keys die with the env change."
+        )
+    else:
+        print("Usage: research-analyst billing {generate-key|list-keys|rotate}")
 
 
 if __name__ == "__main__":
