@@ -163,6 +163,14 @@ def svg_financial_trends(
         content=_to_svg(fig),
         ties_to="Financial trajectory assessment (Step 2)",
         caption=f"Revenue in billions {code}. Margins as percentage of revenue.",
+        interactive={
+            "type": "financial_trends",
+            "ticker": ticker,
+            "currency": code,
+            "periods": periods,
+            "revenue_b": revenues,
+            "margins_pct": {k: [None if v != v else round(v, 2) for v in vals] for k, vals in margins.items()},
+        },
     )
 
 
@@ -199,6 +207,14 @@ def svg_scenario_valuation(
         content=_to_svg(fig),
         ties_to="Scenario-based valuation assessment (Step 6)",
         caption="Assumption-driven illustrations; not a price target.",
+        interactive={
+            "type": "scenario",
+            "currency": (currency or "USD"),
+            "scenarios": [
+                {"label": s.label, "low": s.implied_price_low, "high": s.implied_price_high}
+                for s in valuation.scenarios
+            ],
+        },
     )
 
 
@@ -236,6 +252,13 @@ def svg_peer_comparison(
         content=_to_svg(fig),
         ties_to="Competitive position assessment (Step 3)",
         caption="Gross/operating margin and ROE versus peers.",
+        interactive={
+            "type": "peers",
+            "tickers": tickers,
+            "gross_margin_pct": [None if v != v else round(v, 2) for v in gm],
+            "op_margin_pct": [None if v != v else round(v, 2) for v in om],
+            "roe_pct": [None if v != v else round(v, 2) for v in roe],
+        },
     )
 
 
@@ -273,6 +296,17 @@ def svg_risk_heatmap(matrix: Any) -> ReportVisual:
         content=_to_svg(fig),
         ties_to="Risk assessment (Step 5)",
         caption="Bubble size and color encode severity (probability x impact).",
+        interactive={
+            "type": "risks",
+            "risks": [
+                {
+                    "title": r.title[:22],
+                    "probability": _prob_value(r.probability),
+                    "impact": _impact_value(r.impact),
+                }
+                for r in matrix.risks
+            ],
+        },
     )
 
 
@@ -326,6 +360,12 @@ def svg_dividend_history(div: Any, currency: str | None = None) -> ReportVisual:
             "Annual dividends per share (calendar-year sums). "
             "The most recent year may be partial."
         ),
+        interactive={
+            "type": "dividends",
+            "ticker": div.ticker,
+            "years": years,
+            "dps": values,
+        },
     )
 
 
