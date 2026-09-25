@@ -15,8 +15,12 @@ def run(data: LensInput) -> LensResult:
     """Evaluate moat/quality through Buffett-style owner-earnings proxies."""
     signals: list[LensSignal] = []
     raw: dict[str, object] = {}
+    missing: list[str] = []  # Issue #70: name every missing required input
     stmt = data.latest
     prior = data.prior
+
+    if stmt is None:
+        missing.append("financial_statements")
 
     # --- Owner earnings (FCF-based proxy) ---
     owner_earnings: float | None = None
@@ -35,10 +39,17 @@ def run(data: LensInput) -> LensResult:
                 read="caution",
                 note="Cash flow does not cover capex — growth may be consuming capital.",
             ))
+    elif stmt is not None:
+        if not stmt.operating_cash_flow:
+            missing.append("operating_cash_flow")
+        if stmt.capex is None:
+            missing.append("capex")
 
     # --- Moat proxy 1: gross margin persistence ---
     gm = stmt.gross_margin if stmt else None
     gm_prior = prior.gross_margin if prior else None
+    if gm is None:
+        missing.append("gross_margin")
     if gm is not None:
         raw["gross_margin"] = gm
         stable = gm_prior is None or abs(gm - gm_prior) < 0.03
@@ -52,6 +63,10 @@ def run(data: LensInput) -> LensResult:
     # --- Moat proxy 2: ROE with leverage context ---
     roe = stmt.roe if stmt else None
     d2e = stmt.debt_to_equity if stmt else None
+    if roe is None:
+        missing.append("roe")
+    if d2e is None:
+        missing.append("debt_to_equity")
     if roe is not None:
         raw["roe"] = roe
         read = "favor" if roe >= 0.18 and (d2e is None or d2e < 0.8) else (
@@ -72,6 +87,11 @@ def run(data: LensInput) -> LensResult:
                 read="favor" if fcf_growth > 0.05 else "neutral",
                 note="Free cash flow is compounding — a durable-earnings signal.",
             ))
+    elif stmt is not None:
+        if not stmt.free_cash_flow:
+            missing.append("free_cash_flow")
+        if prior is None or not prior.free_cash_flow:
+            missing.append("prior_free_cash_flow")
 
     summary = "Buffett-style owner-earnings and moat-proxy screen applied."
     return LensResult(
@@ -80,5 +100,6 @@ def run(data: LensInput) -> LensResult:
         summary=summary,
         signals=signals,
         raw_values=raw,
+        missing_inputs=sorted(set(missing)),
         attribution=ATTRIBUTION.format(name="Warren Buffett"),
     )

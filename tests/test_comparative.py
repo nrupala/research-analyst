@@ -409,3 +409,20 @@ class TestComparativeRenderer:
         html_doc = render_html(report)
         assert "<script>" not in html_doc
         assert "&lt;script&gt;" in html_doc
+
+    def test_source_records_carried_and_enumerated(self) -> None:
+        # Issue #74: every named source appears in the comparative report with
+        # its reference link — not just a bare label list.
+        from research_analyst.models import SourceRecord
+        ko = make_response("KO")
+        ko.metadata.source_records = [
+            SourceRecord(name="yfinance (company profile)", url="https://finance.yahoo.com/quote/KO"),
+            SourceRecord(name="SEC EDGAR (10-K filings)", url="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=KO&type=10-K"),
+        ]
+        report = build_comparative_report([ko, make_response("PEP")])
+        assert report.source_records["KO"][0].url == "https://finance.yahoo.com/quote/KO"
+        md = render_markdown(report)
+        assert "[yfinance (company profile)](https://finance.yahoo.com/quote/KO)" in md
+        assert "SEC EDGAR (10-K filings)" in md
+        html_doc = render_html(report)
+        assert 'href="https://finance.yahoo.com/quote/KO"' in html_doc

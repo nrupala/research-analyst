@@ -351,6 +351,19 @@ def test_wire_payload_unchanged_by_typing():
             "assumptions_used": [],
             "warnings": [],
             "processing_time_seconds": 0.0,
+            # Issue #66 freshness fields now part of the typed wire contract.
+            "data_as_of": None,
+            "sla_state": "fresh",
+            "cache_hit": False,
+            "cached_at_utc": None,
+            "stale_warning": None,
+            # Issues #69/#74 evidence-traceability fields, also in the wire contract.
+            "quotes_disclosure": (
+                "Quotes are delayed to the previous trading day's close (end-of-day data)."
+            ),
+            "source_records": [],
+            "peer_set": None,
+            "input_snapshot": None,
         },
         "reports_markdown": [],
     }

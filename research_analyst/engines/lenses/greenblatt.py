@@ -14,11 +14,21 @@ def run(data: LensInput) -> LensResult:
     """Evaluate a security through the Magic Formula lens."""
     signals: list[LensSignal] = []
     raw: dict[str, object] = {}
+    missing: list[str] = []  # Issue #70: name every missing required input
     stmt = data.latest
     price = data.current_price
 
+    if stmt is None:
+        missing.append("financial_statements")
+    if price is None:
+        missing.append("current_price")
+    if not data.shares_outstanding:
+        missing.append("shares_outstanding")
+
     # --- Quality: ROIC (returns on invested capital) ---
     roic = stmt.roic if stmt else None
+    if roic is None:
+        missing.append("roic")
     if roic is not None:
         raw["roic"] = round(roic, 4)
         read = "favor" if roic >= 0.20 else "caution" if roic <= 0.05 else "neutral"
@@ -55,6 +65,8 @@ def run(data: LensInput) -> LensResult:
                 ))
     if earnings_yield is None:
         raw["earnings_yield_ebit"] = None
+        if not (stmt and stmt.ebit):
+            missing.append("ebit")
 
     # --- Composite read ---
     if roic is not None and earnings_yield is not None:
@@ -84,5 +96,6 @@ def run(data: LensInput) -> LensResult:
         summary=summary,
         signals=signals,
         raw_values=raw,
+        missing_inputs=sorted(set(missing)),
         attribution=ATTRIBUTION.format(name="Joel Greenblatt"),
     )

@@ -151,8 +151,35 @@ function showResults(){dom.results.hidden=false}
 
 function renderMetaBar(data){
     var m=data.metadata||{};
-    var items=[["Ticker",data.ticker],["Company",data.company_name],["Type",data.security_type],["Reports",(data.reports||[]).length],["Time",(m.processing_time_seconds||0).toFixed(1)+"s"],["Sources",(m.data_sources||[]).length]];
+    var items=[["Ticker",data.ticker],["Company",data.company_name],["Type",data.security_type],["Reports",(data.reports||[]).length],["Time",(m.processing_time_seconds||0).toFixed(1)+"s"]];
+    // Issue #66: reader-visible freshness state (never a silent stale cache).
+    var fresh=m.sla_state||"fresh";
+    var freshLabel=fresh+(m.data_as_of?(" · as of "+m.data_as_of):"");
+    if(m.cache_hit){freshLabel+=" · cached"}
+    items.push(["Freshness",freshLabel]);
+    if(m.stale_warning){items.push(["⚠️ Stale",m.stale_warning])}
     dom.metaBar.innerHTML=items.map(function(p){return'<div class="meta-bar__item"><span class="meta-bar__label">'+esc(p[0])+':</span> '+esc(String(p[1]))+'</div>'}).join("")
+    // Issue #74: enumerate every source — never a bare count.
+    renderSourceList(m)
+}
+
+function renderSourceList(m){
+    var recs=m.source_records||[];
+    var names=(m.data_sources||[]);
+    var list=recs.length?recs.map(function(r){return{name:r.name,url:r.url}}):names.map(function(n){return{name:n,url:null}});
+    if(!list.length)return;
+    var old=document.getElementById("sources-list");if(old)old.remove();
+    var box=document.createElement("div");box.id="sources-list";box.className="sources-list";
+    var h=document.createElement("h3");h.className="sources-list__title";h.textContent="Data Sources ("+list.length+")";box.appendChild(h);
+    var ul=document.createElement("ol");ul.className="sources-list__items";
+    list.forEach(function(s){
+        var li=document.createElement("li");
+        if(s.url){var a=document.createElement("a");a.href=s.url;a.target="_blank";a.rel="noopener";a.textContent=s.name;li.appendChild(a)}
+        else{li.textContent=s.name}
+        ul.appendChild(li)
+    });
+    box.appendChild(ul);
+    dom.metaBar.after(box)
 }
 
 function renderTabs(reports){

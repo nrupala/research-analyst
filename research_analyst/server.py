@@ -23,6 +23,7 @@ import logging
 import time
 import uuid
 from collections import OrderedDict
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -181,6 +182,33 @@ def get_comparative_orchestrator() -> ComparativeOrchestrator:
 # App factory
 # ---------------------------------------------------------------------------
 
+def stamp_cache_hit(
+    cached: ResearchAPIResponse, cached_at: datetime
+) -> ResearchAPIResponse:
+    """Stamp a cache hit with freshness metadata and re-render markdown (#66).
+
+    The markdown is re-rendered so the reader-visible freshness header
+    reflects the actual cache age — never the generation-time copy.
+    """
+    resp = cached.model_copy(deep=True)
+    meta = resp.metadata
+    meta.cache_hit = True
+    meta.cached_at_utc = cached_at
+    age_days = (datetime.now(timezone.utc) - cached_at).total_seconds() / 86400
+    # EOD data goes stale after ~2 days (weekends/holidays excepted by the
+    # TTL refresh); surface it loudly instead of silently.
+    if age_days > 2:
+        meta.sla_state = "stale"
+        meta.stale_warning = (
+            f"This report was generated from data as of {meta.data_as_of or 'an unknown date'} "
+            f"({age_days:.0f} days ago). Quotes may not reflect the latest trading session."
+        )
+    else:
+        meta.sla_state = "fresh"
+    resp.reports_markdown = [r.to_markdown(metadata=meta) for r in resp.reports]
+    return resp
+
+
 def create_app(
     orchestrator: ResearchOrchestrator | None = None,
     rate_limiter: _IPRateLimiter | None = None,
@@ -229,13 +257,21 @@ def create_app(
     # --- Market data (symbol/name resolution) ---
     market_provider = MarketDataProvider()
 
-    # --- Report cache ---
-    report_cache: OrderedDict[str, ResearchAPIResponse] = OrderedDict()
-    cache_max = 100
+    # --- Report cache (Issue #66: TTL-bound, staleness-visible) ---
+    # Entries are (response, cached_at_utc). A hit past the TTL is treated
+    # as a miss and regenerated — a stale report is never silently re-served.
+    report_cache: OrderedDict[str, tuple[ResearchAPIResponse, datetime]] = OrderedDict()
+    cache_max = settings.server.report_cache_max
+    cache_ttl = settings.server.report_cache_ttl_seconds
 
     def _cache_key(req: ResearchAPIRequest) -> str:
         raw = f"{req.ticker}:{req.report_type}:{req.timeframe}"
         return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+    def _cache_store(ck: str, api_response: ResearchAPIResponse) -> None:
+        if len(report_cache) >= cache_max:
+            report_cache.popitem(last=False)
+        report_cache[ck] = (api_response, datetime.now(timezone.utc))
 
     # ================================================================
     # API Endpoints
@@ -295,16 +331,26 @@ def create_app(
         request_id = str(uuid.uuid4())[:8]
 
         ck = _cache_key(body)
-        if ck in report_cache:
-            logger.info("Cache hit for %s", body.ticker)
-            cached = report_cache[ck]
-            report_cache.move_to_end(ck)
-            api_response = cached
+        now = datetime.now(timezone.utc)
+        cached_entry = report_cache.get(ck)
+        if cached_entry is not None:
+            cached, cached_at = cached_entry
+            age = (now - cached_at).total_seconds()
+            if age <= cache_ttl:
+                logger.info("Cache hit for %s (age %.0fs)", body.ticker, age)
+                report_cache.move_to_end(ck)
+                api_response = stamp_cache_hit(cached, cached_at)
+            else:
+                logger.info(
+                    "Cache entry for %s expired (age %.0fs > TTL %ds); regenerating",
+                    body.ticker, age, cache_ttl,
+                )
+                del report_cache[ck]
+                api_response = await _run_research_uncached(body, request_id)
+                _cache_store(ck, api_response)
         else:
             api_response = await _run_research_uncached(body, request_id)
-            if len(report_cache) >= cache_max:
-                report_cache.popitem(last=False)
-            report_cache[ck] = api_response
+            _cache_store(ck, api_response)
 
         fmt = negotiate_format(format, request.headers.get("accept", ""))
         if fmt == "html":
@@ -359,17 +405,20 @@ def create_app(
         body: ResearchAPIRequest, request_id: str
     ) -> ResearchAPIResponse:
         result = await _run_pipeline(body)
-        reports_markdown = [report.to_markdown() for report in result.reports]
-
-        return ResearchAPIResponse(
+        api_response = ResearchAPIResponse(
             request_id=request_id,
             ticker=result.ticker,
             company_name=result.company_name,
             security_type=result.security_type.value,
             reports=result.reports,
             metadata=result.metadata,
-            reports_markdown=reports_markdown,
+            reports_markdown=[],
         )
+        # Render with metadata so the freshness/sources/snapshot footer (#66/#69/#74) is included.
+        api_response.reports_markdown = [
+            report.to_markdown(metadata=result.metadata) for report in result.reports
+        ]
+        return api_response
 
     @app.post("/api/compare", response_model=CompareAPIResponse)
     async def run_compare(

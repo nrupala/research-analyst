@@ -19,8 +19,16 @@ def run(data: LensInput) -> LensResult:
     """Simplified intrinsic-value estimate + sanity band."""
     signals: list[LensSignal] = []
     raw: dict[str, object] = {}
+    missing: list[str] = []  # Issue #70: name every missing required input
     stmt = data.latest
     price = data.current_price
+
+    if stmt is None:
+        missing.append("financial_statements")
+    if price is None:
+        missing.append("current_price")
+    if not data.shares_outstanding:
+        missing.append("shares_outstanding")
 
     # Free cash flow base: prefer reported FCF, else operating cash flow - capex
     fcf: float | None = None
@@ -28,6 +36,8 @@ def run(data: LensInput) -> LensResult:
         fcf = float(stmt.free_cash_flow)
     elif stmt and stmt.operating_cash_flow and stmt.capex is not None:
         fcf = float(stmt.operating_cash_flow) - float(stmt.capex)
+    else:
+        missing.append("free_cash_flow")
     raw["fcf"] = fcf
 
     # Growth estimate: analyst 5y EPS growth first, else prior revenue growth
@@ -36,6 +46,8 @@ def run(data: LensInput) -> LensResult:
         growth = data.analyst.earnings_growth_5y
     elif stmt and data.prior and stmt.revenue and data.prior.revenue:
         growth = pct_change(float(stmt.revenue), float(data.prior.revenue))
+    else:
+        missing.append("growth_estimate")
     raw["growth_estimate"] = growth
 
     wacc = float(data.raw.get("wacc", DEFAULT_WACC))
@@ -90,5 +102,6 @@ def run(data: LensInput) -> LensResult:
         summary=summary,
         signals=signals,
         raw_values=raw,
+        missing_inputs=sorted(set(missing)),
         attribution=ATTRIBUTION.format(name="Aswath Damodaran"),
     )

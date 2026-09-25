@@ -27,6 +27,7 @@ from collections import defaultdict
 from datetime import date
 from typing import Any
 
+from ..quant import fmt_bps
 from ..models import (
     Assumption,
     Competitor,
@@ -457,7 +458,7 @@ class DividendEngine:
                 tnote = f" ({result.us_10y_yield:.2%})" if result.us_10y_yield is not None else ""
                 result.attractiveness_rating = "Attractive"
                 result.attractiveness_rationale = (
-                    f"Yield of {cy:.2%} exceeds the 10Y Treasury{tnote} by {spread * 100:.0f} bps "
+                    f"Yield of {cy:.2%} exceeds the 10Y Treasury{tnote} by {fmt_bps(spread)} "
                     f"with {result.safety_grade} coverage."
                 )
                 return
