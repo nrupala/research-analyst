@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com> — SPDX-License-Identifier: AGPL-3.0-or-later
+See LICENSE and COMMERCIAL-LICENSE.md for licensing terms (commercial licenses available).
+-->
+
 # Research Analyst — Monetization Cut (refinement, not final)
 
 Working draft for "what can we sell with v0.2.0/0.2.1 on?" This is a **refinement pass**: it proposes an

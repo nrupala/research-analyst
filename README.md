@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com> — SPDX-License-Identifier: AGPL-3.0-or-later
+See LICENSE and COMMERCIAL-LICENSE.md for licensing terms (commercial licenses available).
+-->
+
 # Research Analyst
 
 **Institutional-grade equity and ETF research agent with disciplined 7-step methodology.**
@@ -359,7 +364,9 @@ research-analyst serve --reload --debug
 
 ## License
 
-AGPL-3.0 — See [LICENSE](LICENSE).
+AGPL-3.0 — See [LICENSE](LICENSE). A separate commercial license is
+available for uses incompatible with the AGPL-3.0 — see
+[COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
 
 ### Open-Core Model
 
