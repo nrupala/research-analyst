@@ -45,6 +45,13 @@ from .comparative import MAX_TICKERS, MIN_TICKERS, ComparativeOrchestrator
 from .config import settings
 from .disclaimer import DISCLAIMER_FULL, DISCLAIMER_SHORT, DISCLAIMER_VERSION
 from .enums import ReportType
+from .entitlements import (
+    SOURCE_DATA,
+    KeyStore,
+    MeteringRecorder,
+    WhiteLabelProfile,
+    has_entitlement,
+)
 from .exporters import ts_definitions, xml_from_dict
 from .models import ResearchRequest
 from .orchestrator import ResearchOrchestrator
@@ -212,6 +219,8 @@ def stamp_cache_hit(
 def create_app(
     orchestrator: ResearchOrchestrator | None = None,
     rate_limiter: _IPRateLimiter | None = None,
+    key_store: KeyStore | None = None,
+    metering: MeteringRecorder | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="Research Analyst",
@@ -253,6 +262,35 @@ def create_app(
 
     # --- Orchestrator (injectable so tests can stub the pipeline) ---
     orchestrator = orchestrator or ResearchOrchestrator()
+
+    # --- API keys, metering, white-label (injectable for tests) ---
+    if key_store is None and settings.billing.api_keys_file:
+        key_store = KeyStore(settings.billing.api_keys_file)
+    metering = metering or MeteringRecorder()
+    app.state.key_store = key_store
+    app.state.metering = metering
+    app.state.white_label = WhiteLabelProfile(
+        org_name=settings.billing.white_label_org_name,
+        prepared_on_url=settings.billing.white_label_prepared_on_url,
+        footer_note=settings.billing.white_label_footer_note,
+        show_support_link=settings.billing.white_label_show_support_link,
+        accent_color=settings.billing.white_label_accent_color,
+    )
+
+    def _key_record(request: Request):
+        """Verify X-RA-Key against the key store. Returns record or None.
+
+        The raw key is never logged or persisted.
+        """
+        store = request.app.state.key_store
+        if store is None:
+            return None
+        return store.verify(request.headers.get("x-ra-key", ""))
+
+    def _meter(request: Request, endpoint: str) -> None:
+        record = _key_record(request)
+        key_id = record.key_id if record else "anonymous"
+        request.app.state.metering.record(key_id, endpoint)
 
     # --- Market data (symbol/name resolution) ---
     market_provider = MarketDataProvider()
@@ -316,6 +354,7 @@ def create_app(
         fmt = negotiate_format(format, request.headers.get("accept", ""))
         if fmt in ("markdown", "html"):
             raise HTTPException(status_code=400, detail=f"{fmt} is not available for /api/resolve.")
+        _meter(request, "resolve")
         return _render_payload(api_response.model_dump(mode="json"), fmt, "resolution")
 
     @app.post("/api/research", response_model=ResearchAPIResponse)
@@ -363,6 +402,7 @@ def create_app(
             if fmt == "markdown"
             else None
         )
+        _meter(request, "research")
         return _render_payload(
             api_response.model_dump(mode="json"), fmt, "research", markdown=markdown
         )
@@ -460,8 +500,9 @@ def create_app(
             tickers=report.tickers,
             report=report,
             report_markdown=render_markdown(report),
-            report_html=render_html(report),
+            report_html=render_html(report, white_label=request.app.state.white_label),
         )
+        _meter(request, "compare")
 
         fmt = negotiate_format(format, request.headers.get("accept", ""))
         return _render_payload(
@@ -487,14 +528,22 @@ def create_app(
         from .data_export import build_bundle, bundle_to_csv
 
         # --- Paid-key gate ---
+        # Legacy shared-secret keys (RA_BILLING_PAID_KEYS) keep working; hashed,
+        # revocable KeyStore keys (entitlements.py) are also accepted when they
+        # carry the `source.data` entitlement. Open when neither is configured.
         paid_keys = settings.billing.paid_keys
-        if paid_keys:
+        if paid_keys or request.app.state.key_store is not None:
             provided = request.headers.get("x-ra-key", "")
-            if provided not in paid_keys:
+            legacy_ok = bool(paid_keys) and provided in paid_keys
+            record = _key_record(request)
+            entitled = has_entitlement(record, SOURCE_DATA)
+            if not (legacy_ok or entitled):
                 raise HTTPException(
                     status_code=401,
                     detail="This is a paid feature. Provide a valid X-RA-Key header (or subscribe).",
                 )
+
+        _meter(request, "source_data")
 
         client_ip = request.client.host if request.client else "unknown"
         if not rate_limiter.allow(client_ip):
@@ -527,6 +576,34 @@ def create_app(
                     f'attachment; filename="{body.ticker.upper()}_source_data.json"'
                 )
             },
+        )
+
+    @app.get("/api/usage")
+    async def usage_summary(request: Request) -> JSONResponse:
+        """Per-key metering summary for today (UTC).
+
+        Requires a valid X-RA-Key header. Returns the key id, its effective
+        entitlements (bundle-aware) and per-endpoint request counts. The raw
+        key is never logged or returned.
+        """
+        record = _key_record(request)
+        if record is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Provide a valid X-RA-Key header to view usage.",
+            )
+        from .entitlements import effective_entitlements
+
+        metering = request.app.state.metering
+        return JSONResponse(
+            {
+                "key_id": record.key_id,
+                "label": record.label,
+                "entitlements": sorted(effective_entitlements(record)),
+                "day_utc": metering._today_utc(),
+                "usage": metering.usage(record.key_id),
+                "total_requests": metering.total_requests(record.key_id),
+            }
         )
 
     # ================================================================
