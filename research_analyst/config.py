@@ -118,6 +118,19 @@ class BillingConfig(BaseSettings):
 
     paid_keys: list[str] = Field(default_factory=list, description="Comma-separated paid API keys.")
 
+    # Key-store file for hashed, revocable API keys (see entitlements.py).
+    # Only key hashes are persisted — never raw keys. When set, /api/research/data
+    # also accepts KeyStore keys carrying the `source.data` entitlement, and
+    # /api/usage serves per-key metering.
+    api_keys_file: str = ""
+
+    # White-label branding hooks (evidence is never altered — chrome only).
+    white_label_org_name: str = ""
+    white_label_prepared_on_url: str = ""
+    white_label_footer_note: str = ""
+    white_label_show_support_link: bool = True
+    white_label_accent_color: str = ""
+
     model_config = {"env_prefix": "RA_BILLING_"}
 
     @field_validator("paid_keys", mode="before")

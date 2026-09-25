@@ -26,6 +26,7 @@ from __future__ import annotations
 import html
 from typing import TYPE_CHECKING
 
+from ..entitlements import WhiteLabelProfile
 from .currency import currency_symbol
 
 if TYPE_CHECKING:  # avoid a runtime import cycle
@@ -263,8 +264,12 @@ def _cell_with_marker(text: str, is_winner: bool) -> str:
     return safe
 
 
-def render_html(report: ComparativeReport) -> str:
-    """Render the comparative report as a self-contained HTML document."""
+def render_html(report: ComparativeReport, white_label: WhiteLabelProfile | None = None) -> str:
+    """Render the comparative report as a self-contained HTML document.
+
+    `white_label` only changes chrome (brand name, footer, accent color) —
+    never evidence: numbers, sources, methodology and disclaimers are untouched.
+    """
     tickers = report.tickers
     heading = " vs ".join(tickers) if tickers else "(no valid tickers)"
     body: list[str] = []
@@ -374,20 +379,40 @@ def render_html(report: ComparativeReport) -> str:
 
     body.append(f'<div class="disclaimer">{_esc(report.disclaimer)}</div>')
     body.append(f'<p class="compliance"><strong>Compliance:</strong> {_esc(report.compliance_note)}</p>')
-    body.append(
-        f'<footer>Report prepared on <a href="{_PREPARED_ON_URL}">{_esc(_PREPARED_ON_URL)}</a> — '
-        f"{_esc(report.generated_at.strftime('%Y-%m-%d'))}. "
-        f'<a href="{_BMAC_URL}">Buy Me a Coffee</a></footer>'
-    )
+    body.append(_render_footer(report, white_label))
 
     title = _esc(f"Comparative Report — {heading}")
+    style = _HTML_STYLE
+    if white_label is not None and white_label.is_active() and white_label.accent_color:
+        style += f"\n:root{{--accent:{_esc(white_label.accent_color)};}}\n"
     return (
         "<!DOCTYPE html>\n"
         '<html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         f"<title>{title}</title>"
-        f"<style>{_HTML_STYLE}</style>"
+        f"<style>{style}</style>"
         "</head><body><div class=\"wrap\">"
         + "".join(body)
         + "</div></body></html>"
+    )
+
+
+def _render_footer(report: ComparativeReport, white_label: WhiteLabelProfile | None) -> str:
+    """Report footer. White-label overrides chrome only — never evidence."""
+    date = _esc(report.generated_at.strftime("%Y-%m-%d"))
+    if white_label is not None and white_label.is_active():
+        prepared_on = white_label.prepared_on_url or _PREPARED_ON_URL
+        if white_label.org_name:
+            brand = f"Report prepared by {_esc(white_label.org_name)} — {date}."
+        else:
+            brand = (
+                f'Report prepared on <a href="{_esc(prepared_on)}">{_esc(prepared_on)}</a> — {date}.'
+            )
+        support = f' <a href="{_BMAC_URL}">Buy Me a Coffee</a>' if white_label.show_support_link else ""
+        note = f" {_esc(white_label.footer_note)}" if white_label.footer_note else ""
+        return f"<footer>{brand}{support}{note}</footer>"
+    return (
+        f'<footer>Report prepared on <a href="{_PREPARED_ON_URL}">{_esc(_PREPARED_ON_URL)}</a> — '
+        f"{date}. "
+        f'<a href="{_BMAC_URL}">Buy Me a Coffee</a></footer>'
     )
