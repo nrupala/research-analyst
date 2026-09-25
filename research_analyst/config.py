@@ -99,6 +99,10 @@ class ServerConfig(BaseSettings):
     cors_origins: list[str] = ["http://localhost:8700", "http://127.0.0.1:8700"]
     static_dir: Path = _PROJECT_ROOT / "ui"
     log_level: str = "info"
+    # Issue #66: report cache refreshes daily (EOD cadence); entries older
+    # than this are regenerated, never silently re-served.
+    report_cache_ttl_seconds: int = 86400
+    report_cache_max: int = 100
 
     model_config = {"env_prefix": "RA_SERVER_"}
 

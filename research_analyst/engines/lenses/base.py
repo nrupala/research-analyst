@@ -40,6 +40,9 @@ class LensResult(BaseModel):
     summary: str
     signals: list[LensSignal] = Field(default_factory=list)
     raw_values: dict[str, Any] = Field(default_factory=dict)
+    # Issue #70: every required input that was missing, named explicitly so the
+    # report can say *what* is missing instead of rendering a generic "n/a".
+    missing_inputs: list[str] = Field(default_factory=list)
     attribution: str = ""
     educational_only: bool = True
 

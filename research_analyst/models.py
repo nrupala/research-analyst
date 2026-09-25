@@ -78,6 +78,18 @@ class ResearchMetadata(BaseModel):
     assumptions_used: list[Assumption] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     processing_time_seconds: float = 0.0
+    # --- Evidence integrity (#66-#74) ----------------------------------
+    data_as_of: str | None = None  # #66: e.g. "2026-09-24 (previous close)"
+    quotes_disclosure: str = (  # #66
+        "Quotes are delayed to the previous trading day's close (end-of-day data)."
+    )
+    sla_state: str = "fresh"  # #66: "fresh" | "stale" | "degraded"
+    cache_hit: bool = False  # #66
+    cached_at_utc: datetime | None = None  # #66
+    stale_warning: str | None = None  # #66: rendered prominently when set
+    source_records: list[SourceRecord] = Field(default_factory=list)  # #74
+    peer_set: PeerSetProvenance | None = None  # #67
+    input_snapshot: InputSnapshot | None = None  # #69
 
 
 # ---------------------------------------------------------------------------
@@ -365,6 +377,7 @@ class CompetitiveLandscape(BaseModel):
     target_rank_by_revenue: int | None = None
     competitive_advantages: list[str] = Field(default_factory=list)
     competitive_risks: list[str] = Field(default_factory=list)
+    peer_set_note: str = ""  # #67: versioned peer-universe coverage note
 
 
 # ---------------------------------------------------------------------------
@@ -395,6 +408,15 @@ class RiskMatrix(BaseModel):
     risks: list[StructuredRisk] = Field(default_factory=list)
     overall_risk_score: float | None = None  # 1-10 composite
     key_risk_summary: str = ""
+    # --- Score derivation (#71): every published score shows its math ----
+    score_breakdown: list[RiskScoreComponent] = Field(default_factory=list)
+    score_formula: str = (
+        "overall = round(sum(probability_score x impact_score for each risk) "
+        "/ (12 x number of risks) x 10, 1); probability Low(<20%)=1 / Medium(20-50%)=2 / "
+        "High(>50%)=3; impact Low=1 / Medium=2 / High=3 / Critical=4; "
+        "severity 8-12 = critical"
+    )
+    score_baseline_note: str = ""  # set when the score is a default, not computed
 
 
 # ---------------------------------------------------------------------------
@@ -409,6 +431,67 @@ class Assumption(BaseModel):
     source: str = ""  # Where this comes from
     confidence: str = ""  # "High" / "Medium" / "Low"
     note: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Evidence integrity (#66-#74)
+# ---------------------------------------------------------------------------
+
+class SourceRecord(BaseModel):
+    """One enumerated, referenceable data source (#74).
+
+    ``name`` keeps the legacy human-readable label (e.g. "yfinance (price
+    data)"). ``url`` is a best-effort reference link — never a bare count.
+    """
+
+    name: str
+    url: str | None = None
+    accessed_at_utc: datetime | None = None
+
+
+class PeerSetProvenance(BaseModel):
+    """Deterministic peer-universe provenance (#67)."""
+
+    map_version: str = ""  # e.g. "2026.09"
+    map_hash: str = ""  # sha256 of the canonical peer-map JSON (first 16 hex)
+    expected_tickers: list[str] = Field(default_factory=list)
+    resolved_tickers: list[str] = Field(default_factory=list)
+    missing_tickers: list[str] = Field(default_factory=list)
+
+    @property
+    def coverage_note(self) -> str:
+        n, m = len(self.resolved_tickers), len(self.expected_tickers)
+        note = (
+            f"Peer universe v{self.map_version} (map hash {self.map_hash}): "
+            f"{n} of {m} expected peers resolved."
+        )
+        if self.missing_tickers:
+            note += " Missing expected peers (data unavailable, excluded — not silently dropped): " + ", ".join(
+                self.missing_tickers
+            )
+        return note
+
+
+class InputSnapshot(BaseModel):
+    """Immutable snapshot of the fundamental inputs one report was built from (#69).
+
+    Every number in the report traces to this single input set. The hash is
+    over the canonical JSON of ``inputs`` so reproducibility is checkable.
+    """
+
+    captured_at_utc: datetime
+    input_hash: str = ""  # sha256 hex of canonical inputs JSON
+    inputs: dict[str, Any] = Field(default_factory=dict)
+
+
+class RiskScoreComponent(BaseModel):
+    """One risk's contribution to the composite risk score (#71)."""
+
+    title: str
+    probability_score: int  # 1-4 mapped from probability class
+    impact_score: int  # 1-3 mapped from impact class
+    severity: int  # probability_score * impact_score (1-12)
+    weight_share: float = 0.0  # severity / total severity, fraction
 
 
 class ValuationScenario(BaseModel):
@@ -645,11 +728,19 @@ class ReportOutput(BaseModel):
     disclaimer: str = ""  # Set by __init__ to DISCLAIMER_SHORT from disclaimer.py
     lenses: list[Any] = Field(default_factory=list)  # typed LensResults (Phase 5)
 
-    def to_markdown(self) -> str:
-        """Render full report as Markdown."""
+    def to_markdown(self, metadata: ResearchMetadata | None = None) -> str:
+        """Render full report as Markdown.
+
+        ``metadata`` (the run's ResearchMetadata) unlocks the provenance
+        footer: data-freshness block (#66), enumerated sources (#74) and the
+        input-snapshot appendix (#69). Callers without metadata get the same
+        body as before.
+        """
         parts: list[str] = [f"# {self.title}\n"]
         parts.append(f"**Ticker:** {self.ticker} | **Report Type:** {self.report_type.value}")
-        parts.append(f"**Generated:** {self.generated_at.strftime('%Y-%m-%d %H:%M UTC')}\n")
+        parts.append(f"**Generated:** {self.generated_at.strftime('%Y-%m-%d %H:%M UTC')}")
+        if metadata is not None:
+            parts.append(self._freshness_header(metadata))
         parts.append("---\n")
 
         for section in self.sections:
@@ -725,6 +816,20 @@ class ReportOutput(BaseModel):
                     if sig.note:
                         parts.append(f"  {sig.note}")
                 parts.append("")
+                # #70: show the lens's inputs and raw calculation so the
+                # result is verifiable, not decorative.
+                raw = getattr(lens, "raw_values", None) or {}
+                missing = getattr(lens, "missing_inputs", None) or []
+                if raw or missing:
+                    parts.append("<details><summary><b>Inputs & calculation</b></summary>\n")
+                    for key, value in raw.items():
+                        parts.append(f"- `{key}`: {self._fmt_raw_value(value)}")
+                    if missing:
+                        parts.append(
+                            "- **Missing inputs (named explicitly):** "
+                            + ", ".join(f"`{m}`" for m in missing)
+                        )
+                    parts.append("</details>\n")
                 if lens.attribution:
                     parts.append(f"*{lens.attribution}*\n")
 
@@ -740,8 +845,81 @@ class ReportOutput(BaseModel):
             )
         )
 
+        if metadata is not None:
+            parts.append(self._provenance_footer(metadata))
+
         parts.append("---\n")
         parts.append(f"**Disclaimer:**\n{self.disclaimer or DISCLAIMER_SHORT}")
+        return "\n".join(parts)
+
+    # --- Evidence-integrity rendering (#66/#69/#70/#74) --------------------
+
+    @staticmethod
+    def _fmt_raw_value(value: Any) -> str:
+        """Human-readable rendering of a lens raw input/calculation value."""
+        if value is None:
+            return "n/a (input missing)"
+        if isinstance(value, bool):
+            return str(value)
+        if isinstance(value, float):
+            if abs(value) < 10 and value != 0:
+                return f"{value:.4f}"
+            return f"{value:,.2f}"
+        if isinstance(value, int):
+            return f"{value:,}"
+        return str(value)
+
+    @staticmethod
+    def _freshness_header(metadata: ResearchMetadata) -> str:
+        """Reader-visible freshness contract (#66)."""
+        lines = ["\n**Data Freshness**"]
+        if metadata.data_as_of:
+            lines.append(f"- Data as of: **{metadata.data_as_of}**")
+        lines.append(f"- {metadata.quotes_disclosure}")
+        if metadata.cache_hit:
+            cached = (
+                metadata.cached_at_utc.strftime("%Y-%m-%d %H:%M UTC")
+                if metadata.cached_at_utc
+                else "unknown time"
+            )
+            lines.append(f"- Served from cache (cached at {cached}).")
+        sla = metadata.sla_state
+        lines.append(f"- Freshness state: **{sla}**")
+        if metadata.sla_state == "stale" or metadata.stale_warning:
+            lines.append(f"- ⚠️ **STALE DATA WARNING:** {metadata.stale_warning or 'data may be out of date.'}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _provenance_footer(metadata: ResearchMetadata) -> str:
+        """Sources (#74) and input-snapshot (#69) appendix."""
+        parts: list[str] = ["\n## Data Sources\n"]
+        records = metadata.source_records or [
+            SourceRecord(name=s) for s in metadata.data_sources
+        ]
+        if records:
+            parts.append("Every figure in this report traces to one of the following sources:\n")
+            for i, rec in enumerate(records, 1):
+                if rec.url:
+                    parts.append(f"{i}. [{rec.name}]({rec.url})")
+                else:
+                    parts.append(f"{i}. {rec.name}")
+        else:
+            parts.append("*No data sources recorded.*")
+        parts.append("")
+
+        snap = metadata.input_snapshot
+        if snap:
+            parts.append("## Input Snapshot & Traceability\n")
+            parts.append(
+                "All numbers in this report were computed from a single snapshotted "
+                "input set taken at report time. Any figure can be traced back to "
+                "these inputs:\n"
+            )
+            parts.append(f"- Snapshot taken (UTC): {snap.captured_at_utc.strftime('%Y-%m-%d %H:%M UTC')}")
+            parts.append(f"- Input hash: `{snap.input_hash}`")
+            for key, value in snap.inputs.items():
+                parts.append(f"- **{key}:** {value}")
+            parts.append("")
         return "\n".join(parts)
 
 

@@ -20,14 +20,19 @@ def run(data: LensInput) -> LensResult:
     """Regime framing over available proxies (yield spread, beta)."""
     signals: list[LensSignal] = []
     raw: dict[str, object] = {}
+    missing: list[str] = []  # Issue #70: name every missing required input
 
     yield_v = data.raw.get("dividend_yield")
     if yield_v is None and data.fundamental is not None:
         yield_v = getattr(data.fundamental, "current_yield", None)
     raw["dividend_yield"] = yield_v
+    if yield_v is None:
+        missing.append("dividend_yield")
 
     beta = data.raw.get("beta")
     raw["beta"] = beta
+    if beta is None:
+        missing.append("beta")
 
     # --- Yield vs treasury proxy: the income/macro lever ---
     if yield_v is not None:
@@ -93,5 +98,6 @@ def run(data: LensInput) -> LensResult:
         summary=summary,
         signals=signals,
         raw_values=raw,
+        missing_inputs=sorted(set(missing)),
         attribution=ATTRIBUTION.format(name="Ray Dalio"),
     )
