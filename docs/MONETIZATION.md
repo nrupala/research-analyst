@@ -175,3 +175,34 @@ free-tier key): rate-limited single-ticker.
 (2) key-gen endpoint + payment webhook; (3) UI "enter your key" + gated feature flags; (4) key email
 delivery. Each is a separate branch + PR; box-side pieces go live via the box redeploy. Keys never pass
 through the assistant.
+
+---
+
+## Implementation status (2026-09-25) — key store v1, metering, white-label
+
+Step (1) of the build order is now implemented in `research_analyst/entitlements.py`
++ `server.py` wiring (offline-tested; no billing yet):
+
+- **Key store**: `KeyStore.create(label, entitlements)` issues `ra_live_…` keys;
+  only SHA-256 hashes are stored (memory + optional JSON file via
+  `RA_BILLING_API_KEYS_FILE`); verification is constant-time; keys are
+  revocable and fail closed. Raw keys are returned once at issuance and never
+  logged or persisted. The legacy `RA_BILLING_PAID_KEYS` shared-secret list
+  keeps working for `/api/research/data`.
+- **Entitlements**: flags `ra.pro`, `twf.pro`, `source.data`, `white.label`.
+  `twf.pro` is a bundle: it unlocks `ra.pro` + `source.data` (no billing
+  implemented — the Merchant of Record decision, Paddle vs Lemon Squeezy, is
+  still open). Test price anchor remains **$15/mo or $120/yr** (not a
+  public-price commitment).
+- **Metering**: `MeteringRecorder` counts requests per key per endpoint per day
+  (UTC), with a pluggable sink for a future billing backend. `/api/research`,
+  `/api/compare`, `/api/resolve` and `/api/research/data` are metered;
+  `GET /api/usage` (key-gated) returns the caller's counts + effective
+  entitlements.
+- **White-label**: `WhiteLabelProfile` (org name, prepared-on URL, footer note,
+  support-link toggle, accent color) via `RA_BILLING_WHITE_LABEL_*` settings;
+  applied to the comparative HTML export's chrome only — numbers, sources,
+  methodology, disclaimers and compliance lines are never altered.
+
+Still future (unchanged): payment webhook → key-gen, UI key entry + feature
+flags, key email delivery.
