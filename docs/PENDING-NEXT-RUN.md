@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com> — SPDX-License-Identifier: AGPL-3.0-or-later
+See LICENSE and COMMERCIAL-LICENSE.md for licensing terms (commercial licenses available).
+-->
+
 # Research Analyst — Pending Tasks (next run)
 
 Durable handoff log. Each item has an owner, a status, and a verifiable exit
