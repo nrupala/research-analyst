@@ -1,3 +1,22 @@
+# Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# A separate commercial license is available for uses incompatible with
+# the AGPL-3.0. See COMMERCIAL-LICENSE.md.
+
 DISCLAIMER_VERSION = "2"
 
 DISCLAIMER_SHORT = """Research Analyst is an educational tool for informational purposes only and is not investment, financial, tax, or legal advice, nor a recommendation or solicitation to buy or sell any security. Its reports apply established evaluation frameworks so readers can understand how analysts reason about a company. Market data comes from third-party sources and may be delayed or inaccurate; past performance does not guarantee future results. Do your own research and consult a licensed professional before making decisions. Provided "as is", without warranty."""
