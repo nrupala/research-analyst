@@ -17,6 +17,7 @@ import json
 import logging
 from typing import Any
 
+from ..quant import to_bps
 from ..models import (
     CompanyProfile,
     Competitor,
@@ -382,7 +383,7 @@ class VisualEngine:
             rows.append(f"| **Peer Median Yield** | {pct(div.peer_median_yield)} ({div.yield_vs_peers or 'n/a'}) |")
         if div.us_10y_yield is not None:
             spread = div.yield_vs_treasury_spread
-            sp = f" ({spread * 100:+.0f} bps)" if spread is not None else ""
+            sp = f" ({to_bps(spread):+.0f} bps)" if spread is not None else ""
             rows.append(f"| **vs 10Y Treasury** | {pct(div.us_10y_yield)}{sp} |")
         if div.attractiveness_rating:
             rows.append(f"| **Attractiveness** | {div.attractiveness_rating} |")

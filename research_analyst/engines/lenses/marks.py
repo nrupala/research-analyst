@@ -20,13 +20,22 @@ def run(data: LensInput) -> LensResult:
     """Cycle-positioning read over the current multiple vs a stated band."""
     signals: list[LensSignal] = []
     raw: dict[str, object] = {}
+    missing: list[str] = []  # Issue #70: name every missing required input
     stmt = data.latest
     price = data.current_price
+
+    if stmt is None:
+        missing.append("financial_statements")
+    if price is None:
+        missing.append("current_price")
 
     pe: float | None = None
     if stmt and stmt.eps_diluted and stmt.eps_diluted > 0 and price:
         pe = price / stmt.eps_diluted
         raw["pe_ttm"] = round(pe, 2)
+    else:
+        if not (stmt and stmt.eps_diluted and stmt.eps_diluted > 0):
+            missing.append("eps_diluted")
 
     if pe is not None:
         # position within the band, 0=cheapest .. 1=dearest
@@ -65,5 +74,6 @@ def run(data: LensInput) -> LensResult:
         summary=summary,
         signals=signals,
         raw_values=raw,
+        missing_inputs=sorted(set(missing)),
         attribution=ATTRIBUTION.format(name="Howard Marks"),
     )

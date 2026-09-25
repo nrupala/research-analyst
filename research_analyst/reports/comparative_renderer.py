@@ -166,8 +166,16 @@ def render_markdown(report: ComparativeReport) -> str:
                 out.append(f"- **{metric.label}** — {metric.source}")
     out.append("")
     for t in tickers:
-        srcs = report.data_sources.get(t, [])
-        out.append(f"- **{t} data sources:** " + (", ".join(srcs) if srcs else "not reported"))
+        # Issue #74: enumerate every source with its reference link when known.
+        recs = (report.source_records or {}).get(t, [])
+        if recs:
+            rendered = []
+            for i, rec in enumerate(recs, 1):
+                rendered.append(f"[{rec.name}]({rec.url})" if rec.url else rec.name)
+            out.append(f"- **{t} data sources:** " + "; ".join(rendered))
+        else:
+            srcs = report.data_sources.get(t, [])
+            out.append(f"- **{t} data sources:** " + (", ".join(srcs) if srcs else "not reported"))
     out.append("")
 
     if report.deferred_dimensions:
@@ -339,9 +347,19 @@ def render_html(report: ComparativeReport) -> str:
                 seen.add(metric.label)
                 body.append(f"<li><strong>{_esc(metric.label)}</strong> — {_esc(metric.source)}</li>")
     for t in tickers:
-        srcs = report.data_sources.get(t, [])
-        body.append(f"<li><strong>{_esc(t)} data sources:</strong> "
-                    f"{_esc(', '.join(srcs) if srcs else 'not reported')}</li>")
+        # Issue #74: enumerate every source with its reference link when known.
+        recs = (report.source_records or {}).get(t, [])
+        if recs:
+            items = []
+            for rec in recs:
+                label = _esc(rec.name)
+                items.append(f'<a href="{_esc(rec.url)}">{label}</a>' if rec.url else label)
+            body.append(f"<li><strong>{_esc(t)} data sources:</strong> "
+                        f"{'; '.join(items)}</li>")
+        else:
+            srcs = report.data_sources.get(t, [])
+            body.append(f"<li><strong>{_esc(t)} data sources:</strong> "
+                        f"{_esc(', '.join(srcs) if srcs else 'not reported')}</li>")
     body.append("</ul>")
 
     if report.deferred_dimensions:

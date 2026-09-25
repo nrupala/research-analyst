@@ -35,7 +35,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 
 from .enums import ReportType, ScenarioType, Timeframe
-from .models import ReportOutput, ResearchRequest, ResearchResponse
+from .models import ReportOutput, ResearchRequest, ResearchResponse, SourceRecord
 
 logger = logging.getLogger(__name__)
 
@@ -321,6 +321,9 @@ class ComparativeReport(BaseModel):
     dimensions: list[DimensionComparison] = Field(default_factory=list)
     errors: list[TickerError] = Field(default_factory=list)
     data_sources: dict[str, list[str]] = Field(default_factory=dict)
+    # Issue #74: per-ticker structured source records (name + reference link),
+    # so the comparative report enumerates every source instead of bare labels.
+    source_records: dict[str, list[SourceRecord]] = Field(default_factory=dict)
     deferred_dimensions: list[str] = Field(default_factory=list)
     per_ticker_reports: list[ResearchResponse] = Field(default_factory=list)
     disclaimer: str = _DISCLAIMER
@@ -351,6 +354,10 @@ def build_comparative_report(
     company_names = {resp.ticker: resp.company_name for resp in responses}
     currencies = {resp.ticker: getattr(resp, "currency", "USD") for resp in responses}
     data_sources = {resp.ticker: list(resp.metadata.data_sources) for resp in responses}
+    # Issue #74: carry each ticker's linked source records into the comparison.
+    source_records = {
+        resp.ticker: list(resp.metadata.source_records) for resp in responses
+    }
 
     reports_by_ticker: dict[str, ReportOutput] = {}
     for resp in responses:
@@ -427,6 +434,7 @@ def build_comparative_report(
         dimensions=dimensions,
         errors=error_list,
         data_sources=data_sources,
+        source_records=source_records,
         deferred_dimensions=list(DEFERRED_DIMENSIONS),
         per_ticker_reports=list(responses),
     )
