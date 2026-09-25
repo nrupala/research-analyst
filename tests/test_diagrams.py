@@ -27,6 +27,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from research_analyst.reports import diagrams
 from research_analyst.reports.visuals import VisualEngine
 
@@ -58,7 +60,8 @@ def test_d2_decision_framework_source():
 def test_render_fallback_when_d2_absent():
     """No d2 binary in this environment -> readable pre fallback, never blank."""
     src = diagrams.d2_business_model("AAPL")
-    rendered = diagrams.render_diagram(src)
+    with patch.object(diagrams.shutil, "which", return_value=None):
+        rendered = diagrams.render_diagram(src)
     assert rendered.startswith('<pre class="diagram-fallback">')
 
 
