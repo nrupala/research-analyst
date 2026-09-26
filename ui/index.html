@@ -25,6 +25,18 @@ the AGPL-3.0. See COMMERCIAL-LICENSE.md.
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
     <meta name="description" content="Research Analyst - Institutional-grade equity and ETF research agent">
+    <meta property="og:title" content="Research Analyst">
+    <meta property="og:description" content="Research Analyst - Institutional-grade equity and ETF research agent">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Research Analyst">
+    <meta property="og:image" content="https://ra.devinfo.dev/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Research Analyst — Institutional-grade equity and ETF research">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Research Analyst">
+    <meta name="twitter:description" content="Research Analyst - Institutional-grade equity and ETF research agent">
+    <meta name="twitter:image" content="https://ra.devinfo.dev/og-image.png">
     <meta name="theme-color" content="#0f172a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -38,6 +50,77 @@ the AGPL-3.0. See COMMERCIAL-LICENSE.md.
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "SoftwareApplication",
+          "name": "Research Analyst",
+          "applicationCategory": "FinanceApplication",
+          "operatingSystem": "Web",
+          "description": "Institutional-grade equity and ETF research agent producing decision-intelligence research comparable to top-tier sell-side and buy-side analysts.",
+          "author": {
+            "@type": "Person",
+            "name": "Nrupal Akolkar",
+            "url": "https://nrupalakolkar.com"
+          },
+          "publisher": {
+            "@type": "Organization",
+            "name": "AIMLDS",
+            "url": "https://aimlds.org"
+          },
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD",
+            "availability": "https://schema.org/OnlineOnly"
+          },
+          "softwareVersion": "0.4.0"
+        },
+        {
+          "@type": "Organization",
+          "name": "AIMLDS",
+          "url": "https://aimlds.org"
+        }
+      ]
+    }
+    </script>
+    <script>
+    // Per-host identity: one static build serves ra.devinfo.dev and ra.aimlds.org.
+    // Canonical + og:url are injected per host (self-referencing) so neither
+    // mirror nominates the other until the owner decides the mirror strategy.
+    (function () {
+      var isAIMLDS = /(^|\.)aimlds\.org$/.test(location.hostname);
+      var origin = location.origin;
+      function addLink(rel, href) {
+        var l = document.createElement("link");
+        l.rel = rel;
+        l.href = href;
+        document.head.appendChild(l);
+      }
+      addLink("canonical", origin + "/");
+      addLink("alternate", isAIMLDS ? "https://ra.devinfo.dev/" : "https://ra.aimlds.org/");
+      var ogUrl = document.createElement("meta");
+      ogUrl.setAttribute("property", "og:url");
+      ogUrl.setAttribute("content", origin + "/");
+      document.head.appendChild(ogUrl);
+      // Brand links follow the serving host: aimlds.org on the aimlds mirror.
+      document.addEventListener("DOMContentLoaded", function () {
+        if (!isAIMLDS) return;
+        document.querySelectorAll('a[href="https://devinfo.dev"]').forEach(function (a) {
+          a.href = "https://aimlds.org";
+          a.textContent = a.textContent.replace(/devinfo\.dev/g, "aimlds.org");
+          var label = a.getAttribute("aria-label");
+          if (label) a.setAttribute("aria-label", label.replace(/devinfo\.dev/g, "aimlds.org"));
+        });
+        document.querySelectorAll('a[href^="mailto:"]').forEach(function (a) {
+          a.setAttribute("href", a.getAttribute("href").replace(/ra\.devinfo\.dev/g, "ra.aimlds.org"));
+        });
+      });
+    })();
+    </script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -193,6 +276,9 @@ the AGPL-3.0. See COMMERCIAL-LICENSE.md.
                 <li><strong>Local sync:</strong> <code>research-analyst sync watchlist.json --out ./data</code> — overnight SQLite/NDJSON bundles, incremental.</li>
                 <li><strong>Source data (paid):</strong> the raw CSV/JSON behind any report via the <em>Download data</em> button or <code>POST /api/research/data</code> (X-RA-Key gate).</li>
             </ul>
+            <h3>Partnerships</h3>
+            <p>Research Analyst carries no advertising &mdash; partnerships are the model. Any partner placement is explicitly labeled as paid media, with the editorial firewall intact: never ad networks, never sold user data.</p>
+            <p><a href="mailto:nrupalakolkar@gmail.com?subject=Research%20Analyst%20partnership%20inquiry">Start a partnership conversation</a></p>
             <p class="modal__disclaimer"><strong>Disclaimer:</strong> For informational and educational purposes only. Not financial advice or a recommendation to buy or sell any security.</p>
             <button class="btn btn--secondary" id="btn-close-about" type="button">Close</button>
         </div>
@@ -251,7 +337,7 @@ the AGPL-3.0. See COMMERCIAL-LICENSE.md.
 
     <footer class="footer" role="contentinfo">
         <p>Research Analyst v0.4.0 - For informational and educational purposes only. Not financial advice.</p>
-        <p><a href="https://devinfo.dev" style="color: var(--c-primary);">&larr; Back to devinfo.dev</a> &middot; <a href="https://buymeacoffee.com/nrupalakolt" target="_blank" rel="noopener noreferrer" style="color: var(--c-primary);">Buy Me a Coffee</a></p>
+        <p><a href="https://devinfo.dev" style="color: var(--c-primary);">&larr; Back to devinfo.dev</a> &middot; <a href="https://buymeacoffee.com/nrupalakolt" target="_blank" rel="noopener noreferrer" style="color: var(--c-primary);">Buy Me a Coffee</a> &middot; <a href="mailto:nrupalakolkar@gmail.com?subject=Research%20Analyst%20partnership%20inquiry" style="color: var(--c-primary);">Partnerships</a></p>
     </footer>
 
     <section id="ra-disclaimer-gate" class="disclaimer-gate" role="dialog" aria-modal="true" aria-labelledby="ra-gate-title" hidden>
