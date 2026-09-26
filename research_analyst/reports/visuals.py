@@ -214,6 +214,20 @@ class VisualEngine:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _latest_statement(financials: list) -> Any | None:
+        """Latest statement by period end date — never assume list order.
+
+        Providers are not contractually most-recent-first, so "latest" must be
+        derived from the data, not from position 0.
+        """
+        if not financials:
+            return None
+        dated = [f for f in financials if getattr(f, "period_end_date", None)]
+        if dated:
+            return max(dated, key=lambda f: f.period_end_date)
+        return financials[0]
+
+    @staticmethod
     def table_key_metrics(
         profile: CompanyProfile,
         financials: list[FinancialStatement],
@@ -221,7 +235,7 @@ class VisualEngine:
         pe_ratio: float | None = None,
     ) -> ReportVisual:
         """Key metrics summary table."""
-        latest = financials[0] if financials else None
+        latest = VisualEngine._latest_statement(financials)
         sym = currency_symbol(profile.currency)
         rows = [
             "| Metric | Value |",
