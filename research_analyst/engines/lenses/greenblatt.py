@@ -1,3 +1,22 @@
+# Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# A separate commercial license is available for uses incompatible with
+# the AGPL-3.0. See COMMERCIAL-LICENSE.md.
+
 """Greenblatt lens — the Magic Formula (quality + value composite).
 
 Public-domain Joel Greenblatt methodology, original implementation:
@@ -14,11 +33,21 @@ def run(data: LensInput) -> LensResult:
     """Evaluate a security through the Magic Formula lens."""
     signals: list[LensSignal] = []
     raw: dict[str, object] = {}
+    missing: list[str] = []  # Issue #70: name every missing required input
     stmt = data.latest
     price = data.current_price
 
+    if stmt is None:
+        missing.append("financial_statements")
+    if price is None:
+        missing.append("current_price")
+    if not data.shares_outstanding:
+        missing.append("shares_outstanding")
+
     # --- Quality: ROIC (returns on invested capital) ---
     roic = stmt.roic if stmt else None
+    if roic is None:
+        missing.append("roic")
     if roic is not None:
         raw["roic"] = round(roic, 4)
         read = "favor" if roic >= 0.20 else "caution" if roic <= 0.05 else "neutral"
@@ -55,6 +84,8 @@ def run(data: LensInput) -> LensResult:
                 ))
     if earnings_yield is None:
         raw["earnings_yield_ebit"] = None
+        if not (stmt and stmt.ebit):
+            missing.append("ebit")
 
     # --- Composite read ---
     if roic is not None and earnings_yield is not None:
@@ -84,5 +115,6 @@ def run(data: LensInput) -> LensResult:
         summary=summary,
         signals=signals,
         raw_values=raw,
+        missing_inputs=sorted(set(missing)),
         attribution=ATTRIBUTION.format(name="Joel Greenblatt"),
     )

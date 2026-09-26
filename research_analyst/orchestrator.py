@@ -1,3 +1,22 @@
+# Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# A separate commercial license is available for uses incompatible with
+# the AGPL-3.0. See COMMERCIAL-LICENSE.md.
+
 """Research Analyst orchestrator — the main pipeline that ties everything together.
 
 This is the single entry point for generating research reports. It:
@@ -22,9 +41,11 @@ Architecture:
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Any
 
 from .config import settings
@@ -42,11 +63,14 @@ from .models import (
     CompanyProfile,
     DividendData,
     FundamentalData,
+    InputSnapshot,
+    PeerSetProvenance,
     PriceSeries,
     ReportOutput,
     ResearchMetadata,
     ResearchRequest,
     ResearchResponse,
+    SourceRecord,
 )
 from .providers.market_data import MarketDataProvider
 from .providers.sec_edgar import SECEdgarProvider
@@ -54,6 +78,32 @@ from .providers.technical import TechnicalProvider
 from .reports.renderer import ReportRenderer
 
 logger = logging.getLogger(__name__)
+
+
+# Issue #74: best-effort reference links for each declared data source so a
+# report never shows a bare source count — every source is enumerated with a
+# link or reference.
+_SOURCE_URL_TEMPLATES: list[tuple[str, str]] = [
+    ("SEC EDGAR", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker}&type=10-K"),
+    ("yfinance", "https://finance.yahoo.com/quote/{ticker}"),
+]
+
+
+def _source_records(ticker: str, data_sources: list[str]) -> list[SourceRecord]:
+    """Build enumerated source records (#74) from the declared source labels."""
+    records: list[SourceRecord] = []
+    seen: set[str] = set()
+    for label in data_sources:
+        if label in seen:
+            continue
+        seen.add(label)
+        url: str | None = None
+        for marker, template in _SOURCE_URL_TEMPLATES:
+            if marker.lower() in label.lower():
+                url = template.format(ticker=ticker)
+                break
+        records.append(SourceRecord(name=label, url=url))
+    return records
 
 
 class ResearchOrchestrator:
@@ -179,9 +229,20 @@ class ResearchOrchestrator:
         if estimates:
             data_sources.append("yfinance (analyst estimates)")
 
-        peers = self._safe_result(results[4], [], "peer data", warnings)
+        peers, peer_provenance = self._safe_result(
+            results[4], ([], None), "peer data", warnings
+        )
         if peers:
             data_sources.append("yfinance (sector peers)")
+        # Issue #67: missing expected peers are flagged loudly, never silent.
+        if peer_provenance is not None and peer_provenance.missing_tickers:
+            warnings.append(
+                "Peer universe incomplete: expected peers "
+                + ", ".join(peer_provenance.missing_tickers)
+                + " could not be enriched and were excluded. "
+                f"Peer map v{peer_provenance.map_version} "
+                f"(hash {peer_provenance.map_hash})."
+            )
 
         macro_snapshot = self._safe_result(results[5], None, "macro data", warnings)
         if macro_snapshot:
@@ -227,6 +288,9 @@ class ResearchOrchestrator:
                 profile, peers, fundamental=fundamental_analysis
             )
             all_assumptions.extend(competitive_analysis.assumptions)
+            # Issue #67: stamp the versioned peer-universe note on the landscape.
+            if peer_provenance is not None and competitive_analysis.landscape is not None:
+                competitive_analysis.landscape.peer_set_note = peer_provenance.coverage_note
 
         # --- Dividend & Yield (v0.1.1) ---
         dividend_analysis = self._dividend_engine.analyze(
@@ -318,13 +382,46 @@ class ResearchOrchestrator:
 
         elapsed = time.monotonic() - start_time
 
+        # Issue #69: one snapshotted input set per run; every number traces to it.
+        input_snapshot = self._build_input_snapshot(
+            ticker=ticker,
+            request=request,
+            profile=profile,
+            prices=prices,
+            financials=financials,
+            macro_snapshot=macro_snapshot,
+            peers=peers,
+            peer_provenance=peer_provenance,
+        )
+
+        # Issue #66: data-as-of comes from the price series (EOD quotes).
+        price_as_of = data_freshness.get("prices")
         metadata = ResearchMetadata(
             data_sources=data_sources,
             data_freshness=data_freshness,
             assumptions_used=all_assumptions,
             warnings=warnings,
             processing_time_seconds=round(elapsed, 2),
+            data_as_of=f"{price_as_of} (previous close)" if price_as_of else None,
+            source_records=_source_records(ticker, data_sources),
+            peer_set=peer_provenance,
+            input_snapshot=input_snapshot,
         )
+        # Issue #66: SLA state from data-as-of age (weekends/holidays tolerated).
+        if price_as_of:
+            try:
+                from datetime import date as _date
+
+                as_of = _date.fromisoformat(price_as_of)
+                age_days = (datetime.now(UTC).date() - as_of).days
+                if age_days > 4:
+                    metadata.sla_state = "stale"
+                    metadata.stale_warning = (
+                        f"Price data is {age_days} days old (as of {price_as_of}). "
+                        "Quotes may not reflect the latest trading session."
+                    )
+            except ValueError:
+                pass
 
         logger.info(
             "Research pipeline complete for %s: %d reports, %.1fs, %d warnings",
@@ -336,15 +433,89 @@ class ResearchOrchestrator:
             security_type=profile.security_type,
             company_name=profile.name,
             currency=profile.currency,
-            generated_at=datetime.now(timezone.utc),
+            generated_at=datetime.now(UTC),
             reports=reports,
             metadata=metadata,
         )
 
     # ------------------------------------------------------------------
-    # Data fetching helpers (each isolated, never crashes the pipeline)
+    # Evidence integrity (#66/#67/#69/#74)
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _build_input_snapshot(
+        *,
+        ticker: str,
+        request: ResearchRequest,
+        profile: CompanyProfile,
+        prices: PriceSeries,
+        financials: list,
+        macro_snapshot: Any,
+        peers: list,
+        peer_provenance: PeerSetProvenance | None,
+    ) -> InputSnapshot:
+        """Capture the single snapshotted input set for this run (#69).
+
+        Every number in the generated reports traces to these inputs. The
+        hash is over canonical JSON so reproducibility is checkable.
+        """
+        ordered = sorted(financials, key=lambda f: f.period_end_date or datetime.min.date())
+        latest = ordered[-1] if ordered else None
+
+        def _fstmt_fields(s: Any) -> dict[str, Any]:
+            if s is None:
+                return {}
+            keys = (
+                "period", "revenue", "net_income", "eps_diluted", "ebitda",
+                "operating_cash_flow", "free_cash_flow", "total_assets",
+                "total_debt", "shareholders_equity", "shares_outstanding",
+            )
+            out: dict[str, Any] = {}
+            for k in keys:
+                v = getattr(s, k, None)
+                out[k] = str(v) if v is not None else None
+            return out
+
+        def _macro_fields(m: Any) -> dict[str, Any]:
+            if m is None:
+                return {}
+            keys = (
+                "us_10y_yield", "cpi_yoy", "gdp_growth_latest",
+                "credit_spread_hy", "yield_curve_spread",
+            )
+            return {k: getattr(m, k, None) for k in keys}
+
+        inputs: dict[str, Any] = {
+            "ticker": ticker,
+            "report_types": [r.value for r in request.report_types],
+            "timeframe": request.timeframe.value,
+            "custom_assumptions": request.custom_assumptions,
+            "profile": {
+                "sector": profile.sector,
+                "industry": profile.industry,
+                "currency": profile.currency,
+                "exchange": profile.exchange,
+            },
+            "price": {
+                "current_price": prices.current_price,
+                "period_end": prices.period_end.isoformat(),
+            },
+            "latest_financials": _fstmt_fields(latest),
+            "macro": _macro_fields(macro_snapshot),
+            "peer_tickers": sorted(p.ticker for p in peers),
+            "peer_map_version": peer_provenance.map_version if peer_provenance else None,
+            "peer_map_hash": peer_provenance.map_hash if peer_provenance else None,
+        }
+        canonical = json.dumps(inputs, sort_keys=True, separators=(",", ":"), default=str)
+        return InputSnapshot(
+            captured_at_utc=datetime.now(UTC),
+            input_hash=hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+            inputs=inputs,
+        )
+
+    # ------------------------------------------------------------------
+    # Data fetching helpers (each isolated, never crashes the pipeline)
+    # ------------------------------------------------------------------
     async def _fetch_prices(self, ticker: str, request: ResearchRequest) -> PriceSeries:
         """Fetch price data with period based on request timeframe."""
         period_map = {
@@ -371,14 +542,15 @@ class ResearchOrchestrator:
         except Exception:
             return None
 
-    async def _fetch_peers(self, ticker: str) -> list:
+    async def _fetch_peers(self, ticker: str) -> tuple[list, PeerSetProvenance | None]:
         try:
-            return await self._market.get_sector_peers(
+            peers, provenance = await self._market.get_sector_peers_with_provenance(
                 ticker, max_peers=settings.analysis.max_competitors
             )
+            return peers, provenance
         except Exception as e:
             logger.debug("Peer discovery failed for %s: %s", ticker, e)
-            return []
+            return [], None
 
     async def _fetch_macro(self) -> Any:
         try:

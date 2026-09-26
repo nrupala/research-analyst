@@ -1,3 +1,22 @@
+# Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# A separate commercial license is available for uses incompatible with
+# the AGPL-3.0. See COMMERCIAL-LICENSE.md.
+
 """Marks lens — cycle positioning and second-level thinking.
 
 Public-domain Howard Marks principles (original implementation). Reads
@@ -20,13 +39,22 @@ def run(data: LensInput) -> LensResult:
     """Cycle-positioning read over the current multiple vs a stated band."""
     signals: list[LensSignal] = []
     raw: dict[str, object] = {}
+    missing: list[str] = []  # Issue #70: name every missing required input
     stmt = data.latest
     price = data.current_price
+
+    if stmt is None:
+        missing.append("financial_statements")
+    if price is None:
+        missing.append("current_price")
 
     pe: float | None = None
     if stmt and stmt.eps_diluted and stmt.eps_diluted > 0 and price:
         pe = price / stmt.eps_diluted
         raw["pe_ttm"] = round(pe, 2)
+    else:
+        if not (stmt and stmt.eps_diluted and stmt.eps_diluted > 0):
+            missing.append("eps_diluted")
 
     if pe is not None:
         # position within the band, 0=cheapest .. 1=dearest
@@ -65,5 +93,6 @@ def run(data: LensInput) -> LensResult:
         summary=summary,
         signals=signals,
         raw_values=raw,
+        missing_inputs=sorted(set(missing)),
         attribution=ATTRIBUTION.format(name="Howard Marks"),
     )

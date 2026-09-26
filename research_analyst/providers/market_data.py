@@ -1,3 +1,22 @@
+# Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# A separate commercial license is available for uses incompatible with
+# the AGPL-3.0. See COMMERCIAL-LICENSE.md.
+
 """Market data provider — price data, fundamentals, and macro indicators.
 
 Design:
@@ -41,6 +60,7 @@ from ..models import (
     FinancialStatement,
     InstitutionalHolder,
     MacroSnapshot,
+    PeerSetProvenance,
     PriceData,
     PriceSeries,
     SecurityType,
@@ -122,6 +142,23 @@ _SECTOR_PEERS: dict[str, list[str]] = {
 def _sector_peer_candidates(sector: str, industry: str = "") -> list[str]:
     """Return a deterministic peer universe for a sector (no network call)."""
     return list(_SECTOR_PEERS.get(sector or "", []))
+
+
+# Issue #67: the peer map is versioned and content-hashed so every report
+# can prove exactly which peer universe it used.
+PEER_MAP_VERSION = "2026.09"
+"""Version of the curated sector -> peers map. Bump whenever the map changes."""
+
+
+def peer_map_hash() -> str:
+    """Content hash of the curated peer map (first 16 hex of sha256).
+
+    The hash is over canonical JSON (sorted keys) so it is stable across
+    runs, processes and machines — the final peer set is deterministic
+    even though per-peer enrichment happens over the network.
+    """
+    canonical = json.dumps(_SECTOR_PEERS, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
 def _fred_observations(series_id: str, api_key: str, base_url: str, limit: int = 14) -> list[tuple[str, float]]:
@@ -818,12 +855,25 @@ class MarketDataProvider:
         yfinance is used ONLY to enrich each peer's metrics, with retry +
         backoff and per-peer graceful skip.
         """
+        peers, _provenance = await self.get_sector_peers_with_provenance(ticker, max_peers)
+        return peers
+
+    async def get_sector_peers_with_provenance(
+        self, ticker: str, max_peers: int = 8
+    ) -> tuple[list[Competitor], PeerSetProvenance]:
+        """Like :meth:`get_sector_peers` but also returns peer-set provenance (#67).
+
+        Peers that fail enrichment after retries are reported in
+        ``provenance.missing_tickers`` — loudly, never silently dropped.
+        """
         ticker = _sanitize_ticker(ticker)
 
         profile = await self.get_company_profile(ticker)
         if not profile.sector:
             logger.warning("No sector data for %s; cannot discover peers.", ticker)
-            return []
+            return [], PeerSetProvenance(
+                map_version=PEER_MAP_VERSION, map_hash=peer_map_hash()
+            )
 
         peer_tickers = [
             t for t in _sector_peer_candidates(profile.sector, profile.industry)
@@ -831,9 +881,13 @@ class MarketDataProvider:
         ]
         if not peer_tickers:
             logger.info("No curated peer set for sector '%s'", profile.sector)
-            return []
+            return [], PeerSetProvenance(
+                map_version=PEER_MAP_VERSION, map_hash=peer_map_hash()
+            )
 
+        attempted = peer_tickers[: max_peers * 2]
         peers: list[Competitor] = []
+        failed: list[str] = []
 
         # Enrich peers in parallel — bounded concurrency, retry + graceful skip.
         sem = asyncio.Semaphore(4)
@@ -873,15 +927,34 @@ class MarketDataProvider:
                         await asyncio.sleep(0.5 * (attempt + 1))
                 return None
 
-        tasks = [_fetch_peer(pt) for pt in peer_tickers[:max_peers * 2]]
+        tasks = [_fetch_peer(pt) for pt in attempted]
         results = await asyncio.gather(*tasks)
 
-        for r in results:
+        for pt, r in zip(attempted, results):
             if r is not None and len(peers) < max_peers:
                 peers.append(r)
+            elif r is None:
+                failed.append(pt)
 
         peers.sort(key=lambda p: float(p.market_cap or 0), reverse=True)
-        return peers[:max_peers]
+        peers = peers[:max_peers]
+        resolved = [p.ticker for p in peers]
+        missing = [t for t in failed if t not in resolved]
+
+        provenance = PeerSetProvenance(
+            map_version=PEER_MAP_VERSION,
+            map_hash=peer_map_hash(),
+            expected_tickers=attempted,
+            resolved_tickers=resolved,
+            missing_tickers=missing,
+        )
+        if missing:
+            logger.warning(
+                "Peer universe v%s (%s): %d of %d expected peers failed enrichment: %s",
+                PEER_MAP_VERSION, provenance.map_hash,
+                len(resolved), len(attempted), ", ".join(missing),
+            )
+        return peers, provenance
 
     # ------------------------------------------------------------------
     # Macro snapshot

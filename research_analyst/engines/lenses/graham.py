@@ -1,3 +1,22 @@
+# Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# A separate commercial license is available for uses incompatible with
+# the AGPL-3.0. See COMMERCIAL-LICENSE.md.
+
 """Graham lens — margin of safety, Graham Number, net-net value.
 
 Public-domain Benjamin Graham methodology, original implementation.
@@ -15,12 +34,22 @@ def run(data: LensInput) -> LensResult:
     """Evaluate a security through the Graham margin-of-safety lens."""
     signals: list[LensSignal] = []
     raw: dict[str, object] = {}
+    missing: list[str] = []  # Issue #70: name every missing required input
     stmt = data.latest
     price = data.current_price
+
+    if stmt is None:
+        missing.append("financial_statements")
+    if price is None:
+        missing.append("current_price")
 
     # --- Graham Number: sqrt(22.5 * EPS * BVPS) ---
     eps = stmt.eps_diluted if stmt else None
     book = bvps(stmt)
+    if eps is None or eps <= 0:
+        missing.append("eps_diluted")
+    if book is None or book <= 0:
+        missing.append("book_value_per_share")
     graham_number: float | None = None
     if eps and book and eps > 0 and book > 0:
         graham_number = math.sqrt(22.5 * eps * book)
@@ -40,6 +69,12 @@ def run(data: LensInput) -> LensResult:
 
     # --- Net-net (NCAV) ---
     n = ncav(stmt)
+    if n is None and stmt is not None:
+        # NCAV needs current assets, current liabilities and shares outstanding.
+        if not stmt.current_assets or not stmt.current_liabilities:
+            missing.append("current_assets/current_liabilities")
+        if not stmt.shares_outstanding:
+            missing.append("shares_outstanding")
     if n is not None and price:
         raw["ncav_per_share"] = round(n, 2)
         if price < n:
@@ -73,5 +108,6 @@ def run(data: LensInput) -> LensResult:
         summary=summary,
         signals=signals,
         raw_values=raw,
+        missing_inputs=sorted(set(missing)),
         attribution=ATTRIBUTION.format(name="Benjamin Graham"),
     )

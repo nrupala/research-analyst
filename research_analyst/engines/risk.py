@@ -1,3 +1,22 @@
+# Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# A separate commercial license is available for uses incompatible with
+# the AGPL-3.0. See COMMERCIAL-LICENSE.md.
+
 """Risk engine — structured risk assessment by Probability x Impact x Timing.
 
 Responsibilities:
@@ -27,6 +46,7 @@ from ..models import (
     RiskDuration,
     RiskMatrix,
     RiskNature,
+    RiskScoreComponent,
     StructuredRisk,
 )
 
@@ -92,15 +112,40 @@ class RiskEngine:
         )
 
         # Composite risk score (1-10)
+        # Issue #71: the score is never published without its derivation —
+        # build the per-risk breakdown the reader can re-compute.
+        breakdown: list[RiskScoreComponent] = []
+        baseline_note = ""
         if risks:
-            severity_sum = sum(
-                prob_scores.get(r.probability, 1) * impact_scores.get(r.impact, 1)
-                for r in risks
-            )
+            severities: list[int] = []
+            for r in risks:
+                ps = prob_scores.get(r.probability, 1)
+                im = impact_scores.get(r.impact, 1)
+                severities.append(ps * im)
+            total_severity = sum(severities)
             max_severity = len(risks) * 12  # 3 * 4 max per risk
-            score = min(10.0, (severity_sum / max_severity) * 10) if max_severity > 0 else 5.0
+            for r, sev in zip(risks, severities):
+                breakdown.append(
+                    RiskScoreComponent(
+                        title=r.title,
+                        probability_score=prob_scores.get(r.probability, 1),
+                        impact_score=impact_scores.get(r.impact, 1),
+                        severity=sev,
+                        weight_share=(sev / total_severity) if total_severity else 0.0,
+                    )
+                )
+            score = min(10.0, (total_severity / max_severity) * 10) if max_severity > 0 else 5.0
         else:
-            score = 3.0  # Low risk if nothing flagged (rare)
+            # Issue #71: no unsupported score — when no risks were flagged there
+            # is nothing to derive a score from, so publish None ("unrated")
+            # instead of an invented number.
+            score = None
+            baseline_note = (
+                "No material risks were flagged by any domain scan, so no composite "
+                "score could be computed. The risk rating is **unrated** — no score "
+                "is published rather than inventing one. Treat this as 'no evidence "
+                "of elevated risk', not as a precise measurement."
+            )
 
         # Key risk summary
         top_risks = risks[:3]
@@ -110,8 +155,10 @@ class RiskEngine:
         return RiskMatrix(
             ticker=profile.ticker,
             risks=risks,
-            overall_risk_score=round(score, 1),
+            overall_risk_score=round(score, 1) if score is not None else None,
             key_risk_summary=f"Top risks: {summary}",
+            score_breakdown=breakdown,
+            score_baseline_note=baseline_note,
         )
 
     # ------------------------------------------------------------------
