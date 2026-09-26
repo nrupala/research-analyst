@@ -111,7 +111,7 @@ class VisualEngine:
             source,
             title=f"{profile.ticker} — Business Model Overview",
             ties_to="Business model and structural position (Step 1)",
-            caption="Conceptual business model flow.",
+            caption="Conceptual business model flow (illustrative \u2014 not company-specific).",
         )
 
     @staticmethod
