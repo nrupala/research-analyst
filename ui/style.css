@@ -45,6 +45,21 @@ body {
 }
 :focus-visible { outline: 2px solid var(--c-primary); outline-offset: 2px; }
 
+/* §1 a11y: the skip link is .sr-only until it takes focus — make it
+   visible when keyboard-focused so sighted keyboard users get the
+   focus indicator the link is meant to provide. */
+a.sr-only:focus {
+    position: absolute; top: 0.5rem; left: 0.5rem; z-index: 1000;
+    width: auto; height: auto; margin: 0; padding: 0.5rem 1rem;
+    clip: auto; clip-path: none; white-space: normal; overflow: visible;
+    background: var(--c-surface); color: var(--c-text);
+    border: 2px solid var(--c-primary); border-radius: 4px;
+    text-decoration: none; font-weight: 600;
+}
+
+/* §1 a11y: spacing for the read-aloud control on the help page. */
+.listen-row { margin-bottom: 0.75rem; }
+
 .header {
     background: var(--c-text); color: #fff;
     padding: var(--sp-4) var(--sp-6);
