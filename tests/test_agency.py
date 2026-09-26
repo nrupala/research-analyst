@@ -254,6 +254,12 @@ async def test_malformed_task_typed_error():
     assert result["error"]["retryable"] is False
 
 
+def test_empty_payload_passes_field_validation():
+    # A legal empty payload is present, not missing (regression: truthiness check).
+    task = _task(payload={})
+    assert agency._validate_task(task) is task
+
+
 @pytest.mark.asyncio
 async def test_unknown_action_typed_error():
     result = await handle_ogsa_task(_task(action="research:fly"))
