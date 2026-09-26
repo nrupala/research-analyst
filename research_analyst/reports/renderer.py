@@ -59,7 +59,7 @@ from ..models import (
 from .templates import ReportTemplate, StepTemplate, get_template
 from .. import education
 from .visuals import VisualEngine
-from .currency import money
+from .currency import compact_money, money
 
 logger = logging.getLogger(__name__)
 
@@ -523,8 +523,9 @@ class ReportRenderer:
 
         # Key metrics table
         pe = None
-        if financials and financials[0].eps_diluted and financials[0].eps_diluted > 0:
-            pe = prices.current_price / financials[0].eps_diluted
+        latest_stmt = VisualEngine._latest_statement(financials)
+        if latest_stmt and latest_stmt.eps_diluted and latest_stmt.eps_diluted > 0:
+            pe = prices.current_price / latest_stmt.eps_diluted
 
         table = VisualEngine.table_key_metrics(profile, financials, prices.current_price, pe)
         visuals.append(table)
@@ -562,6 +563,78 @@ class ReportRenderer:
             assumptions=assumptions,
             data_gaps=gaps,
         ), len(visuals)
+
+    @staticmethod
+    def _abs_or_none(value: Any) -> float | None:
+        return abs(float(value)) if value is not None else None
+
+    @staticmethod
+    def _period_fcf(financials: list[Any], period: str | None) -> float | None:
+        """Free cash flow for the allocation period (match period, else latest)."""
+        if not financials:
+            return None
+        stmt = next((f for f in financials if period and f.period == period), None)
+        if stmt is None:
+            dated = [f for f in financials if getattr(f, "period_end_date", None)]
+            stmt = max(dated, key=lambda f: f.period_end_date) if dated else financials[-1]
+        fcf = getattr(stmt, "free_cash_flow", None)
+        return float(fcf) if fcf is not None else None
+
+    @staticmethod
+    def _fcf_deployment_note(
+        ticker: str,
+        period: str,
+        currency: str | None,
+        fcf: float | None,
+        items: list[tuple[str, float | None, float | None]],
+        shareholder_yield: float | None = None,
+        reinvestment_rate: float | None = None,
+    ) -> str:
+        """Narrative descriptor for the FCF distribution chart.
+
+        Turns the capital-allocation model into one plain paragraph: how much
+        free cash flow was generated, where it was deployed (dollars + honest
+        shares of deployed capital), and what was retained. ``items`` are
+        ``(label, absolute_amount, share_of_deployed)`` tuples. Returns ""
+        when there is nothing to describe.
+        """
+        shown = [(label, amt, pct) for label, amt, pct in items if amt is not None]
+        if not shown:
+            return ""
+        total = sum(amt for _, amt, _ in shown)
+        bits = []
+        for label, amt, pct in shown:
+            bit = f"{compact_money(amt, currency)} to {label}"
+            if pct is not None:
+                bit += f" ({pct:.0%} of capital deployed)"
+            bits.append(bit)
+        deployed = bits[0] if len(bits) == 1 else ", ".join(bits[:-1]) + f", and {bits[-1]}"
+        head = f"In {period}, {ticker}" if period else ticker
+        if fcf is not None and fcf > 0:
+            if total <= fcf:
+                note = (
+                    f"{head} generated {compact_money(fcf, currency)} of free cash flow "
+                    f"and deployed {compact_money(total, currency)} of it: {deployed}."
+                )
+                retained = fcf - total
+                if retained > 0:
+                    note += (
+                        f" {compact_money(retained, currency)} "
+                        f"({retained / fcf:.0%} of FCF) was retained."
+                    )
+            else:
+                note = (
+                    f"{head} generated {compact_money(fcf, currency)} of free cash flow "
+                    f"but deployed {compact_money(total, currency)} — more than FCF, "
+                    f"with the balance funded from cash reserves or financing: {deployed}."
+                )
+        else:
+            note = f"{head} deployed {compact_money(total, currency)} of capital: {deployed}."
+        if shareholder_yield is not None:
+            note += f" Shareholder yield (buybacks + dividends vs market cap): {shareholder_yield:.1%}."
+        if reinvestment_rate is not None:
+            note += f" Reinvestment rate (capex vs operating cash flow): {reinvestment_rate:.1%}."
+        return note
 
     def _render_comprehensive_step2(
         self, step: StepTemplate, ctx: dict[str, Any]
@@ -652,12 +725,37 @@ class ReportRenderer:
                 if assessment:
                     parts.append(f"- Assessment: {assessment}")
 
-                # Mermaid capital allocation
+                # FCF deployment narrative — what went where, in dollars
                 capex_pct = getattr(cap_alloc, "capex_pct_of_fcf", None)
                 buyback_pct = getattr(cap_alloc, "buyback_pct_of_fcf", None)
                 div_pct = getattr(cap_alloc, "dividend_pct_of_fcf", None)
+                alloc_period = getattr(cap_alloc, "period", "") or ""
+                note = self._fcf_deployment_note(
+                    profile.ticker,
+                    alloc_period,
+                    profile.currency,
+                    self._period_fcf(financials, alloc_period or None),
+                    [
+                        ("capital expenditure", self._abs_or_none(cap_alloc.capex), capex_pct),
+                        ("share repurchases", self._abs_or_none(cap_alloc.share_buybacks), buyback_pct),
+                        ("dividends", self._abs_or_none(cap_alloc.dividends), div_pct),
+                    ],
+                    shareholder_yield=getattr(cap_alloc, "shareholder_yield", None),
+                    reinvestment_rate=getattr(cap_alloc, "reinvestment_rate", None),
+                )
+                if note:
+                    parts.append(note)
+                    parts.append("")
+
+                # Capital allocation flow chart (honest percentages + dollar amounts)
                 mermaid = VisualEngine.d2_capital_allocation(
-                    profile.ticker, capex_pct, buyback_pct, div_pct
+                    profile.ticker, capex_pct, buyback_pct, div_pct,
+                    capex_abs=self._abs_or_none(cap_alloc.capex),
+                    buyback_abs=self._abs_or_none(cap_alloc.share_buybacks),
+                    dividend_abs=self._abs_or_none(cap_alloc.dividends),
+                    currency=profile.currency,
+                    period=alloc_period or None,
+                    ties_to="Capital allocation (Step 2)",
                 )
                 visuals.append(mermaid)
 
@@ -977,6 +1075,194 @@ class ReportRenderer:
         parts.append("")
         return parts
 
+    # ------------------------------------------------------------------
+    # Step 7 — Decision Framework & Business Model Overview enrichment
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _thesis_tilt(n_favor: int, n_disfavor: int) -> str:
+        """Net evidence tilt from favor/disfavor counts."""
+        gap = n_favor - n_disfavor
+        if gap >= 2:
+            return "positive"
+        if gap <= -2:
+            return "negative"
+        return "mixed"
+
+    @staticmethod
+    def _group_catalysts(catalysts: list[str]) -> tuple[list[str], list[str]]:
+        """Split catalysts into near-term vs structural by keyword heuristic."""
+        near_kw = (
+            "earning", "guidance", "technical", "breakout", "breakdown",
+            "volume", "report",
+        )
+        near_term: list[str] = []
+        structural: list[str] = []
+        for c in catalysts:
+            (near_term if any(k in c.lower() for k in near_kw)
+             else structural).append(c)
+        return near_term, structural
+
+    def _decision_framework_extras(
+        self,
+        ticker: str,
+        favors: list[str],
+        disfavors: list[str],
+        catalysts: list[str],
+        frame: str = "thesis",
+    ) -> tuple[list[str], list[ReportVisual]]:
+        """Description + additional graphics for the Decision Framework.
+
+        ``frame`` is "thesis" (comprehensive/long-term) or "positioning"
+        (tactical). Everything here is derived from the report's own evidence —
+        no new claims are introduced.
+        """
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        n_favor, n_disfavor = len(favors), len(disfavors)
+        tilt = self._thesis_tilt(n_favor, n_disfavor)
+
+        parts.append("### How to Read This Framework")
+        parts.append(
+            "This framework compresses the full analysis into a monitoring tool — "
+            "it is not a buy/sell recommendation. Each favoring factor is evidence "
+            f"from the report that supports the {frame}; each disfavoring factor is "
+            "evidence that argues against it. Catalysts are events that could change "
+            "this balance — a watchlist, not predictions."
+        )
+        parts.append("")
+        if n_favor or n_disfavor:
+            plural_f = "s" if n_favor != 1 else ""
+            verb_s = "s" if n_disfavor == 1 else ""
+            parts.append(
+                f"**Net assessment:** {n_favor} factor{plural_f} favor the {frame}, "
+                f"{n_disfavor} disfavor{verb_s} it — the evidence balance tilts "
+                f"**{tilt}**. The chart below shows the balance; bar length is a "
+                "count, not a weight — one strong factor can outweigh several weak ones."
+            )
+            if favors:
+                parts.append(f"Strongest supporting evidence: *{favors[0]}*")
+            if disfavors:
+                parts.append(f"Strongest counter-evidence: *{disfavors[0]}*")
+        else:
+            parts.append(
+                f"No strong factors were identified on either side — the {frame} "
+                "is genuinely uncertain on current evidence."
+            )
+        parts.append(
+            "The bear case above states what would falsify this assessment — "
+            "if those conditions materialize, the framework flips."
+        )
+        parts.append("")
+
+        visuals.append(
+            VisualEngine.svg_thesis_balance(ticker, n_favor, n_disfavor, tilt)
+        )
+        near_term, structural = self._group_catalysts(catalysts)
+        if near_term or structural:
+            visuals.append(
+                VisualEngine.d2_catalyst_watchlist(ticker, near_term, structural)
+            )
+        return parts, visuals
+
+    def _unit_economics_block(
+        self,
+        profile: CompanyProfile,
+        fundamental: Any,
+        financials: list[Any],
+    ) -> tuple[list[str], list[ReportVisual]]:
+        """'How X makes money' — economics paragraph + margin bars from real data."""
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        name = profile.name or profile.ticker
+        margins: dict[str, float | None] = {}
+        if fundamental is not None:
+            margins = {
+                "Gross margin": getattr(fundamental, "gross_margin_latest", None),
+                "Operating margin": getattr(fundamental, "operating_margin_latest", None),
+                "Net margin": getattr(fundamental, "net_margin_latest", None),
+                "FCF margin": getattr(fundamental, "fcf_margin_latest", None),
+            }
+        available = {k: v for k, v in margins.items() if v is not None}
+
+        latest = (
+            VisualEngine._latest_statement(financials) if financials else None
+        )
+        revenue = getattr(latest, "revenue", None) if latest is not None else None
+
+        if revenue:
+            econ = (
+                f"{name} generated **{compact_money(float(revenue), profile.currency)}** "
+                "of revenue in its latest reported period"
+            )
+            keeps: list[str] = []
+            if available.get("Gross margin") is not None:
+                keeps.append(
+                    f"about ${available['Gross margin'] * 100:.0f} as gross profit"
+                )
+            if available.get("Operating margin") is not None:
+                keeps.append(
+                    f"${available['Operating margin'] * 100:.0f} as operating profit"
+                )
+            if available.get("Net margin") is not None:
+                keeps.append(f"${available['Net margin'] * 100:.0f} as net income")
+            if available.get("FCF margin") is not None:
+                keeps.append(
+                    f"${available['FCF margin'] * 100:.0f} as free cash flow"
+                )
+            if keeps:
+                econ += (
+                    "; of every $100 of revenue it keeps "
+                    + ", ".join(keeps) + "."
+                )
+            else:
+                econ += "."
+            parts.append("### How It Makes Money")
+            parts.append(econ)
+            parts.append("")
+
+        chart = VisualEngine.svg_unit_economics(profile.ticker, margins)
+        if chart is not None:
+            if not revenue:
+                parts.append("### How It Makes Money")
+                parts.append(f"Latest reported margins for {name}:")
+                parts.append("")
+            visuals.append(chart)
+        return parts, visuals
+
+    def _business_model_overview_block(
+        self,
+        profile: CompanyProfile,
+        fundamental: Any,
+        financials: list[Any],
+    ) -> tuple[list[str], list[ReportVisual]]:
+        """Business Model Overview: description + unit economics + flow diagram."""
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        parts.append("### Business Model Overview")
+        if profile.description:
+            parts.append(profile.description[:600])
+            parts.append("")
+        if profile.sector:
+            parts.append(f"**Sector:** {profile.sector}")
+        if profile.industry:
+            parts.append(f"**Industry:** {profile.industry}")
+        if profile.market_cap:
+            parts.append(
+                f"**Market Cap:** "
+                f"{money(float(profile.market_cap) / 1e9, profile.currency, 1)}B"
+            )
+        if profile.employees:
+            parts.append(f"**Employees:** {profile.employees:,}")
+        parts.append("")
+        econ_parts, econ_visuals = self._unit_economics_block(
+            profile, fundamental, financials
+        )
+        parts.extend(econ_parts)
+        visuals.extend(econ_visuals)
+        visuals.append(VisualEngine.d2_business_model(profile))
+        return parts, visuals
+
     def _render_comprehensive_step6(
         self, step: StepTemplate, ctx: dict[str, Any]
     ) -> tuple[ReportSection, int]:
@@ -1189,6 +1475,7 @@ class ReportRenderer:
         parts.extend(self._bear_case_block(disfavors, risk_matrix))
 
         parts.append("### Key Catalysts")
+        parts.append("_Typical catalysts to watch \u2014 not company-specific._")
         for c in catalysts:
             parts.append(f"- {c}")
         parts.append("")
@@ -1202,6 +1489,7 @@ class ReportRenderer:
 
         # Monitoring triggers
         parts.append("### What to Monitor")
+        parts.append("_Standard monitoring checklist \u2014 not company-specific._")
         parts.append("- Earnings trajectory and guidance revisions.")
         parts.append("- Margin trend (expanding or compressing).")
         parts.append("- Competitive dynamics and market share data.")
@@ -1209,15 +1497,26 @@ class ReportRenderer:
         parts.append("- Technical support/resistance breaks.")
         parts.append("")
 
+        # Decision framework: description + additional graphics beyond the graph
+        df_parts, df_visuals = self._decision_framework_extras(
+            profile.ticker, favors, disfavors, catalysts, frame="thesis"
+        )
+        parts.extend(df_parts)
+
         # Mermaid decision framework
         mermaid = VisualEngine.d2_decision_framework(
             profile.ticker, favors[:4], disfavors[:4], catalysts[:3]
         )
         visuals.append(mermaid)
+        visuals.extend(df_visuals)
 
-        # Mermaid business model (if Step 1 didn't include one for this template)
-        biz_model = VisualEngine.d2_business_model(profile)
-        visuals.append(biz_model)
+        # Business model overview (Step 1 doesn't include one for this template):
+        # description + unit economics + flow diagram
+        bm_parts, bm_visuals = self._business_model_overview_block(
+            profile, fundamental, ctx.get("financials") or []
+        )
+        parts.extend(bm_parts)
+        visuals.extend(bm_visuals)
 
         return ReportSection(
             step_number=step.step_number, title=step.title,
@@ -1266,8 +1565,13 @@ class ReportRenderer:
             score = getattr(technical, "composite_score", 50)
             parts.append(f"**Technical Regime:** {regime.upper()} (Score: {score:.0f}/100)")
 
-        table = VisualEngine.table_key_metrics(profile, ctx["financials"], prices.current_price,
-            prices.current_price / ctx["financials"][0].eps_diluted if ctx["financials"] and ctx["financials"][0].eps_diluted and ctx["financials"][0].eps_diluted > 0 else None)
+        latest_stmt = VisualEngine._latest_statement(ctx["financials"])
+        pe_ratio = (
+            prices.current_price / latest_stmt.eps_diluted
+            if latest_stmt and latest_stmt.eps_diluted and latest_stmt.eps_diluted > 0
+            else None
+        )
+        table = VisualEngine.table_key_metrics(profile, ctx["financials"], prices.current_price, pe_ratio)
         visuals.append(table)
 
         return ReportSection(step_number=step.step_number, title=step.title,
@@ -1614,11 +1918,21 @@ class ReportRenderer:
         parts.append("- Macro regime shift (rate decision, inflation print)")
         parts.append("- Volume confirmation of price moves")
 
+        # Decision framework: description + additional graphics beyond the graph
+        _tactical_catalysts = [
+            "Earnings report", "Technical breakout/breakdown", "Macro shift"
+        ]
+        df_parts, df_visuals = self._decision_framework_extras(
+            profile.ticker, favors, disfavors, _tactical_catalysts,
+            frame="positioning",
+        )
+        parts.extend(df_parts)
+
         mermaid = VisualEngine.d2_decision_framework(
-            profile.ticker, favors[:4], disfavors[:4],
-            ["Earnings report", "Technical breakout/breakdown", "Macro shift"]
+            profile.ticker, favors[:4], disfavors[:4], _tactical_catalysts
         )
         visuals.append(mermaid)
+        visuals.extend(df_visuals)
 
         return ReportSection(step_number=step.step_number, title=step.title,
             content="\n".join(parts), visuals=visuals, data_gaps=gaps), len(visuals)
@@ -1655,6 +1969,13 @@ class ReportRenderer:
         if profile.employees:
             parts.append(f"**Employees:** {profile.employees:,}")
         parts.append("")
+
+        # Unit economics: how the company makes money, from real margin data
+        econ_parts, econ_visuals = self._unit_economics_block(
+            profile, ctx.get("fundamental"), ctx.get("financials") or []
+        )
+        parts.extend(econ_parts)
+        visuals.extend(econ_visuals)
 
         biz_model = VisualEngine.d2_business_model(profile)
         visuals.append(biz_model)
@@ -1818,7 +2139,34 @@ class ReportRenderer:
         buyback_pct = getattr(cap, "buyback_pct_of_fcf", None)
         div_pct = getattr(cap, "dividend_pct_of_fcf", None)
 
-        mermaid = VisualEngine.d2_capital_allocation(profile.ticker, capex_pct, buyback_pct, div_pct)
+        # FCF deployment narrative — what went where, in dollars
+        alloc_period = getattr(cap, "period", "") or ""
+        note = self._fcf_deployment_note(
+            profile.ticker,
+            alloc_period,
+            profile.currency,
+            self._period_fcf(ctx.get("financials") or [], alloc_period or None),
+            [
+                ("capital expenditure", self._abs_or_none(cap.capex), capex_pct),
+                ("share repurchases", self._abs_or_none(cap.share_buybacks), buyback_pct),
+                ("dividends", self._abs_or_none(cap.dividends), div_pct),
+            ],
+            shareholder_yield=getattr(cap, "shareholder_yield", None),
+            reinvestment_rate=getattr(cap, "reinvestment_rate", None),
+        )
+        if note:
+            parts.append(note)
+            parts.append("")
+
+        mermaid = VisualEngine.d2_capital_allocation(
+            profile.ticker, capex_pct, buyback_pct, div_pct,
+            capex_abs=self._abs_or_none(cap.capex),
+            buyback_abs=self._abs_or_none(cap.share_buybacks),
+            dividend_abs=self._abs_or_none(cap.dividends),
+            currency=profile.currency,
+            period=alloc_period or None,
+            ties_to="Capital allocation (Step 4)",
+        )
         visuals.append(mermaid)
 
         # Dividend & yield (v0.1.1)
@@ -1946,6 +2294,7 @@ class ReportRenderer:
         parts.extend(self._bear_case_block(disfavors, risk_matrix))
 
         parts.append("### Catalysts")
+        parts.append("_Typical catalysts to watch \u2014 not company-specific._")
         for c in catalysts:
             parts.append(f"- {c}")
         parts.append("")
@@ -1957,16 +2306,25 @@ class ReportRenderer:
             parts.append("")
 
         parts.append("### What to Monitor")
+        parts.append("_Standard monitoring checklist \u2014 not company-specific._")
         parts.append("- Multi-year revenue growth trajectory")
         parts.append("- Margin sustainability and expansion")
         parts.append("- Capital allocation decisions (ROIC vs WACC)")
         parts.append("- Competitive moat durability")
         parts.append("- Regulatory environment changes")
+        parts.append("")
+
+        # Decision framework: description + additional graphics beyond the graph
+        df_parts, df_visuals = self._decision_framework_extras(
+            profile.ticker, favors, disfavors, catalysts, frame="thesis"
+        )
+        parts.extend(df_parts)
 
         mermaid = VisualEngine.d2_decision_framework(
             profile.ticker, favors[:4], disfavors[:4], catalysts[:3]
         )
         visuals.append(mermaid)
+        visuals.extend(df_visuals)
 
         return ReportSection(step_number=step.step_number, title=step.title,
             content="\n".join(parts), visuals=visuals, data_gaps=gaps), len(visuals)

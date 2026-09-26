@@ -393,3 +393,106 @@ def _fig() -> tuple[Any, Any]:
     fig.patch.set_facecolor("white")
     ax.set_facecolor("white")
     return fig, ax
+
+
+def svg_thesis_balance(
+    ticker: str, n_favor: int, n_disfavor: int, tilt: str
+) -> ReportVisual:
+    """Diverging evidence bar: thesis-favoring vs disfavoring factor counts.
+
+    Bar length is a *count*, not a weight — one strong factor can outweigh
+    several weak ones. Compact figure (not the default 9.6x5.4) because a
+    single diverging bar needs little vertical space.
+    """
+    fig, ax = plt.subplots(figsize=(FIG_WIDTH, 2.8), dpi=DPI)
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
+    span = max(n_favor, n_disfavor, 1)
+    ax.barh([0], [n_favor], height=0.42, color=C["green"], alpha=0.88, zorder=3)
+    ax.barh([0], [-n_disfavor], height=0.42, color=C["red"], alpha=0.88, zorder=3)
+    ax.set_xlim(-span - 1, span + 1)
+    ax.set_ylim(-0.8, 0.8)
+    ax.axvline(0, color="#9aa7b4", linewidth=1.2, zorder=4)
+    ax.set_yticks([])
+    ax.set_xticks([])
+    for spine in ("top", "right", "left", "bottom"):
+        ax.spines[spine].set_visible(False)
+    if n_favor:
+        ax.text(n_favor / 2, 0, f"{n_favor} favor", ha="center", va="center",
+                fontsize=11, fontweight="bold", color="white", zorder=5)
+    if n_disfavor:
+        ax.text(-n_disfavor / 2, 0, f"{n_disfavor} disfavor", ha="center",
+                va="center", fontsize=11, fontweight="bold", color="white",
+                zorder=5)
+    ax.text(0, -0.62, f"Evidence balance tilts {tilt}", ha="center", va="top",
+            fontsize=10, style="italic", color=C["muted"])
+    _title(fig, f"{ticker} \u2014 Thesis Balance")
+    return ReportVisual(
+        visual_type="svg",
+        title=f"{ticker} \u2014 Thesis Balance",
+        content=_to_svg(fig),
+        ties_to="Investment thesis evidence balance (Step 7)",
+        caption=(
+            "Count of favoring vs disfavoring factors. Length is a count, not a "
+            "weight \u2014 one strong factor can outweigh several weak ones."
+        ),
+        interactive={
+            "type": "thesis_balance",
+            "favor": n_favor,
+            "disfavor": n_disfavor,
+            "tilt": tilt,
+        },
+    )
+
+
+def svg_unit_economics(
+    ticker: str, margins: dict[str, float | None]
+) -> ReportVisual | None:
+    """Horizontal margin bars — the company's unit economics at a glance.
+
+    ``margins`` maps a label to a decimal margin (0.42 = 42%). Entries that
+    are None are skipped; returns None when nothing is available.
+    """
+    items = [(label, value) for label, value in margins.items()
+             if value is not None]
+    if not items:
+        return None
+    labels = [label for label, _ in items]
+    values = [value * 100 for _, value in items]
+    fig, ax = plt.subplots(figsize=(FIG_WIDTH, 1.6 + 0.9 * len(items)), dpi=DPI)
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
+    bars = ax.barh(labels, values, height=0.5, color=C["steel"], alpha=0.9,
+                   zorder=3)
+    ax.set_xlabel("Margin (%)", color=C["muted"], fontsize=10)
+    ax.set_xlim(min(0, min(values) - 5), 100)
+    ax.grid(True, axis="x", color=C["grid"], linewidth=0.8)
+    ax.set_axisbelow(True)
+    ax.tick_params(colors=C["muted"], labelsize=10)
+    for spine in ("top", "right"):
+        ax.spines[spine].set_visible(False)
+    for spine in ("left", "bottom"):
+        ax.spines[spine].set_color("#d0d7de")
+    for bar, value in zip(bars, values):
+        ax.text(
+            value + (1 if value >= 0 else -1),
+            bar.get_y() + bar.get_height() / 2,
+            f"{value:.1f}%",
+            ha="left" if value >= 0 else "right",
+            va="center", fontsize=10, color=C["text"],
+        )
+    _title(fig, f"{ticker} \u2014 Unit Economics (latest margins)")
+    return ReportVisual(
+        visual_type="svg",
+        title=f"{ticker} \u2014 Unit Economics",
+        content=_to_svg(fig),
+        ties_to="Business model economics (Step 7)",
+        caption=(
+            "Latest reported margins \u2014 what the company keeps from each "
+            "dollar of revenue."
+        ),
+        interactive={
+            "type": "unit_economics",
+            "margins": {label: value for label, value in items},
+        },
+    )

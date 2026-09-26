@@ -111,7 +111,7 @@ class VisualEngine:
             source,
             title=f"{profile.ticker} — Business Model Overview",
             ties_to="Business model and structural position (Step 1)",
-            caption="Conceptual business model flow.",
+            caption="Conceptual business model flow (illustrative \u2014 not company-specific).",
         )
 
     @staticmethod
@@ -131,19 +131,60 @@ class VisualEngine:
         )
 
     @staticmethod
+    def svg_thesis_balance(
+        ticker: str, n_favor: int, n_disfavor: int, tilt: str
+    ) -> ReportVisual:
+        """Thesis evidence balance as a server-rendered SVG."""
+        return svg_charts.svg_thesis_balance(ticker, n_favor, n_disfavor, tilt)
+
+    @staticmethod
+    def svg_unit_economics(
+        ticker: str, margins: dict[str, float | None]
+    ) -> ReportVisual | None:
+        """Unit-economics margin bars as a server-rendered SVG."""
+        return svg_charts.svg_unit_economics(ticker, margins)
+
+    @staticmethod
+    def d2_catalyst_watchlist(
+        ticker: str, near_term: list[str], structural: list[str]
+    ) -> ReportVisual:
+        """Catalyst watchlist as a server-rendered D2 diagram."""
+        source = diagrams.d2_catalyst_watchlist(ticker, near_term, structural)
+        return diagrams.diagram_visual(
+            source,
+            title=f"{ticker} \u2014 Catalyst Watchlist",
+            ties_to="Catalysts and monitoring (Step 7)",
+            caption="Near-term vs structural catalysts feeding the monitoring decision.",
+        )
+
+    @staticmethod
     def d2_capital_allocation(
         ticker: str,
         capex_pct: float | None,
         buyback_pct: float | None,
         dividend_pct: float | None,
+        capex_abs: float | None = None,
+        buyback_abs: float | None = None,
+        dividend_abs: float | None = None,
+        currency: str | None = "USD",
+        period: str | None = None,
+        ties_to: str = "Capital allocation analysis",
     ) -> ReportVisual:
         """Capital allocation flow as a server-rendered D2 diagram."""
-        source = diagrams.d2_capital_allocation(ticker, capex_pct, buyback_pct, dividend_pct)
+        source = diagrams.d2_capital_allocation(
+            ticker, capex_pct, buyback_pct, dividend_pct,
+            capex_abs=capex_abs, buyback_abs=buyback_abs,
+            div_abs=dividend_abs, currency=currency,
+        )
+        caption = "Capital deployed by destination"
+        if period:
+            caption += f" ({period})"
+        caption += ". Percentages are shares of total capital deployed."
         return diagrams.diagram_visual(
             source,
             title=f"{ticker} — Capital Allocation Flow",
-            ties_to="Capital allocation analysis (Step 4)",
-            caption="FCF deployment breakdown. Most recent annual period.",
+            ties_to=ties_to,
+            caption=caption,
         )
 
     # ------------------------------------------------------------------
@@ -200,6 +241,20 @@ class VisualEngine:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _latest_statement(financials: list) -> Any | None:
+        """Latest statement by period end date — never assume list order.
+
+        Providers are not contractually most-recent-first, so "latest" must be
+        derived from the data, not from position 0.
+        """
+        if not financials:
+            return None
+        dated = [f for f in financials if getattr(f, "period_end_date", None)]
+        if dated:
+            return max(dated, key=lambda f: f.period_end_date)
+        return financials[0]
+
+    @staticmethod
     def table_key_metrics(
         profile: CompanyProfile,
         financials: list[FinancialStatement],
@@ -207,7 +262,7 @@ class VisualEngine:
         pe_ratio: float | None = None,
     ) -> ReportVisual:
         """Key metrics summary table."""
-        latest = financials[0] if financials else None
+        latest = VisualEngine._latest_statement(financials)
         sym = currency_symbol(profile.currency)
         rows = [
             "| Metric | Value |",
@@ -265,7 +320,11 @@ class VisualEngine:
             de = f"{p.debt_to_equity:.2f}x" if p.debt_to_equity is not None else "N/A"
             rows.append(f"| **{p.ticker}** | {p.name[:20]} | {mc} | {gm} | {om} | {pe} | {ev} | {rg} | {roe} | {de} |")
 
-        return ReportVisual(visual_type="table", title="Peer Comparison", content="\n".join(rows), ties_to="Competitive positioning (Step 3)")
+        return ReportVisual(
+            visual_type="table", title="Peer Comparison", content="\n".join(rows),
+            ties_to="Competitive positioning (Step 3)",
+            caption="Profitability, valuation, growth, and leverage versus peers. N/A = data unavailable for that peer.",
+        )
 
     @staticmethod
     def table_risk_matrix(risks: list[StructuredRisk]) -> ReportVisual:
@@ -280,7 +339,11 @@ class VisualEngine:
         for r in risks[:10]:
             rows.append(f"| {r.title} | {r.category.value.title()} | {r.probability} | {r.impact} | {r.timing.value.replace('_', ' ').title()} | {r.nature.value.title()} |")
 
-        return ReportVisual(visual_type="table", title="Structured Risk Matrix", content="\n".join(rows), ties_to="Risk assessment (Step 5/6)")
+        return ReportVisual(
+            visual_type="table", title="Structured Risk Matrix", content="\n".join(rows),
+            ties_to="Risk assessment (Step 5/6)",
+            caption="Top risks by severity (probability \u00d7 impact). Timing and nature per the risk framework; score derivation published below.",
+        )
 
     @staticmethod
     def table_financial_summary(financials: list[FinancialStatement], currency: str | None = None) -> ReportVisual:
@@ -325,7 +388,12 @@ class VisualEngine:
         rows.append(_row("ROE", lambda f: f.roe, "pct"))
         rows.append(_row("Debt/Equity", lambda f: f.debt_to_equity, "ratio"))
 
-        return ReportVisual(visual_type="table", title="Financial Summary", content="\n".join(rows), ties_to="Financial analysis (Step 2)")
+        period_note = f" ({periods[0]}\u2013{periods[-1]})" if len(periods) > 1 else (f" ({periods[0]})" if periods else "")
+        return ReportVisual(
+            visual_type="table", title="Financial Summary", content="\n".join(rows),
+            ties_to="Financial analysis (Step 2)",
+            caption=f"Annual financials{period_note}. Money figures in {sym} billions; margins as % of revenue.",
+        )
 
     @staticmethod
     def table_macro_regime(implications: list) -> ReportVisual:
@@ -342,7 +410,11 @@ class VisualEngine:
             magnitude = getattr(impl, "magnitude", "")
             rows.append(f"| {factor} | {current} | {regime} | {impact.title()} | {magnitude.title()} |")
 
-        return ReportVisual(visual_type="table", title="Macro Environment", content="\n".join(rows), ties_to="Macro context (Step 5)")
+        return ReportVisual(
+            visual_type="table", title="Macro Environment", content="\n".join(rows),
+            ties_to="Macro context (Step 5)",
+            caption="How each macro factor is classified today and what it implies for the sector.",
+        )
 
     # ------------------------------------------------------------------
     # Dividend & yield (v0.1.1)
