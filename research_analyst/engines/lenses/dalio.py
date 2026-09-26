@@ -1,3 +1,22 @@
+# Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# A separate commercial license is available for uses incompatible with
+# the AGPL-3.0. See COMMERCIAL-LICENSE.md.
+
 """Dalio lens — macro regime framing and allocation levers (educational).
 
 Public-domain Ray Dalio-style risk-parity framing (original implementation).
@@ -20,14 +39,19 @@ def run(data: LensInput) -> LensResult:
     """Regime framing over available proxies (yield spread, beta)."""
     signals: list[LensSignal] = []
     raw: dict[str, object] = {}
+    missing: list[str] = []  # Issue #70: name every missing required input
 
     yield_v = data.raw.get("dividend_yield")
     if yield_v is None and data.fundamental is not None:
         yield_v = getattr(data.fundamental, "current_yield", None)
     raw["dividend_yield"] = yield_v
+    if yield_v is None:
+        missing.append("dividend_yield")
 
     beta = data.raw.get("beta")
     raw["beta"] = beta
+    if beta is None:
+        missing.append("beta")
 
     # --- Yield vs treasury proxy: the income/macro lever ---
     if yield_v is not None:
@@ -93,5 +117,6 @@ def run(data: LensInput) -> LensResult:
         summary=summary,
         signals=signals,
         raw_values=raw,
+        missing_inputs=sorted(set(missing)),
         attribution=ATTRIBUTION.format(name="Ray Dalio"),
     )

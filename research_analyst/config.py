@@ -1,3 +1,22 @@
+# Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# A separate commercial license is available for uses incompatible with
+# the AGPL-3.0. See COMMERCIAL-LICENSE.md.
+
 """Configuration management — environment-driven, no hardcoded secrets."""
 # Module: research_analyst/config.py | Version: 0.1.0 | Updated: 2026-05-15
 
@@ -99,6 +118,10 @@ class ServerConfig(BaseSettings):
     cors_origins: list[str] = ["http://localhost:8700", "http://127.0.0.1:8700"]
     static_dir: Path = _PROJECT_ROOT / "ui"
     log_level: str = "info"
+    # Issue #66: report cache refreshes daily (EOD cadence); entries older
+    # than this are regenerated, never silently re-served.
+    report_cache_ttl_seconds: int = 86400
+    report_cache_max: int = 100
 
     model_config = {"env_prefix": "RA_SERVER_"}
 
@@ -113,6 +136,19 @@ class BillingConfig(BaseSettings):
     """
 
     paid_keys: list[str] = Field(default_factory=list, description="Comma-separated paid API keys.")
+
+    # Key-store file for hashed, revocable API keys (see entitlements.py).
+    # Only key hashes are persisted — never raw keys. When set, /api/research/data
+    # also accepts KeyStore keys carrying the `source.data` entitlement, and
+    # /api/usage serves per-key metering.
+    api_keys_file: str = ""
+
+    # White-label branding hooks (evidence is never altered — chrome only).
+    white_label_org_name: str = ""
+    white_label_prepared_on_url: str = ""
+    white_label_footer_note: str = ""
+    white_label_show_support_link: bool = True
+    white_label_accent_color: str = ""
 
     model_config = {"env_prefix": "RA_BILLING_"}
 

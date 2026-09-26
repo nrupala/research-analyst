@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com> — SPDX-License-Identifier: AGPL-3.0-or-later
+See LICENSE and COMMERCIAL-LICENSE.md for licensing terms (commercial licenses available).
+-->
+
 # Contributing to Research Analyst
 
 Thank you for your interest in contributing. This document outlines the standards and process.

@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com> — SPDX-License-Identifier: AGPL-3.0-or-later
+See LICENSE and COMMERCIAL-LICENSE.md for licensing terms (commercial licenses available).
+-->
+
 # Research Analyst × thinkwithfinance.com — Module Explainer Series (plan)
 
 Following through on the commitment to cross-link **ra.devinfo.dev** with the **thinkwithfinance.com (twf)**

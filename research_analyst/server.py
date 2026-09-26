@@ -1,3 +1,22 @@
+# Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# A separate commercial license is available for uses incompatible with
+# the AGPL-3.0. See COMMERCIAL-LICENSE.md.
+
 """FastAPI web server - REST API + static file serving for the browser UI.
 
 Security:
@@ -23,6 +42,7 @@ import logging
 import time
 import uuid
 from collections import OrderedDict
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -44,6 +64,13 @@ from .comparative import MAX_TICKERS, MIN_TICKERS, ComparativeOrchestrator
 from .config import settings
 from .disclaimer import DISCLAIMER_FULL, DISCLAIMER_SHORT, DISCLAIMER_VERSION
 from .enums import ReportType
+from .entitlements import (
+    SOURCE_DATA,
+    KeyStore,
+    MeteringRecorder,
+    WhiteLabelProfile,
+    has_entitlement,
+)
 from .exporters import ts_definitions, xml_from_dict
 from .models import ResearchRequest
 from .orchestrator import ResearchOrchestrator
@@ -181,9 +208,38 @@ def get_comparative_orchestrator() -> ComparativeOrchestrator:
 # App factory
 # ---------------------------------------------------------------------------
 
+def stamp_cache_hit(
+    cached: ResearchAPIResponse, cached_at: datetime
+) -> ResearchAPIResponse:
+    """Stamp a cache hit with freshness metadata and re-render markdown (#66).
+
+    The markdown is re-rendered so the reader-visible freshness header
+    reflects the actual cache age — never the generation-time copy.
+    """
+    resp = cached.model_copy(deep=True)
+    meta = resp.metadata
+    meta.cache_hit = True
+    meta.cached_at_utc = cached_at
+    age_days = (datetime.now(timezone.utc) - cached_at).total_seconds() / 86400
+    # EOD data goes stale after ~2 days (weekends/holidays excepted by the
+    # TTL refresh); surface it loudly instead of silently.
+    if age_days > 2:
+        meta.sla_state = "stale"
+        meta.stale_warning = (
+            f"This report was generated from data as of {meta.data_as_of or 'an unknown date'} "
+            f"({age_days:.0f} days ago). Quotes may not reflect the latest trading session."
+        )
+    else:
+        meta.sla_state = "fresh"
+    resp.reports_markdown = [r.to_markdown(metadata=meta) for r in resp.reports]
+    return resp
+
+
 def create_app(
     orchestrator: ResearchOrchestrator | None = None,
     rate_limiter: _IPRateLimiter | None = None,
+    key_store: KeyStore | None = None,
+    metering: MeteringRecorder | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="Research Analyst",
@@ -226,16 +282,53 @@ def create_app(
     # --- Orchestrator (injectable so tests can stub the pipeline) ---
     orchestrator = orchestrator or ResearchOrchestrator()
 
+    # --- API keys, metering, white-label (injectable for tests) ---
+    if key_store is None and settings.billing.api_keys_file:
+        key_store = KeyStore(settings.billing.api_keys_file)
+    metering = metering or MeteringRecorder()
+    app.state.key_store = key_store
+    app.state.metering = metering
+    app.state.white_label = WhiteLabelProfile(
+        org_name=settings.billing.white_label_org_name,
+        prepared_on_url=settings.billing.white_label_prepared_on_url,
+        footer_note=settings.billing.white_label_footer_note,
+        show_support_link=settings.billing.white_label_show_support_link,
+        accent_color=settings.billing.white_label_accent_color,
+    )
+
+    def _key_record(request: Request):
+        """Verify X-RA-Key against the key store. Returns record or None.
+
+        The raw key is never logged or persisted.
+        """
+        store = request.app.state.key_store
+        if store is None:
+            return None
+        return store.verify(request.headers.get("x-ra-key", ""))
+
+    def _meter(request: Request, endpoint: str) -> None:
+        record = _key_record(request)
+        key_id = record.key_id if record else "anonymous"
+        request.app.state.metering.record(key_id, endpoint)
+
     # --- Market data (symbol/name resolution) ---
     market_provider = MarketDataProvider()
 
-    # --- Report cache ---
-    report_cache: OrderedDict[str, ResearchAPIResponse] = OrderedDict()
-    cache_max = 100
+    # --- Report cache (Issue #66: TTL-bound, staleness-visible) ---
+    # Entries are (response, cached_at_utc). A hit past the TTL is treated
+    # as a miss and regenerated — a stale report is never silently re-served.
+    report_cache: OrderedDict[str, tuple[ResearchAPIResponse, datetime]] = OrderedDict()
+    cache_max = settings.server.report_cache_max
+    cache_ttl = settings.server.report_cache_ttl_seconds
 
     def _cache_key(req: ResearchAPIRequest) -> str:
         raw = f"{req.ticker}:{req.report_type}:{req.timeframe}"
         return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+    def _cache_store(ck: str, api_response: ResearchAPIResponse) -> None:
+        if len(report_cache) >= cache_max:
+            report_cache.popitem(last=False)
+        report_cache[ck] = (api_response, datetime.now(timezone.utc))
 
     # ================================================================
     # API Endpoints
@@ -280,6 +373,7 @@ def create_app(
         fmt = negotiate_format(format, request.headers.get("accept", ""))
         if fmt in ("markdown", "html"):
             raise HTTPException(status_code=400, detail=f"{fmt} is not available for /api/resolve.")
+        _meter(request, "resolve")
         return _render_payload(api_response.model_dump(mode="json"), fmt, "resolution")
 
     @app.post("/api/research", response_model=ResearchAPIResponse)
@@ -295,16 +389,26 @@ def create_app(
         request_id = str(uuid.uuid4())[:8]
 
         ck = _cache_key(body)
-        if ck in report_cache:
-            logger.info("Cache hit for %s", body.ticker)
-            cached = report_cache[ck]
-            report_cache.move_to_end(ck)
-            api_response = cached
+        now = datetime.now(timezone.utc)
+        cached_entry = report_cache.get(ck)
+        if cached_entry is not None:
+            cached, cached_at = cached_entry
+            age = (now - cached_at).total_seconds()
+            if age <= cache_ttl:
+                logger.info("Cache hit for %s (age %.0fs)", body.ticker, age)
+                report_cache.move_to_end(ck)
+                api_response = stamp_cache_hit(cached, cached_at)
+            else:
+                logger.info(
+                    "Cache entry for %s expired (age %.0fs > TTL %ds); regenerating",
+                    body.ticker, age, cache_ttl,
+                )
+                del report_cache[ck]
+                api_response = await _run_research_uncached(body, request_id)
+                _cache_store(ck, api_response)
         else:
             api_response = await _run_research_uncached(body, request_id)
-            if len(report_cache) >= cache_max:
-                report_cache.popitem(last=False)
-            report_cache[ck] = api_response
+            _cache_store(ck, api_response)
 
         fmt = negotiate_format(format, request.headers.get("accept", ""))
         if fmt == "html":
@@ -317,6 +421,7 @@ def create_app(
             if fmt == "markdown"
             else None
         )
+        _meter(request, "research")
         return _render_payload(
             api_response.model_dump(mode="json"), fmt, "research", markdown=markdown
         )
@@ -359,17 +464,20 @@ def create_app(
         body: ResearchAPIRequest, request_id: str
     ) -> ResearchAPIResponse:
         result = await _run_pipeline(body)
-        reports_markdown = [report.to_markdown() for report in result.reports]
-
-        return ResearchAPIResponse(
+        api_response = ResearchAPIResponse(
             request_id=request_id,
             ticker=result.ticker,
             company_name=result.company_name,
             security_type=result.security_type.value,
             reports=result.reports,
             metadata=result.metadata,
-            reports_markdown=reports_markdown,
+            reports_markdown=[],
         )
+        # Render with metadata so the freshness/sources/snapshot footer (#66/#69/#74) is included.
+        api_response.reports_markdown = [
+            report.to_markdown(metadata=result.metadata) for report in result.reports
+        ]
+        return api_response
 
     @app.post("/api/compare", response_model=CompareAPIResponse)
     async def run_compare(
@@ -411,8 +519,9 @@ def create_app(
             tickers=report.tickers,
             report=report,
             report_markdown=render_markdown(report),
-            report_html=render_html(report),
+            report_html=render_html(report, white_label=request.app.state.white_label),
         )
+        _meter(request, "compare")
 
         fmt = negotiate_format(format, request.headers.get("accept", ""))
         return _render_payload(
@@ -438,14 +547,22 @@ def create_app(
         from .data_export import build_bundle, bundle_to_csv
 
         # --- Paid-key gate ---
+        # Legacy shared-secret keys (RA_BILLING_PAID_KEYS) keep working; hashed,
+        # revocable KeyStore keys (entitlements.py) are also accepted when they
+        # carry the `source.data` entitlement. Open when neither is configured.
         paid_keys = settings.billing.paid_keys
-        if paid_keys:
+        if paid_keys or request.app.state.key_store is not None:
             provided = request.headers.get("x-ra-key", "")
-            if provided not in paid_keys:
+            legacy_ok = bool(paid_keys) and provided in paid_keys
+            record = _key_record(request)
+            entitled = has_entitlement(record, SOURCE_DATA)
+            if not (legacy_ok or entitled):
                 raise HTTPException(
                     status_code=401,
                     detail="This is a paid feature. Provide a valid X-RA-Key header (or subscribe).",
                 )
+
+        _meter(request, "source_data")
 
         client_ip = request.client.host if request.client else "unknown"
         if not rate_limiter.allow(client_ip):
@@ -478,6 +595,34 @@ def create_app(
                     f'attachment; filename="{body.ticker.upper()}_source_data.json"'
                 )
             },
+        )
+
+    @app.get("/api/usage")
+    async def usage_summary(request: Request) -> JSONResponse:
+        """Per-key metering summary for today (UTC).
+
+        Requires a valid X-RA-Key header. Returns the key id, its effective
+        entitlements (bundle-aware) and per-endpoint request counts. The raw
+        key is never logged or returned.
+        """
+        record = _key_record(request)
+        if record is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Provide a valid X-RA-Key header to view usage.",
+            )
+        from .entitlements import effective_entitlements
+
+        metering = request.app.state.metering
+        return JSONResponse(
+            {
+                "key_id": record.key_id,
+                "label": record.label,
+                "entitlements": sorted(effective_entitlements(record)),
+                "day_utc": metering._today_utc(),
+                "usage": metering.usage(record.key_id),
+                "total_requests": metering.total_requests(record.key_id),
+            }
         )
 
     # ================================================================

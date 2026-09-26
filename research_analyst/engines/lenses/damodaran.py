@@ -1,3 +1,22 @@
+# Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# A separate commercial license is available for uses incompatible with
+# the AGPL-3.0. See COMMERCIAL-LICENSE.md.
+
 """Damodaran lens — intrinsic value via a simplified DCF with sanity bounds.
 
 Public-domain Aswath Damodaran methodology (original implementation). Uses a
@@ -19,8 +38,16 @@ def run(data: LensInput) -> LensResult:
     """Simplified intrinsic-value estimate + sanity band."""
     signals: list[LensSignal] = []
     raw: dict[str, object] = {}
+    missing: list[str] = []  # Issue #70: name every missing required input
     stmt = data.latest
     price = data.current_price
+
+    if stmt is None:
+        missing.append("financial_statements")
+    if price is None:
+        missing.append("current_price")
+    if not data.shares_outstanding:
+        missing.append("shares_outstanding")
 
     # Free cash flow base: prefer reported FCF, else operating cash flow - capex
     fcf: float | None = None
@@ -28,6 +55,8 @@ def run(data: LensInput) -> LensResult:
         fcf = float(stmt.free_cash_flow)
     elif stmt and stmt.operating_cash_flow and stmt.capex is not None:
         fcf = float(stmt.operating_cash_flow) - float(stmt.capex)
+    else:
+        missing.append("free_cash_flow")
     raw["fcf"] = fcf
 
     # Growth estimate: analyst 5y EPS growth first, else prior revenue growth
@@ -36,6 +65,8 @@ def run(data: LensInput) -> LensResult:
         growth = data.analyst.earnings_growth_5y
     elif stmt and data.prior and stmt.revenue and data.prior.revenue:
         growth = pct_change(float(stmt.revenue), float(data.prior.revenue))
+    else:
+        missing.append("growth_estimate")
     raw["growth_estimate"] = growth
 
     wacc = float(data.raw.get("wacc", DEFAULT_WACC))
@@ -90,5 +121,6 @@ def run(data: LensInput) -> LensResult:
         summary=summary,
         signals=signals,
         raw_values=raw,
+        missing_inputs=sorted(set(missing)),
         attribution=ATTRIBUTION.format(name="Aswath Damodaran"),
     )

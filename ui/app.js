@@ -1,3 +1,22 @@
+// Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// A separate commercial license is available for uses incompatible with
+// the AGPL-3.0. See COMMERCIAL-LICENSE.md.
+
 "use strict";
 var dom={form:document.getElementById("research-form"),ticker:document.getElementById("ticker"),reportType:document.getElementById("report-type"),timeframe:document.getElementById("timeframe"),btnSubmit:document.getElementById("btn-submit"),btnText:document.getElementById("btn-text"),btnSpinner:document.getElementById("btn-spinner"),status:document.getElementById("status"),statusText:document.getElementById("status-text"),progressBar:document.getElementById("progress-bar"),errorPanel:document.getElementById("error-panel"),errorMessage:document.getElementById("error-message"),btnRetry:document.getElementById("btn-retry"),results:document.getElementById("results"),metaBar:document.getElementById("meta-bar"),reportTabs:document.getElementById("report-tabs"),reportContent:document.getElementById("report-content"),btnAbout:document.getElementById("btn-about"),aboutModal:document.getElementById("about-modal"),btnCloseAbout:document.getElementById("btn-close-about"),modeSingle:document.getElementById("mode-single"),modeCompare:document.getElementById("mode-compare"),compareForm:document.getElementById("compare-form"),compareTickers:document.getElementById("compare-tickers"),compareTimeframe:document.getElementById("compare-timeframe"),compareError:document.getElementById("compare-error"),btnCompare:document.getElementById("btn-compare"),btnCompareText:document.getElementById("btn-compare-text"),btnCompareSpinner:document.getElementById("btn-compare-spinner"),btnGetApp:document.getElementById("btn-getapp"),getappModal:document.getElementById("getapp-modal"),btnCloseGetapp:document.getElementById("btn-close-getapp"),resolveCandidates:document.getElementById("resolve-candidates")};
 var currentReports=[],activeTabIndex=0,isLoading=false,currentMode="single",activeTicker="";
@@ -151,8 +170,35 @@ function showResults(){dom.results.hidden=false}
 
 function renderMetaBar(data){
     var m=data.metadata||{};
-    var items=[["Ticker",data.ticker],["Company",data.company_name],["Type",data.security_type],["Reports",(data.reports||[]).length],["Time",(m.processing_time_seconds||0).toFixed(1)+"s"],["Sources",(m.data_sources||[]).length]];
+    var items=[["Ticker",data.ticker],["Company",data.company_name],["Type",data.security_type],["Reports",(data.reports||[]).length],["Time",(m.processing_time_seconds||0).toFixed(1)+"s"]];
+    // Issue #66: reader-visible freshness state (never a silent stale cache).
+    var fresh=m.sla_state||"fresh";
+    var freshLabel=fresh+(m.data_as_of?(" · as of "+m.data_as_of):"");
+    if(m.cache_hit){freshLabel+=" · cached"}
+    items.push(["Freshness",freshLabel]);
+    if(m.stale_warning){items.push(["⚠️ Stale",m.stale_warning])}
     dom.metaBar.innerHTML=items.map(function(p){return'<div class="meta-bar__item"><span class="meta-bar__label">'+esc(p[0])+':</span> '+esc(String(p[1]))+'</div>'}).join("")
+    // Issue #74: enumerate every source — never a bare count.
+    renderSourceList(m)
+}
+
+function renderSourceList(m){
+    var recs=m.source_records||[];
+    var names=(m.data_sources||[]);
+    var list=recs.length?recs.map(function(r){return{name:r.name,url:r.url}}):names.map(function(n){return{name:n,url:null}});
+    if(!list.length)return;
+    var old=document.getElementById("sources-list");if(old)old.remove();
+    var box=document.createElement("div");box.id="sources-list";box.className="sources-list";
+    var h=document.createElement("h3");h.className="sources-list__title";h.textContent="Data Sources ("+list.length+")";box.appendChild(h);
+    var ul=document.createElement("ol");ul.className="sources-list__items";
+    list.forEach(function(s){
+        var li=document.createElement("li");
+        if(s.url){var a=document.createElement("a");a.href=s.url;a.target="_blank";a.rel="noopener";a.textContent=s.name;li.appendChild(a)}
+        else{li.textContent=s.name}
+        ul.appendChild(li)
+    });
+    box.appendChild(ul);
+    dom.metaBar.after(box)
 }
 
 function renderTabs(reports){

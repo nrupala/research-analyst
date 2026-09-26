@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com> — SPDX-License-Identifier: AGPL-3.0-or-later
+See LICENSE and COMMERCIAL-LICENSE.md for licensing terms (commercial licenses available).
+-->
+
 # Research Analyst — OCI-Native Sovereign Origin (reloadable image)
 
 This directory is the **reloadable image** of the Research Analyst (RA) backend running natively on

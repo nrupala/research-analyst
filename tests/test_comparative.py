@@ -1,3 +1,22 @@
+# Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# A separate commercial license is available for uses incompatible with
+# the AGPL-3.0. See COMMERCIAL-LICENSE.md.
+
 """Tests for multi-ticker comparative reports (v0.2.0).
 
 Offline, deterministic. No network, no yfinance — the single-ticker orchestrator
@@ -409,3 +428,20 @@ class TestComparativeRenderer:
         html_doc = render_html(report)
         assert "<script>" not in html_doc
         assert "&lt;script&gt;" in html_doc
+
+    def test_source_records_carried_and_enumerated(self) -> None:
+        # Issue #74: every named source appears in the comparative report with
+        # its reference link — not just a bare label list.
+        from research_analyst.models import SourceRecord
+        ko = make_response("KO")
+        ko.metadata.source_records = [
+            SourceRecord(name="yfinance (company profile)", url="https://finance.yahoo.com/quote/KO"),
+            SourceRecord(name="SEC EDGAR (10-K filings)", url="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=KO&type=10-K"),
+        ]
+        report = build_comparative_report([ko, make_response("PEP")])
+        assert report.source_records["KO"][0].url == "https://finance.yahoo.com/quote/KO"
+        md = render_markdown(report)
+        assert "[yfinance (company profile)](https://finance.yahoo.com/quote/KO)" in md
+        assert "SEC EDGAR (10-K filings)" in md
+        html_doc = render_html(report)
+        assert 'href="https://finance.yahoo.com/quote/KO"' in html_doc

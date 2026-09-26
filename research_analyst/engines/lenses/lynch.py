@@ -1,3 +1,22 @@
+# Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# A separate commercial license is available for uses incompatible with
+# the AGPL-3.0. See COMMERCIAL-LICENSE.md.
+
 """Lynch lens — PEG, GARP classification.
 
 Public-domain Peter Lynch methodology, original implementation:
@@ -29,14 +48,31 @@ def run(data: LensInput) -> LensResult:
     """Evaluate a security through the Lynch PEG / GARP lens."""
     signals: list[LensSignal] = []
     raw: dict[str, object] = {}
+    missing: list[str] = []  # Issue #70: name every missing required input
     stmt = data.latest
     prior = data.prior
     price = data.current_price
+
+    if stmt is None:
+        missing.append("financial_statements")
+    if prior is None:
+        missing.append("prior_financial_statements")
+    if price is None:
+        missing.append("current_price")
 
     eps = stmt.eps_diluted if stmt else None
     eps_prior = prior.eps_diluted if prior else None
     rev = float(stmt.revenue) if stmt and stmt.revenue else None
     rev_prior = float(prior.revenue) if prior and prior.revenue else None
+
+    if eps is None:
+        missing.append("eps_diluted")
+    if eps_prior is None:
+        missing.append("prior_eps_diluted")
+    if rev is None:
+        missing.append("revenue")
+    if rev_prior is None:
+        missing.append("prior_revenue")
 
     eps_growth = pct_change(eps, eps_prior)
     rev_growth = pct_change(rev, rev_prior)
@@ -82,5 +118,6 @@ def run(data: LensInput) -> LensResult:
         summary=summary,
         signals=signals,
         raw_values=raw,
+        missing_inputs=sorted(set(missing)),
         attribution=ATTRIBUTION.format(name="Peter Lynch"),
     )

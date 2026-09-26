@@ -1,3 +1,22 @@
+// Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// A separate commercial license is available for uses incompatible with
+// the AGPL-3.0. See COMMERCIAL-LICENSE.md.
+
 // Headless UI tests for Research Analyst — comparative (v0.2.0) + single-ticker regression.
 //
 // Runs the REAL ui/app.js offline in a Node `vm` context against a minimal,
@@ -86,6 +105,8 @@ function makeEnv(ids) {
     insertBefore(n, ref) { n.parentNode = this; const i = this.children.indexOf(ref); if (i < 0) this.children.push(n); else this.children.splice(i, 0, n); return n; }
     removeChild(n) { const i = this.children.indexOf(n); if (i >= 0) this.children.splice(i, 1); n.parentNode = null; return n; }
     remove() { if (this.parentNode) this.parentNode.removeChild(this); }
+    after(...nodes) { if (!this.parentNode) return; const i = this.parentNode.children.indexOf(this); const els = nodes.map((n) => typeof n === "string" ? Object.assign(new El("span"), {_textContent: n}) : n); els.forEach((n) => { if (n.parentNode) n.parentNode.removeChild(n); n.parentNode = this.parentNode; }); this.parentNode.children.splice(i + 1, 0, ...els); }
+    before(...nodes) { if (!this.parentNode) return; const i = this.parentNode.children.indexOf(this); const els = nodes.map((n) => typeof n === "string" ? Object.assign(new El("span"), {_textContent: n}) : n); els.forEach((n) => { if (n.parentNode) n.parentNode.removeChild(n); n.parentNode = this.parentNode; }); this.parentNode.children.splice(i, 0, ...els); }
     addEventListener(t, fn) { (this._listeners[t] || (this._listeners[t] = [])).push(fn); }
     removeEventListener(t, fn) { const a = this._listeners[t]; if (a) { const i = a.indexOf(fn); if (i >= 0) a.splice(i, 1); } }
     dispatch(t, ev) { ev = ev || {}; ev.type = t; if (ev.target === undefined) ev.target = this; if (!ev.preventDefault) ev.preventDefault = () => {}; (this._listeners[t] || []).slice().forEach((fn) => fn.call(this, ev)); }
