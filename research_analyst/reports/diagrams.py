@@ -38,6 +38,7 @@ import shutil
 import subprocess
 
 from ..models import ReportVisual
+from .currency import compact_money
 
 D2_BIN = "d2"
 D2_TIMEOUT = 15
@@ -75,26 +76,37 @@ def d2_capital_allocation(
     capex_pct: float | None = None,
     buyback_pct: float | None = None,
     div_pct: float | None = None,
+    capex_abs: float | None = None,
+    buyback_abs: float | None = None,
+    div_abs: float | None = None,
+    currency: str | None = "USD",
 ) -> str:
-    """D2 source: free cash flow -> capex / buybacks / dividends."""
+    """D2 source: free cash flow -> capex / buybacks / dividends.
+
+    Percentages are shares of total capital deployed (they sum to ~100%),
+    not shares of FCF; absolute amounts are shown alongside when provided.
+    """
     edges = [
         '"Free Cash Flow" -> "Capex"',
         '"Free Cash Flow" -> "Buybacks"',
         '"Free Cash Flow" -> "Dividends"',
     ]
-    labels = []
-    if capex_pct is not None:
-        labels.append(f'"Capex": {capex_pct:.0%} of FCF')
-    if buyback_pct is not None:
-        labels.append(f'"Buybacks": {buyback_pct:.0%} of FCF')
-    if div_pct is not None:
-        labels.append(f'"Dividends": {div_pct:.0%} of FCF')
-    if not labels:
-        labels = [
-            '"Capex": capital expenditure',
-            '"Buybacks": share repurchases',
-            '"Dividends": shareholder payouts',
-        ]
+
+    def label(name: str, pct: float | None, abs_: float | None, fallback: str) -> str:
+        bits = []
+        if abs_ is not None:
+            bits.append(compact_money(abs_, currency))
+        if pct is not None:
+            bits.append(f"{pct:.0%} of deployed")
+        if not bits:
+            return f'"{name}": {fallback}'
+        return f'"{name}": "{" · ".join(bits)}"'
+
+    labels = [
+        label("Capex", capex_pct, capex_abs, "capital expenditure"),
+        label("Buybacks", buyback_pct, buyback_abs, "share repurchases"),
+        label("Dividends", div_pct, div_abs, "shareholder payouts"),
+    ]
     out = ['direction: right', *edges]
     out.extend(labels)
     return "\n".join(out) + "\n"
@@ -168,3 +180,29 @@ def diagram_visual(
         ties_to=ties_to,
         caption=caption,
     )
+
+
+def _d2_esc(text: str) -> str:
+    """Escape double quotes for D2 label strings."""
+    return text.replace('"', "'")
+
+
+def d2_catalyst_watchlist(
+    ticker: str,
+    near_term: list[str] | None = None,
+    structural: list[str] | None = None,
+) -> str:
+    """D2 source: near-term vs structural catalysts -> monitoring decision."""
+    near_term = near_term or []
+    structural = structural or []
+    lines = [
+        "direction: right",
+        f'watch: "{ticker} \u2014 catalyst watchlist"',
+        '"near-term catalysts" -> watch',
+        '"structural catalysts" -> watch',
+    ]
+    for c in near_term[:3]:
+        lines.append(f'"{_d2_esc(c[:44])}" -> "near-term catalysts"')
+    for c in structural[:3]:
+        lines.append(f'"{_d2_esc(c[:44])}" -> "structural catalysts"')
+    return "\n".join(lines) + "\n"

@@ -43,7 +43,17 @@ def test_d2_business_model_source():
 def test_d2_capital_allocation_source():
     src = diagrams.d2_capital_allocation("AAPL", 0.30, 0.50, 0.15)
     assert "Free Cash Flow" in src
-    assert "30% of FCF" in src and "50% of FCF" in src and "15% of FCF" in src
+    assert "30% of deployed" in src and "50% of deployed" in src and "15% of deployed" in src
+    assert "of FCF" not in src  # honest wording: shares of deployed capital
+
+
+def test_d2_capital_allocation_abs_labels():
+    src = diagrams.d2_capital_allocation(
+        "META", 0.45, 0.55, None, capex_abs=32.1e9, buyback_abs=39.2e9
+    )
+    assert '"Capex": "$32.1B · 45% of deployed"' in src
+    assert '"Buybacks": "$39.2B · 55% of deployed"' in src
+    assert '"Dividends": shareholder payouts' in src  # no data -> generic descriptor
 
 
 def test_d2_decision_framework_source():
