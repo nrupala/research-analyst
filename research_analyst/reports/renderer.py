@@ -587,6 +587,8 @@ class ReportRenderer:
         currency: str | None,
         fcf: float | None,
         items: list[tuple[str, float | None, float | None]],
+        shareholder_yield: float | None = None,
+        reinvestment_rate: float | None = None,
     ) -> str:
         """Narrative descriptor for the FCF distribution chart.
 
@@ -628,6 +630,10 @@ class ReportRenderer:
                 )
         else:
             note = f"{head} deployed {compact_money(total, currency)} of capital: {deployed}."
+        if shareholder_yield is not None:
+            note += f" Shareholder yield (buybacks + dividends vs market cap): {shareholder_yield:.1%}."
+        if reinvestment_rate is not None:
+            note += f" Reinvestment rate (capex vs operating cash flow): {reinvestment_rate:.1%}."
         return note
 
     def _render_comprehensive_step2(
@@ -734,6 +740,8 @@ class ReportRenderer:
                         ("share repurchases", self._abs_or_none(cap_alloc.share_buybacks), buyback_pct),
                         ("dividends", self._abs_or_none(cap_alloc.dividends), div_pct),
                     ],
+                    shareholder_yield=getattr(cap_alloc, "shareholder_yield", None),
+                    reinvestment_rate=getattr(cap_alloc, "reinvestment_rate", None),
                 )
                 if note:
                     parts.append(note)
@@ -1925,6 +1933,8 @@ class ReportRenderer:
                 ("share repurchases", self._abs_or_none(cap.share_buybacks), buyback_pct),
                 ("dividends", self._abs_or_none(cap.dividends), div_pct),
             ],
+            shareholder_yield=getattr(cap, "shareholder_yield", None),
+            reinvestment_rate=getattr(cap, "reinvestment_rate", None),
         )
         if note:
             parts.append(note)

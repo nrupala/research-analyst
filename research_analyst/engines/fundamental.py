@@ -220,7 +220,10 @@ class FundamentalEngine:
         result = self._assess_earnings_quality(latest, result)
 
         # ---- Capital Allocation ----
-        result.capital_allocation = self._analyze_capital_allocation(latest, data.profile.ticker)
+        mc = getattr(data.profile, "market_cap", None)
+        result.capital_allocation = self._analyze_capital_allocation(
+            latest, data.profile.ticker, float(mc) if mc else None
+        )
 
         # ---- Assumptions ----
         result.assumptions.append(Assumption(
@@ -399,7 +402,7 @@ class FundamentalEngine:
         return result
 
     @staticmethod
-    def _analyze_capital_allocation(stmt: FinancialStatement, ticker: str = "") -> CapitalAllocation:
+    def _analyze_capital_allocation(stmt: FinancialStatement, ticker: str = "", market_cap: float | None = None) -> CapitalAllocation:
         """Analyze how the company allocates capital.
 
         Decomposes FCF usage: capex, buybacks, dividends, debt repayment.
@@ -425,6 +428,18 @@ class FundamentalEngine:
                 buyback_pct = buyback_abs / total_deployed
             if stmt.dividends_paid is not None and div_abs > 0:
                 div_pct = div_abs / total_deployed
+
+        # Shareholder yield: cash returned to shareholders vs market value
+        # (the docstring always promised this; it was never computed)
+        shareholder_yield = None
+        if market_cap and market_cap > 0 and (buyback_abs > 0 or div_abs > 0):
+            shareholder_yield = (buyback_abs + div_abs) / market_cap
+
+        # Reinvestment rate: capex intensity vs operating cash flow
+        reinvestment_rate = None
+        ocf = float(stmt.operating_cash_flow) if stmt.operating_cash_flow else 0.0
+        if ocf > 0 and capex_abs > 0:
+            reinvestment_rate = capex_abs / ocf
 
         # ROIC - WACC spread (WACC from config default if not available)
         roic_wacc = None
@@ -464,5 +479,7 @@ class FundamentalEngine:
             roic=stmt.roic,
             wacc=settings.analysis.default_wacc if stmt.roic is not None else None,
             roic_minus_wacc=roic_wacc,
+            shareholder_yield=shareholder_yield,
+            reinvestment_rate=reinvestment_rate,
             assessment=" ".join(assessment_parts) if assessment_parts else "Insufficient data for assessment.",
         )
