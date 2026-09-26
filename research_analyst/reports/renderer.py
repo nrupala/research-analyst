@@ -1075,6 +1075,194 @@ class ReportRenderer:
         parts.append("")
         return parts
 
+    # ------------------------------------------------------------------
+    # Step 7 — Decision Framework & Business Model Overview enrichment
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _thesis_tilt(n_favor: int, n_disfavor: int) -> str:
+        """Net evidence tilt from favor/disfavor counts."""
+        gap = n_favor - n_disfavor
+        if gap >= 2:
+            return "positive"
+        if gap <= -2:
+            return "negative"
+        return "mixed"
+
+    @staticmethod
+    def _group_catalysts(catalysts: list[str]) -> tuple[list[str], list[str]]:
+        """Split catalysts into near-term vs structural by keyword heuristic."""
+        near_kw = (
+            "earning", "guidance", "technical", "breakout", "breakdown",
+            "volume", "report",
+        )
+        near_term: list[str] = []
+        structural: list[str] = []
+        for c in catalysts:
+            (near_term if any(k in c.lower() for k in near_kw)
+             else structural).append(c)
+        return near_term, structural
+
+    def _decision_framework_extras(
+        self,
+        ticker: str,
+        favors: list[str],
+        disfavors: list[str],
+        catalysts: list[str],
+        frame: str = "thesis",
+    ) -> tuple[list[str], list[ReportVisual]]:
+        """Description + additional graphics for the Decision Framework.
+
+        ``frame`` is "thesis" (comprehensive/long-term) or "positioning"
+        (tactical). Everything here is derived from the report's own evidence —
+        no new claims are introduced.
+        """
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        n_favor, n_disfavor = len(favors), len(disfavors)
+        tilt = self._thesis_tilt(n_favor, n_disfavor)
+
+        parts.append("### How to Read This Framework")
+        parts.append(
+            "This framework compresses the full analysis into a monitoring tool — "
+            "it is not a buy/sell recommendation. Each favoring factor is evidence "
+            f"from the report that supports the {frame}; each disfavoring factor is "
+            "evidence that argues against it. Catalysts are events that could change "
+            "this balance — a watchlist, not predictions."
+        )
+        parts.append("")
+        if n_favor or n_disfavor:
+            plural_f = "s" if n_favor != 1 else ""
+            verb_s = "s" if n_disfavor == 1 else ""
+            parts.append(
+                f"**Net assessment:** {n_favor} factor{plural_f} favor the {frame}, "
+                f"{n_disfavor} disfavor{verb_s} it — the evidence balance tilts "
+                f"**{tilt}**. The chart below shows the balance; bar length is a "
+                "count, not a weight — one strong factor can outweigh several weak ones."
+            )
+            if favors:
+                parts.append(f"Strongest supporting evidence: *{favors[0]}*")
+            if disfavors:
+                parts.append(f"Strongest counter-evidence: *{disfavors[0]}*")
+        else:
+            parts.append(
+                f"No strong factors were identified on either side — the {frame} "
+                "is genuinely uncertain on current evidence."
+            )
+        parts.append(
+            "The bear case above states what would falsify this assessment — "
+            "if those conditions materialize, the framework flips."
+        )
+        parts.append("")
+
+        visuals.append(
+            VisualEngine.svg_thesis_balance(ticker, n_favor, n_disfavor, tilt)
+        )
+        near_term, structural = self._group_catalysts(catalysts)
+        if near_term or structural:
+            visuals.append(
+                VisualEngine.d2_catalyst_watchlist(ticker, near_term, structural)
+            )
+        return parts, visuals
+
+    def _unit_economics_block(
+        self,
+        profile: CompanyProfile,
+        fundamental: Any,
+        financials: list[Any],
+    ) -> tuple[list[str], list[ReportVisual]]:
+        """'How X makes money' — economics paragraph + margin bars from real data."""
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        name = profile.name or profile.ticker
+        margins: dict[str, float | None] = {}
+        if fundamental is not None:
+            margins = {
+                "Gross margin": getattr(fundamental, "gross_margin_latest", None),
+                "Operating margin": getattr(fundamental, "operating_margin_latest", None),
+                "Net margin": getattr(fundamental, "net_margin_latest", None),
+                "FCF margin": getattr(fundamental, "fcf_margin_latest", None),
+            }
+        available = {k: v for k, v in margins.items() if v is not None}
+
+        latest = (
+            VisualEngine._latest_statement(financials) if financials else None
+        )
+        revenue = getattr(latest, "revenue", None) if latest is not None else None
+
+        if revenue:
+            econ = (
+                f"{name} generated **{compact_money(float(revenue), profile.currency)}** "
+                "of revenue in its latest reported period"
+            )
+            keeps: list[str] = []
+            if available.get("Gross margin") is not None:
+                keeps.append(
+                    f"about ${available['Gross margin'] * 100:.0f} as gross profit"
+                )
+            if available.get("Operating margin") is not None:
+                keeps.append(
+                    f"${available['Operating margin'] * 100:.0f} as operating profit"
+                )
+            if available.get("Net margin") is not None:
+                keeps.append(f"${available['Net margin'] * 100:.0f} as net income")
+            if available.get("FCF margin") is not None:
+                keeps.append(
+                    f"${available['FCF margin'] * 100:.0f} as free cash flow"
+                )
+            if keeps:
+                econ += (
+                    "; of every $100 of revenue it keeps "
+                    + ", ".join(keeps) + "."
+                )
+            else:
+                econ += "."
+            parts.append("### How It Makes Money")
+            parts.append(econ)
+            parts.append("")
+
+        chart = VisualEngine.svg_unit_economics(profile.ticker, margins)
+        if chart is not None:
+            if not revenue:
+                parts.append("### How It Makes Money")
+                parts.append(f"Latest reported margins for {name}:")
+                parts.append("")
+            visuals.append(chart)
+        return parts, visuals
+
+    def _business_model_overview_block(
+        self,
+        profile: CompanyProfile,
+        fundamental: Any,
+        financials: list[Any],
+    ) -> tuple[list[str], list[ReportVisual]]:
+        """Business Model Overview: description + unit economics + flow diagram."""
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        parts.append("### Business Model Overview")
+        if profile.description:
+            parts.append(profile.description[:600])
+            parts.append("")
+        if profile.sector:
+            parts.append(f"**Sector:** {profile.sector}")
+        if profile.industry:
+            parts.append(f"**Industry:** {profile.industry}")
+        if profile.market_cap:
+            parts.append(
+                f"**Market Cap:** "
+                f"{money(float(profile.market_cap) / 1e9, profile.currency, 1)}B"
+            )
+        if profile.employees:
+            parts.append(f"**Employees:** {profile.employees:,}")
+        parts.append("")
+        econ_parts, econ_visuals = self._unit_economics_block(
+            profile, fundamental, financials
+        )
+        parts.extend(econ_parts)
+        visuals.extend(econ_visuals)
+        visuals.append(VisualEngine.d2_business_model(profile))
+        return parts, visuals
+
     def _render_comprehensive_step6(
         self, step: StepTemplate, ctx: dict[str, Any]
     ) -> tuple[ReportSection, int]:
@@ -1309,15 +1497,26 @@ class ReportRenderer:
         parts.append("- Technical support/resistance breaks.")
         parts.append("")
 
+        # Decision framework: description + additional graphics beyond the graph
+        df_parts, df_visuals = self._decision_framework_extras(
+            profile.ticker, favors, disfavors, catalysts, frame="thesis"
+        )
+        parts.extend(df_parts)
+
         # Mermaid decision framework
         mermaid = VisualEngine.d2_decision_framework(
             profile.ticker, favors[:4], disfavors[:4], catalysts[:3]
         )
         visuals.append(mermaid)
+        visuals.extend(df_visuals)
 
-        # Mermaid business model (if Step 1 didn't include one for this template)
-        biz_model = VisualEngine.d2_business_model(profile)
-        visuals.append(biz_model)
+        # Business model overview (Step 1 doesn't include one for this template):
+        # description + unit economics + flow diagram
+        bm_parts, bm_visuals = self._business_model_overview_block(
+            profile, fundamental, ctx.get("financials") or []
+        )
+        parts.extend(bm_parts)
+        visuals.extend(bm_visuals)
 
         return ReportSection(
             step_number=step.step_number, title=step.title,
@@ -1719,11 +1918,21 @@ class ReportRenderer:
         parts.append("- Macro regime shift (rate decision, inflation print)")
         parts.append("- Volume confirmation of price moves")
 
+        # Decision framework: description + additional graphics beyond the graph
+        _tactical_catalysts = [
+            "Earnings report", "Technical breakout/breakdown", "Macro shift"
+        ]
+        df_parts, df_visuals = self._decision_framework_extras(
+            profile.ticker, favors, disfavors, _tactical_catalysts,
+            frame="positioning",
+        )
+        parts.extend(df_parts)
+
         mermaid = VisualEngine.d2_decision_framework(
-            profile.ticker, favors[:4], disfavors[:4],
-            ["Earnings report", "Technical breakout/breakdown", "Macro shift"]
+            profile.ticker, favors[:4], disfavors[:4], _tactical_catalysts
         )
         visuals.append(mermaid)
+        visuals.extend(df_visuals)
 
         return ReportSection(step_number=step.step_number, title=step.title,
             content="\n".join(parts), visuals=visuals, data_gaps=gaps), len(visuals)
@@ -1760,6 +1969,13 @@ class ReportRenderer:
         if profile.employees:
             parts.append(f"**Employees:** {profile.employees:,}")
         parts.append("")
+
+        # Unit economics: how the company makes money, from real margin data
+        econ_parts, econ_visuals = self._unit_economics_block(
+            profile, ctx.get("fundamental"), ctx.get("financials") or []
+        )
+        parts.extend(econ_parts)
+        visuals.extend(econ_visuals)
 
         biz_model = VisualEngine.d2_business_model(profile)
         visuals.append(biz_model)
@@ -2096,11 +2312,19 @@ class ReportRenderer:
         parts.append("- Capital allocation decisions (ROIC vs WACC)")
         parts.append("- Competitive moat durability")
         parts.append("- Regulatory environment changes")
+        parts.append("")
+
+        # Decision framework: description + additional graphics beyond the graph
+        df_parts, df_visuals = self._decision_framework_extras(
+            profile.ticker, favors, disfavors, catalysts, frame="thesis"
+        )
+        parts.extend(df_parts)
 
         mermaid = VisualEngine.d2_decision_framework(
             profile.ticker, favors[:4], disfavors[:4], catalysts[:3]
         )
         visuals.append(mermaid)
+        visuals.extend(df_visuals)
 
         return ReportSection(step_number=step.step_number, title=step.title,
             content="\n".join(parts), visuals=visuals, data_gaps=gaps), len(visuals)
