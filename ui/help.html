@@ -140,6 +140,7 @@ the AGPL-3.0. See COMMERCIAL-LICENSE.md.
 
     <main id="main" class="main">
         <section class="card">
+            <div class="listen-row"><button type="button" id="btn-listen" class="btn btn--ghost" aria-pressed="false">Listen to this page</button></div>
             <h2>What Research Analyst does</h2>
             <p>Research Analyst is an institutional-grade equity and ETF research agent. Enter a ticker and it produces a structured, decision-intelligence report - fundamentals, technicals, macro context, competitor dynamics, and valuation - in the style of a top-tier sell-side or buy-side analyst.</p>
 
@@ -199,5 +200,40 @@ the AGPL-3.0. See COMMERCIAL-LICENSE.md.
     <footer class="footer" role="contentinfo">
         <p>Research Analyst - Help &middot; <a href="/" style="color: var(--c-primary);">Back to app</a> &middot; <a href="https://devinfo.dev" style="color: var(--c-primary);">devinfo.dev</a> &middot; <a href="mailto:nrupalakolkar@gmail.com?subject=Research%20Analyst%20partnership%20inquiry" style="color: var(--c-primary);">Partnerships</a></p>
     </footer>
+    <script>
+    // §1 a11y: native read-aloud for the help content (no dependencies).
+    (function () {
+        var btn = document.getElementById('btn-listen');
+        if (!btn || !('speechSynthesis' in window)) { if (btn) btn.hidden = true; return; }
+        function setState(speaking) {
+            btn.setAttribute('aria-pressed', speaking ? 'true' : 'false');
+            btn.textContent = speaking ? 'Stop listening' : 'Listen to this page';
+        }
+        function textOfMain() {
+            var main = document.getElementById('main');
+            var clone = main.cloneNode(true);
+            var row = clone.querySelector('#btn-listen');
+            if (row && row.parentNode) row.parentNode.removeChild(row);
+            return (clone.innerText || clone.textContent || '').trim();
+        }
+        btn.addEventListener('click', function () {
+            if (btn.getAttribute('aria-pressed') === 'true') {
+                window.speechSynthesis.cancel();
+                setState(false);
+                return;
+            }
+            var text = textOfMain();
+            if (!text) return;
+            window.speechSynthesis.cancel();
+            var utter = new SpeechSynthesisUtterance(text);
+            utter.onend = function () { setState(false); };
+            utter.onerror = function () { setState(false); };
+            setState(true);
+            window.speechSynthesis.speak(utter);
+        });
+        // Never keep speaking after the user leaves the page.
+        window.addEventListener('pagehide', function () { window.speechSynthesis.cancel(); });
+    })();
+    </script>
 </body>
 </html>
