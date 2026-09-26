@@ -523,8 +523,9 @@ class ReportRenderer:
 
         # Key metrics table
         pe = None
-        if financials and financials[0].eps_diluted and financials[0].eps_diluted > 0:
-            pe = prices.current_price / financials[0].eps_diluted
+        latest_stmt = VisualEngine._latest_statement(financials)
+        if latest_stmt and latest_stmt.eps_diluted and latest_stmt.eps_diluted > 0:
+            pe = prices.current_price / latest_stmt.eps_diluted
 
         table = VisualEngine.table_key_metrics(profile, financials, prices.current_price, pe)
         visuals.append(table)
@@ -1355,8 +1356,13 @@ class ReportRenderer:
             score = getattr(technical, "composite_score", 50)
             parts.append(f"**Technical Regime:** {regime.upper()} (Score: {score:.0f}/100)")
 
-        table = VisualEngine.table_key_metrics(profile, ctx["financials"], prices.current_price,
-            prices.current_price / ctx["financials"][0].eps_diluted if ctx["financials"] and ctx["financials"][0].eps_diluted and ctx["financials"][0].eps_diluted > 0 else None)
+        latest_stmt = VisualEngine._latest_statement(ctx["financials"])
+        pe_ratio = (
+            prices.current_price / latest_stmt.eps_diluted
+            if latest_stmt and latest_stmt.eps_diluted and latest_stmt.eps_diluted > 0
+            else None
+        )
+        table = VisualEngine.table_key_metrics(profile, ctx["financials"], prices.current_price, pe_ratio)
         visuals.append(table)
 
         return ReportSection(step_number=step.step_number, title=step.title,
