@@ -27,6 +27,7 @@ function series(n: number): StatementSeries {
     shareBuybacks: blank(),
     totalAssets: blank(),
     totalEquity: blank(),
+    totalLiabilities: blank(),
     totalDebt: blank(),
     cash: blank(),
     currentAssets: blank(),
