@@ -1,0 +1,36 @@
+# Research Analyst
+
+> Institutional-grade equity and ETF research agent producing decision-intelligence
+> research comparable to top-tier sell-side and buy-side analysts.
+
+Research Analyst synthesizes fundamentals, technicals, macro context, competitor
+dynamics, and valuation frameworks into structured 7-step research reports for
+equities and ETFs.
+
+## Surfaces
+
+- Web app (same build, two mirror hosts): https://ra.devinfo.dev/ and https://ra.aimlds.org/
+- Help & user guide: https://ra.devinfo.dev/help
+- Source code (AGPL-3.0; commercial licenses available): https://github.com/nrupala/research-analyst
+- API: POST /api/research, /api/compare, /api/resolve, /api/disclaimer — response
+  formats json, xml, markdown, html, ts via ?format= or Accept header;
+  every payload carries a schema_version.
+
+## Data sources
+
+- SEC EDGAR (filings, XBRL financials)
+- Market data (prices, estimates, holdings)
+- Technical indicators (computed from price data)
+- Macro proxies (yields, VIX, indices)
+
+## Model
+
+- No advertising, ever. Monetization is partnerships, services, products, and
+  models — never ad networks, never sold user data. Any partner placement is
+  explicitly labeled as paid media with the editorial firewall intact.
+- For informational and educational purposes only. Not financial advice or a
+  recommendation to buy or sell any security.
+
+## Contact
+
+- Built by Nrupal Akolkar (AIMLDS): https://aimlds.org/about
