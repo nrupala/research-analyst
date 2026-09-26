@@ -10,6 +10,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project use
 Releases are cut by tagging the repo (see `docs/VERSIONING.md`); GitHub auto-generates the per-release notes from merged PRs.
 
 ## [Unreleased]
+### Added
+- **Step 7 Decision Framework enrichment:** 'How to Read This Framework' description (net assessment with favor/disfavor counts and tilt, strongest factor each side, catalyst role, falsifiability pointer), a server-rendered Thesis Balance SVG, and a near-term vs structural Catalyst Watchlist D2 diagram — in comprehensive, tactical, and long-term Step 7.
+- **Business Model Overview enrichment:** full overview block (company description, sector/industry/market-cap/employees, a 'How It Makes Money' economics paragraph from real revenue and margins, and a Unit Economics margin-bars SVG) in comprehensive Step 7; the same unit-economics block added to long-term Step 1. All new content is derived from the report's own data.
 
 ## [0.4.0] - 2026-09-02
 ### Added
