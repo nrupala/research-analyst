@@ -220,7 +220,7 @@ class FundamentalEngine:
         result = self._assess_earnings_quality(latest, result)
 
         # ---- Capital Allocation ----
-        result.capital_allocation = self._analyze_capital_allocation(latest)
+        result.capital_allocation = self._analyze_capital_allocation(latest, data.profile.ticker)
 
         # ---- Assumptions ----
         result.assumptions.append(Assumption(
@@ -399,7 +399,7 @@ class FundamentalEngine:
         return result
 
     @staticmethod
-    def _analyze_capital_allocation(stmt: FinancialStatement) -> CapitalAllocation:
+    def _analyze_capital_allocation(stmt: FinancialStatement, ticker: str = "") -> CapitalAllocation:
         """Analyze how the company allocates capital.
 
         Decomposes FCF usage: capex, buybacks, dividends, debt repayment.
@@ -453,7 +453,7 @@ class FundamentalEngine:
                 )
 
         return CapitalAllocation(
-            ticker=stmt.period,
+            ticker=ticker,
             period=stmt.period,
             capex=stmt.capex,
             capex_pct_of_fcf=capex_pct,

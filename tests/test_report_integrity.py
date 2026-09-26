@@ -474,3 +474,42 @@ def test_source_records_fall_back_to_labels():
     md = _report().to_markdown(metadata=m)
     assert "yfinance (price data)" in md
     assert "SEC EDGAR (company profile)" in md
+
+
+# ---------------------------------------------------------------------------
+# FCF deployment narrative (capital allocation chart descriptor)
+# ---------------------------------------------------------------------------
+
+
+def test_fcf_deployment_note_describes_flows():
+    note = ReportRenderer._fcf_deployment_note(
+        "META", "FY2025", "USD", 80_000_000_000.0,
+        [
+            ("capital expenditure", 32_100_000_000.0, 0.45),
+            ("share repurchases", 39_200_000_000.0, 0.55),
+            ("dividends", None, None),
+        ],
+    )
+    assert "FY2025" in note and "META" in note
+    assert "$80.0B" in note and "free cash flow" in note
+    assert "$32.1B" in note and "45% of capital deployed" in note
+    assert "$39.2B" in note and "55% of capital deployed" in note
+    assert "$8.7B" in note and "retained" in note  # 80 - 71.3 = 8.7
+    assert "of FCF" not in note.replace("of FCF) was retained", "")
+
+
+def test_fcf_deployment_note_empty_when_no_amounts():
+    note = ReportRenderer._fcf_deployment_note(
+        "META", "FY2025", "USD", None,
+        [("capital expenditure", None, None), ("share repurchases", None, None)],
+    )
+    assert note == ""
+
+
+def test_fcf_deployment_note_flags_over_deployment():
+    note = ReportRenderer._fcf_deployment_note(
+        "META", "FY2025", "USD", 60_000_000_000.0,
+        [("capital expenditure", 50_000_000_000.0, 0.7),
+         ("share repurchases", 30_000_000_000.0, 0.3)],
+    )
+    assert "more than FCF" in note

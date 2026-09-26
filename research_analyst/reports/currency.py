@@ -69,3 +69,18 @@ def money(value: float, code: str | None = "USD", decimals: int = 2) -> str:
     hardcoded formatting.
     """
     return f"{currency_symbol(code)}{value:.{decimals}f}"
+
+
+def compact_money(value: float, code: str | None = "USD") -> str:
+    """Compact money for tight spaces (diagram labels, narrative): $32.1B, $450M."""
+    sym = currency_symbol(code)
+    av = abs(value)
+    if av >= 1e12:
+        return f"{sym}{value / 1e12:.1f}T"
+    if av >= 1e9:
+        return f"{sym}{value / 1e9:.1f}B"
+    if av >= 1e6:
+        return f"{sym}{value / 1e6:.1f}M"
+    if av >= 1e3:
+        return f"{sym}{value / 1e3:.1f}K"
+    return f"{sym}{value:,.0f}"

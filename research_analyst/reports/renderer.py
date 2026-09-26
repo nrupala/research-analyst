@@ -59,7 +59,7 @@ from ..models import (
 from .templates import ReportTemplate, StepTemplate, get_template
 from .. import education
 from .visuals import VisualEngine
-from .currency import money
+from .currency import compact_money, money
 
 logger = logging.getLogger(__name__)
 
@@ -563,6 +563,72 @@ class ReportRenderer:
             data_gaps=gaps,
         ), len(visuals)
 
+    @staticmethod
+    def _abs_or_none(value: Any) -> float | None:
+        return abs(float(value)) if value is not None else None
+
+    @staticmethod
+    def _period_fcf(financials: list[Any], period: str | None) -> float | None:
+        """Free cash flow for the allocation period (match period, else latest)."""
+        if not financials:
+            return None
+        stmt = next((f for f in financials if period and f.period == period), None)
+        if stmt is None:
+            dated = [f for f in financials if getattr(f, "period_end_date", None)]
+            stmt = max(dated, key=lambda f: f.period_end_date) if dated else financials[-1]
+        fcf = getattr(stmt, "free_cash_flow", None)
+        return float(fcf) if fcf is not None else None
+
+    @staticmethod
+    def _fcf_deployment_note(
+        ticker: str,
+        period: str,
+        currency: str | None,
+        fcf: float | None,
+        items: list[tuple[str, float | None, float | None]],
+    ) -> str:
+        """Narrative descriptor for the FCF distribution chart.
+
+        Turns the capital-allocation model into one plain paragraph: how much
+        free cash flow was generated, where it was deployed (dollars + honest
+        shares of deployed capital), and what was retained. ``items`` are
+        ``(label, absolute_amount, share_of_deployed)`` tuples. Returns ""
+        when there is nothing to describe.
+        """
+        shown = [(label, amt, pct) for label, amt, pct in items if amt is not None]
+        if not shown:
+            return ""
+        total = sum(amt for _, amt, _ in shown)
+        bits = []
+        for label, amt, pct in shown:
+            bit = f"{compact_money(amt, currency)} to {label}"
+            if pct is not None:
+                bit += f" ({pct:.0%} of capital deployed)"
+            bits.append(bit)
+        deployed = bits[0] if len(bits) == 1 else ", ".join(bits[:-1]) + f", and {bits[-1]}"
+        head = f"In {period}, {ticker}" if period else ticker
+        if fcf is not None and fcf > 0:
+            if total <= fcf:
+                note = (
+                    f"{head} generated {compact_money(fcf, currency)} of free cash flow "
+                    f"and deployed {compact_money(total, currency)} of it: {deployed}."
+                )
+                retained = fcf - total
+                if retained > 0:
+                    note += (
+                        f" {compact_money(retained, currency)} "
+                        f"({retained / fcf:.0%} of FCF) was retained."
+                    )
+            else:
+                note = (
+                    f"{head} generated {compact_money(fcf, currency)} of free cash flow "
+                    f"but deployed {compact_money(total, currency)} — more than FCF, "
+                    f"with the balance funded from cash reserves or financing: {deployed}."
+                )
+        else:
+            note = f"{head} deployed {compact_money(total, currency)} of capital: {deployed}."
+        return note
+
     def _render_comprehensive_step2(
         self, step: StepTemplate, ctx: dict[str, Any]
     ) -> tuple[ReportSection, int]:
@@ -652,12 +718,35 @@ class ReportRenderer:
                 if assessment:
                     parts.append(f"- Assessment: {assessment}")
 
-                # Mermaid capital allocation
+                # FCF deployment narrative — what went where, in dollars
                 capex_pct = getattr(cap_alloc, "capex_pct_of_fcf", None)
                 buyback_pct = getattr(cap_alloc, "buyback_pct_of_fcf", None)
                 div_pct = getattr(cap_alloc, "dividend_pct_of_fcf", None)
+                alloc_period = getattr(cap_alloc, "period", "") or ""
+                note = self._fcf_deployment_note(
+                    profile.ticker,
+                    alloc_period,
+                    profile.currency,
+                    self._period_fcf(financials, alloc_period or None),
+                    [
+                        ("capital expenditure", self._abs_or_none(cap_alloc.capex), capex_pct),
+                        ("share repurchases", self._abs_or_none(cap_alloc.share_buybacks), buyback_pct),
+                        ("dividends", self._abs_or_none(cap_alloc.dividends), div_pct),
+                    ],
+                )
+                if note:
+                    parts.append(note)
+                    parts.append("")
+
+                # Capital allocation flow chart (honest percentages + dollar amounts)
                 mermaid = VisualEngine.d2_capital_allocation(
-                    profile.ticker, capex_pct, buyback_pct, div_pct
+                    profile.ticker, capex_pct, buyback_pct, div_pct,
+                    capex_abs=self._abs_or_none(cap_alloc.capex),
+                    buyback_abs=self._abs_or_none(cap_alloc.share_buybacks),
+                    dividend_abs=self._abs_or_none(cap_alloc.dividends),
+                    currency=profile.currency,
+                    period=alloc_period or None,
+                    ties_to="Capital allocation (Step 2)",
                 )
                 visuals.append(mermaid)
 
@@ -1818,7 +1907,32 @@ class ReportRenderer:
         buyback_pct = getattr(cap, "buyback_pct_of_fcf", None)
         div_pct = getattr(cap, "dividend_pct_of_fcf", None)
 
-        mermaid = VisualEngine.d2_capital_allocation(profile.ticker, capex_pct, buyback_pct, div_pct)
+        # FCF deployment narrative — what went where, in dollars
+        alloc_period = getattr(cap, "period", "") or ""
+        note = self._fcf_deployment_note(
+            profile.ticker,
+            alloc_period,
+            profile.currency,
+            self._period_fcf(ctx.get("financials") or [], alloc_period or None),
+            [
+                ("capital expenditure", self._abs_or_none(cap.capex), capex_pct),
+                ("share repurchases", self._abs_or_none(cap.share_buybacks), buyback_pct),
+                ("dividends", self._abs_or_none(cap.dividends), div_pct),
+            ],
+        )
+        if note:
+            parts.append(note)
+            parts.append("")
+
+        mermaid = VisualEngine.d2_capital_allocation(
+            profile.ticker, capex_pct, buyback_pct, div_pct,
+            capex_abs=self._abs_or_none(cap.capex),
+            buyback_abs=self._abs_or_none(cap.share_buybacks),
+            dividend_abs=self._abs_or_none(cap.dividends),
+            currency=profile.currency,
+            period=alloc_period or None,
+            ties_to="Capital allocation (Step 4)",
+        )
         visuals.append(mermaid)
 
         # Dividend & yield (v0.1.1)
