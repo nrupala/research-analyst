@@ -1,3 +1,22 @@
+# Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# A separate commercial license is available for uses incompatible with
+# the AGPL-3.0. See COMMERCIAL-LICENSE.md.
+
 """Dividend & yield analysis engine (v0.1.1).
 
 Responsibilities:
@@ -27,6 +46,7 @@ from collections import defaultdict
 from datetime import date
 from typing import Any
 
+from ..quant import fmt_bps
 from ..models import (
     Assumption,
     Competitor,
@@ -457,7 +477,7 @@ class DividendEngine:
                 tnote = f" ({result.us_10y_yield:.2%})" if result.us_10y_yield is not None else ""
                 result.attractiveness_rating = "Attractive"
                 result.attractiveness_rationale = (
-                    f"Yield of {cy:.2%} exceeds the 10Y Treasury{tnote} by {spread * 100:.0f} bps "
+                    f"Yield of {cy:.2%} exceeds the 10Y Treasury{tnote} by {fmt_bps(spread)} "
                     f"with {result.safety_grade} coverage."
                 )
                 return

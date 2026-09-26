@@ -1,3 +1,22 @@
+# Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# A separate commercial license is available for uses incompatible with
+# the AGPL-3.0. See COMMERCIAL-LICENSE.md.
+
 """Comparative analysis — multi-ticker side-by-side research reports (v0.2.0).
 
 This module is strictly ADDITIVE. It runs the EXISTING single-ticker pipeline
@@ -35,7 +54,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 
 from .enums import ReportType, ScenarioType, Timeframe
-from .models import ReportOutput, ResearchRequest, ResearchResponse
+from .models import ReportOutput, ResearchRequest, ResearchResponse, SourceRecord
 
 logger = logging.getLogger(__name__)
 
@@ -321,6 +340,9 @@ class ComparativeReport(BaseModel):
     dimensions: list[DimensionComparison] = Field(default_factory=list)
     errors: list[TickerError] = Field(default_factory=list)
     data_sources: dict[str, list[str]] = Field(default_factory=dict)
+    # Issue #74: per-ticker structured source records (name + reference link),
+    # so the comparative report enumerates every source instead of bare labels.
+    source_records: dict[str, list[SourceRecord]] = Field(default_factory=dict)
     deferred_dimensions: list[str] = Field(default_factory=list)
     per_ticker_reports: list[ResearchResponse] = Field(default_factory=list)
     disclaimer: str = _DISCLAIMER
@@ -351,6 +373,10 @@ def build_comparative_report(
     company_names = {resp.ticker: resp.company_name for resp in responses}
     currencies = {resp.ticker: getattr(resp, "currency", "USD") for resp in responses}
     data_sources = {resp.ticker: list(resp.metadata.data_sources) for resp in responses}
+    # Issue #74: carry each ticker's linked source records into the comparison.
+    source_records = {
+        resp.ticker: list(resp.metadata.source_records) for resp in responses
+    }
 
     reports_by_ticker: dict[str, ReportOutput] = {}
     for resp in responses:
@@ -427,6 +453,7 @@ def build_comparative_report(
         dimensions=dimensions,
         errors=error_list,
         data_sources=data_sources,
+        source_records=source_records,
         deferred_dimensions=list(DEFERRED_DIMENSIONS),
         per_ticker_reports=list(responses),
     )

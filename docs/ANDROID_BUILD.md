@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com> — SPDX-License-Identifier: AGPL-3.0-or-later
+See LICENSE and COMMERCIAL-LICENSE.md for licensing terms (commercial licenses available).
+-->
+
 # Research Analyst — Android APK build
 
 The app ships as a **Capacitor / system-WebView** APK (F-Droid-friendly — no Chrome/TWA

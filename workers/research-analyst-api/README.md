@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com> — SPDX-License-Identifier: AGPL-3.0-or-later
+See LICENSE and COMMERCIAL-LICENSE.md for licensing terms (commercial licenses available).
+-->
+
 # research-analyst-api — live Worker mirror (backup)
 
 Faithful snapshot of the **deployed** Cloudflare Worker serving `ra.devinfo.dev/api/*`

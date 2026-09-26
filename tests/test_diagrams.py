@@ -1,3 +1,22 @@
+# Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# A separate commercial license is available for uses incompatible with
+# the AGPL-3.0. See COMMERCIAL-LICENSE.md.
+
 """Tests for the D2 diagram layer (Phase F-B).
 
 * D2 source generators are deterministic and carry the right edges/labels.
@@ -7,6 +26,8 @@
 # Module: tests/test_diagrams.py | Version: 1.0 | Updated: 2026-08-31
 
 from __future__ import annotations
+
+from unittest.mock import patch
 
 from research_analyst.reports import diagrams
 from research_analyst.reports.visuals import VisualEngine
@@ -39,7 +60,8 @@ def test_d2_decision_framework_source():
 def test_render_fallback_when_d2_absent():
     """No d2 binary in this environment -> readable pre fallback, never blank."""
     src = diagrams.d2_business_model("AAPL")
-    rendered = diagrams.render_diagram(src)
+    with patch.object(diagrams.shutil, "which", return_value=None):
+        rendered = diagrams.render_diagram(src)
     assert rendered.startswith('<pre class="diagram-fallback">')
 
 

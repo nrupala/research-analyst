@@ -1,3 +1,22 @@
+# Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# A separate commercial license is available for uses incompatible with
+# the AGPL-3.0. See COMMERCIAL-LICENSE.md.
+
 """Visual intelligence engine — Plotly JSON data, Mermaid syntax, ASCII charts, Markdown tables.
 
 All Plotly visuals are delivered as JSON-serializable dicts with 'traces' and 'layout' keys.
@@ -17,6 +36,7 @@ import json
 import logging
 from typing import Any
 
+from ..quant import to_bps
 from ..models import (
     CompanyProfile,
     Competitor,
@@ -382,7 +402,7 @@ class VisualEngine:
             rows.append(f"| **Peer Median Yield** | {pct(div.peer_median_yield)} ({div.yield_vs_peers or 'n/a'}) |")
         if div.us_10y_yield is not None:
             spread = div.yield_vs_treasury_spread
-            sp = f" ({spread * 100:+.0f} bps)" if spread is not None else ""
+            sp = f" ({to_bps(spread):+.0f} bps)" if spread is not None else ""
             rows.append(f"| **vs 10Y Treasury** | {pct(div.us_10y_yield)}{sp} |")
         if div.attractiveness_rating:
             rows.append(f"| **Attractiveness** | {div.attractiveness_rating} |")

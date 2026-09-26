@@ -1,3 +1,22 @@
+# Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# A separate commercial license is available for uses incompatible with
+# the AGPL-3.0. See COMMERCIAL-LICENSE.md.
+
 """Report renderer — assembles analysis outputs into complete 7-step Markdown reports.
 
 This is the final assembly layer. It takes:
@@ -19,10 +38,11 @@ Design:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 from ..enums import ReportType, SecurityType
+from ..quant import fmt_bps
 from ..models import (
     Assumption,
     CapitalAllocation,
@@ -157,6 +177,11 @@ class ReportRenderer:
             sections.append(section)
             visual_count += n_visuals
 
+        # Issue #72: a report must never repeat a section. Guard at runtime
+        # (keep the first occurrence, drop later duplicates) — the template
+        # regression test in tests/test_report_integrity.py proves it.
+        sections = self._dedupe_sections(sections, profile.ticker, report_type.value)
+
         # Visual enforcement: if zero visuals, log warning (spec violation)
         if visual_count == 0:
             logger.warning(
@@ -184,14 +209,36 @@ class ReportRenderer:
             lenses=lenses,
         )
 
+    @staticmethod
+    def _dedupe_sections(
+        sections: list[ReportSection], ticker: str, report_type: str
+    ) -> list[ReportSection]:
+        """Drop duplicate sections, keeping the first occurrence (#72)."""
+        seen: set[tuple[int, str]] = set()
+        deduped: list[ReportSection] = []
+        for section in sections:
+            key = (section.step_number, section.title.strip().lower())
+            if key in seen:
+                logger.warning(
+                    "Dropping duplicate section %r (step %d) in %s report for %s",
+                    section.title, section.step_number, report_type, ticker,
+                )
+                continue
+            seen.add(key)
+            deduped.append(section)
+        return deduped
+
     def _compute_lenses(self, ctx: dict[str, Any]) -> list[Any]:
         """Compute all mental-model lenses over the available typed data."""
         from ..engines.lenses import LensInput, run_all
 
         profile: CompanyProfile = ctx["profile"]
         financials = ctx.get("financials") or []
-        latest = financials[-1] if financials else None
-        prior = financials[-2] if len(financials) > 1 else None
+        # Order explicitly: latest = most recent period_end_date. The renderer
+        # must not assume the caller's list ordering.
+        ordered = sorted(financials, key=lambda f: f.period_end_date or date.min)
+        latest = ordered[-1] if ordered else None
+        prior = ordered[-2] if len(ordered) > 1 else None
         prices = ctx.get("prices")
         analyst = None
         fundamental = ctx.get("fundamental")
@@ -280,7 +327,7 @@ class ReportRenderer:
             rel = "above" if div.yield_vs_treasury_spread > 0 else "below"
             parts.append(
                 f"- vs 10Y Treasury ({div.us_10y_yield:.2%}): "
-                f"**{abs(div.yield_vs_treasury_spread) * 100:.0f} bps {rel}**"
+                f"**{fmt_bps(abs(div.yield_vs_treasury_spread))} {rel}**"
             )
         if compact and div.ex_dividend_date is not None:
             parts.append(f"- Ex-dividend date: **{div.ex_dividend_date.isoformat()}** (near-term event)")
@@ -655,6 +702,13 @@ class ReportRenderer:
         landscape = getattr(competitive, "landscape", None)
         peers = landscape.peers if landscape else []
 
+        # Issue #67: versioned, hashed peer universe — always visible, with
+        # missing expected peers called out loudly.
+        peer_note = getattr(landscape, "peer_set_note", "") if landscape else ""
+        if peer_note:
+            parts.append(f"> {peer_note}")
+            parts.append("")
+
         # Peer table
         if peers:
             peer_table = VisualEngine.table_peer_comparison(profile.ticker, peers, currency=profile.currency)
@@ -836,6 +890,93 @@ class ReportRenderer:
             content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps,
         ), len(visuals)
 
+    @staticmethod
+    def _fmt_risk_score(score: float | None) -> str:
+        """Render a risk score, or 'unrated' when no score was published (#71)."""
+        if score is None:
+            return "unrated (no material risks identified — no score published)"
+        return f"{score}/10"
+
+    @staticmethod
+    def _risk_derivation_block(risk_matrix: RiskMatrix) -> list[str]:
+        """Render the risk score's full derivation (#71).
+
+        Every published score shows the risk factors, their probability x
+        impact weights, each factor's share of the total, and the formula —
+        so the number is reproducible, never an orphaned score.
+        """
+        parts = ["### How the Risk Score Is Derived"]
+        parts.append(f"*{risk_matrix.score_formula}*")
+        parts.append("")
+        if risk_matrix.score_baseline_note:
+            parts.append(f"> {risk_matrix.score_baseline_note}")
+            parts.append("")
+            return parts
+        breakdown = risk_matrix.score_breakdown
+        if breakdown:
+            parts.append("| Risk factor | P score | I score | Severity (P×I) | Weight |")
+            parts.append("|:------------|-------:|-------:|-------------:|-------:|")
+            for comp in breakdown:
+                parts.append(
+                    f"| {comp.title} | {comp.probability_score} | {comp.impact_score} "
+                    f"| {comp.severity} | {comp.weight_share:.1%} |"
+                )
+            total = sum(c.severity for c in breakdown)
+            parts.append(
+                f"\nScore = ({total} / {12 * len(breakdown)}) × 10 = "
+                f"**{risk_matrix.overall_risk_score}/10**"
+            )
+            parts.append("")
+        return parts
+
+    @staticmethod
+    def _bear_case_block(
+        disfavors: list[str], risk_matrix: RiskMatrix | None
+    ) -> list[str]:
+        """Explicit bear case plus falsifiability/invalidation criteria (#73).
+
+        The bear case is built from the report's own disfavoring factors and
+        highest-severity risks — not generic boilerplate. Falsifiability
+        states the observable evidence that would invalidate the thesis.
+        """
+        parts = ["### Bear Case — What Could Go Wrong"]
+        if disfavors:
+            for d in disfavors[:3]:
+                parts.append(f"- {d}")
+        else:
+            parts.append("- No explicit disfavoring factors were identified — treat the thesis with extra skepticism.")
+        if risk_matrix and risk_matrix.risks:
+            parts.append("")
+            parts.append("Highest-severity risks to the thesis:")
+            for r in risk_matrix.risks[:2]:
+                parts.append(f"- **{r.title}** ({r.probability}, {r.impact} impact): {r.description}")
+        parts.append("")
+        parts.append("### What Would Change Our Thesis (Falsifiability)")
+        parts.append(
+            "The thesis above is wrong — and should be discarded or reversed — if any of the following is observed (each would invalidate the thesis):"
+        )
+        triggers: list[str] = []
+        if risk_matrix and risk_matrix.risks:
+            for r in risk_matrix.risks[:3]:
+                for t in (r.monitoring_triggers or [])[:2]:
+                    triggers.append(f"If {t[0].lower() + t[1:]} ({r.title}).")
+        if disfavors:
+            triggers.append(
+                "If the disfavoring factors above persist for two consecutive reporting periods "
+                "without offsetting favorable evidence."
+            )
+        triggers.append(
+            "If the base-case valuation's key assumptions (growth, margins, discount rate) "
+            "prove materially wrong on new filings."
+        )
+        seen: set[str] = set()
+        for t in triggers:
+            if t not in seen:
+                seen.add(t)
+                parts.append(f"- {t}")
+        parts.append("")
+        return parts
+
     def _render_comprehensive_step6(
         self, step: StepTemplate, ctx: dict[str, Any]
     ) -> tuple[ReportSection, int]:
@@ -853,7 +994,7 @@ class ReportRenderer:
         parts.append("")
 
         if risk_matrix and risk_matrix.risks:
-            parts.append(f"**Overall Risk Score:** {risk_matrix.overall_risk_score}/10")
+            parts.append(f"**Overall Risk Score:** {self._fmt_risk_score(risk_matrix.overall_risk_score)}")
             parts.append(f"**Key Risks:** {risk_matrix.key_risk_summary}")
             parts.append("")
 
@@ -881,6 +1022,9 @@ class ReportRenderer:
                 if r.monitoring_triggers:
                     parts.append(f"- Monitor: {'; '.join(r.monitoring_triggers[:2])}")
             parts.append("")
+
+            # Issue #71: publish the score's derivation — factors, weights, formula.
+            parts.extend(self._risk_derivation_block(risk_matrix))
         else:
             gaps.append("Risk matrix not available.")
 
@@ -1041,6 +1185,9 @@ class ReportRenderer:
             parts.append("- No strong unfavorable factors identified.")
         parts.append("")
 
+        # Issue #73: explicit bear case + falsifiability, easy to find.
+        parts.extend(self._bear_case_block(disfavors, risk_matrix))
+
         parts.append("### Key Catalysts")
         for c in catalysts:
             parts.append(f"- {c}")
@@ -1049,7 +1196,7 @@ class ReportRenderer:
         # Risk-adjusted view
         if risk_matrix:
             parts.append(f"### Risk-Adjusted View")
-            parts.append(f"Overall risk score: **{risk_matrix.overall_risk_score}/10**")
+            parts.append(f"Overall risk score: **{self._fmt_risk_score(risk_matrix.overall_risk_score)}**")
             parts.append(f"{risk_matrix.key_risk_summary}")
             parts.append("")
 
@@ -1302,9 +1449,10 @@ class ReportRenderer:
             return ReportSection(step_number=step.step_number, title=step.title,
                 content="\n".join(parts), visuals=visuals, data_gaps=gaps), 0
 
-        parts.append(f"**Overall Risk Score:** {risk_matrix.overall_risk_score}/10")
+        parts.append(f"**Overall Risk Score:** {self._fmt_risk_score(risk_matrix.overall_risk_score)}")
         parts.append(f"**Key Risks:** {risk_matrix.key_risk_summary}")
         parts.append("")
+        parts.extend(self._risk_derivation_block(risk_matrix))
 
         # Filter near-term risks
         from ..enums import RiskDuration
@@ -1450,10 +1598,13 @@ class ReportRenderer:
             parts.append(f"- {d}")
         parts.append("")
 
+        # Issue #73: explicit bear case + falsifiability, easy to find.
+        parts.extend(self._bear_case_block(disfavors, risk_matrix))
+
         # Risk context
         if risk_matrix:
             parts.append(f"### Risk Context")
-            parts.append(f"Overall risk score: **{risk_matrix.overall_risk_score}/10**")
+            parts.append(f"Overall risk score: **{self._fmt_risk_score(risk_matrix.overall_risk_score)}**")
             parts.append(f"{risk_matrix.key_risk_summary}")
             parts.append("")
 
@@ -1589,6 +1740,13 @@ class ReportRenderer:
         landscape = getattr(competitive, "landscape", None)
         peers = landscape.peers if landscape else []
 
+        # Issue #67: versioned, hashed peer universe — always visible, with
+        # missing expected peers called out loudly.
+        peer_note = getattr(landscape, "peer_set_note", "") if landscape else ""
+        if peer_note:
+            parts.append(f"> {peer_note}")
+            parts.append("")
+
         if peers:
             peer_table = VisualEngine.table_peer_comparison(profile.ticker, peers, currency=profile.currency)
             visuals.append(peer_table)
@@ -1685,9 +1843,10 @@ class ReportRenderer:
             return ReportSection(step_number=step.step_number, title=step.title,
                 content="\n".join(parts), visuals=visuals, data_gaps=gaps), 0
 
-        parts.append(f"**Overall Risk Score:** {risk_matrix.overall_risk_score}/10")
+        parts.append(f"**Overall Risk Score:** {self._fmt_risk_score(risk_matrix.overall_risk_score)}")
         parts.append(f"**Summary:** {risk_matrix.key_risk_summary}")
         parts.append("")
+        parts.extend(self._risk_derivation_block(risk_matrix))
 
         risk_table = VisualEngine.table_risk_matrix(risk_matrix.risks)
         visuals.append(risk_table)
@@ -1783,6 +1942,9 @@ class ReportRenderer:
             parts.append(f"- {d}")
         parts.append("")
 
+        # Issue #73: explicit bear case + falsifiability, easy to find.
+        parts.extend(self._bear_case_block(disfavors, risk_matrix))
+
         parts.append("### Catalysts")
         for c in catalysts:
             parts.append(f"- {c}")
@@ -1790,7 +1952,7 @@ class ReportRenderer:
 
         if risk_matrix:
             parts.append(f"### Risk-Adjusted View")
-            parts.append(f"Overall risk score: **{risk_matrix.overall_risk_score}/10**")
+            parts.append(f"Overall risk score: **{self._fmt_risk_score(risk_matrix.overall_risk_score)}**")
             parts.append(f"{risk_matrix.key_risk_summary}")
             parts.append("")
 
