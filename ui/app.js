@@ -205,17 +205,38 @@ function renderTabs(reports){
     dom.reportTabs.innerHTML="";
     reports.forEach(function(r,i){
         var btn=document.createElement("button");
+        btn.type="button";
+        btn.id="report-tab-"+i;
         btn.className="tab"+(i===0?" tab--active":"");
         btn.setAttribute("role","tab");
+        btn.setAttribute("aria-selected",i===0?"true":"false");
+        btn.setAttribute("aria-controls","report-content");
+        btn.tabIndex=i===0?0:-1;
         btn.textContent=humanReportType(r.report_type)||("Report "+(i+1));
-        btn.addEventListener("click",function(){
-            document.querySelectorAll(".tab").forEach(function(t){t.classList.remove("tab--active")});
-            btn.classList.add("tab--active");
-            renderReport(i)
-        });
+        btn.addEventListener("click",function(){activateReportTab(i)});
         dom.reportTabs.appendChild(btn)
     });
     if(!reports.length){dom.reportTabs.style.display="none"}else{dom.reportTabs.style.display=""}
+    if(reports.length){dom.reportContent.setAttribute("aria-labelledby","report-tab-0")}
+}
+
+// Activate one report tab: the visual class and the ARIA state stay in lockstep.
+function activateReportTab(i){
+    var tabs=dom.reportTabs.querySelectorAll('[role="tab"]');
+    tabs.forEach(function(t,j){
+        var on=j===i;
+        t.classList.toggle("tab--active",on);
+        t.setAttribute("aria-selected",on?"true":"false");
+        t.tabIndex=on?0:-1;
+    });
+    renderReport(i);
+}
+
+// Keep the tabpanel labelled by whichever tab is active (and focusable).
+function syncTabPanel(){
+    dom.reportContent.setAttribute("tabindex","0");
+    var tab=dom.reportTabs.querySelector("#report-tab-"+activeTabIndex)||dom.reportTabs.querySelector("#report-tab-compare");
+    if(tab){dom.reportContent.setAttribute("aria-labelledby",tab.id)}
 }
 
 function humanReportType(t){
@@ -240,6 +261,7 @@ async function renderReport(idx){
     var md=currentReports[idx]||"*No report content.*";
     var html=mdToHTML(md);
     dom.reportContent.innerHTML=html;
+    syncTabPanel();
     await new Promise(function(r){requestAnimationFrame(r)});
     addExportToolbar();
     updateExportFooter()
@@ -519,8 +541,13 @@ function renderCompareTabs(data){
     var analyzed=data.tickers||(data.report&&data.report.tickers)||[];
     var btn=document.createElement("button");
     btn.className="tab tab--active";btn.type="button";btn.setAttribute("role","tab");
+    btn.id="report-tab-compare";
+    btn.setAttribute("aria-selected","true");
+    btn.setAttribute("aria-controls","report-content");
+    btn.tabIndex=0;
     btn.textContent=analyzed.length?"Comparison — "+analyzed.join(" vs "):"Comparison";
-    dom.reportTabs.appendChild(btn)
+    dom.reportTabs.appendChild(btn);
+    dom.reportContent.setAttribute("aria-labelledby","report-tab-compare");
 }
 
 function mdToHTML(md){
@@ -569,6 +596,23 @@ function esc(s){var d=document.createElement("div");d.textContent=s;return d.inn
 if (typeof requestAnimationFrame === 'function') requestAnimationFrame(initDisclaimerGate);
 else if (typeof setTimeout === 'function') setTimeout(initDisclaimerGate, 0);
 else initDisclaimerGate();
+
+// Tablist arrow-key navigation, wired once (bonus: tabs already work with
+// click + Tab; Left/Right move between tabs per the ARIA tabs pattern).
+(function(){
+    if(typeof document==="undefined"||!dom.reportTabs||dom.reportTabs.hasAttribute("data-arrowkeys"))return;
+    dom.reportTabs.setAttribute("data-arrowkeys","true");
+    dom.reportTabs.addEventListener("keydown",function(e){
+        if(e.key!=="ArrowRight"&&e.key!=="ArrowLeft")return;
+        var tabs=Array.prototype.slice.call(dom.reportTabs.querySelectorAll('[role="tab"]'));
+        if(tabs.length<2)return;
+        e.preventDefault();
+        var cur=tabs.indexOf(document.activeElement);
+        var next=(cur+(e.key==="ArrowRight"?1:-1)+tabs.length)%tabs.length;
+        tabs[next].focus();
+        activateReportTab(next);
+    });
+})();
 
 // Print: open every collapsible section so the paper/PDF copy is complete.
 if (typeof window !== 'undefined' && window.addEventListener) {
