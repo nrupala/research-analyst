@@ -156,10 +156,10 @@ the AGPL-3.0. See COMMERCIAL-LICENSE.md.
     <main id="main" class="main">
         <section class="card card--form" aria-label="Research request">
             <div class="mode-toggle" role="tablist" aria-label="Research mode">
-                <button type="button" id="mode-single" class="mode-btn mode-btn--active" role="tab" aria-selected="true">Single Ticker</button>
-                <button type="button" id="mode-compare" class="mode-btn" role="tab" aria-selected="false">Compare (2&ndash;5)</button>
+                <button type="button" id="mode-single" class="mode-btn mode-btn--active" role="tab" aria-selected="true" aria-controls="research-form">Single Ticker</button>
+                <button type="button" id="mode-compare" class="mode-btn" role="tab" aria-selected="false" aria-controls="compare-form">Compare (2&ndash;5)</button>
             </div>
-            <form id="research-form" autocomplete="off" novalidate>
+            <form id="research-form" autocomplete="off" novalidate role="tabpanel" aria-labelledby="mode-single">
                 <div class="form-row">
                     <div class="form-group form-group--ticker">
                         <label for="ticker" class="form-label">Ticker or Company Name</label>
@@ -199,7 +199,7 @@ the AGPL-3.0. See COMMERCIAL-LICENSE.md.
 
             <div id="resolve-candidates" class="resolve-candidates" hidden aria-live="polite"></div>
 
-            <form id="compare-form" autocomplete="off" novalidate hidden>
+            <form id="compare-form" autocomplete="off" novalidate hidden role="tabpanel" aria-labelledby="mode-compare">
                 <div class="form-row form-row--compare">
                     <div class="form-group form-group--ticker">
                         <label for="compare-tickers" class="form-label">Tickers to Compare</label>
