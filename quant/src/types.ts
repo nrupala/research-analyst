@@ -49,6 +49,8 @@ export interface StatementSeries {
   ebit: Series;
   netIncome: Series;
   epsDiluted: Series;
+  sgaExpense: Series; // positive magnitude
+  depreciationAmortization: Series; // positive magnitude
 
   // ---- cash flow statement (outflows as POSITIVE magnitudes) ----
   operatingCashFlow: Series;
@@ -61,6 +63,9 @@ export interface StatementSeries {
   totalAssets: Series;
   totalEquity: Series;
   totalLiabilities: Series;
+  retainedEarnings: Series;
+  ppeNet: Series; // net property, plant & equipment
+  accountsPayable: Series;
   totalDebt: Series;
   cash: Series;
   currentAssets: Series;
@@ -83,6 +88,8 @@ export const SERIES_KEYS = [
   "ebit",
   "netIncome",
   "epsDiluted",
+  "sgaExpense",
+  "depreciationAmortization",
   "operatingCashFlow",
   "capitalExpenditure",
   "freeCashFlow",
@@ -91,6 +98,9 @@ export const SERIES_KEYS = [
   "totalAssets",
   "totalEquity",
   "totalLiabilities",
+  "retainedEarnings",
+  "ppeNet",
+  "accountsPayable",
   "totalDebt",
   "cash",
   "currentAssets",
