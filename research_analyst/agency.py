@@ -181,7 +181,7 @@ def report_hash(report: dict[str, Any]) -> str:
 def _validate_task(task: Any) -> dict[str, Any]:
     if not isinstance(task, dict):
         raise AgencyError(INVALID_TASK, "OGSA task must be a JSON object.", retryable=False)
-    missing = [k for k in ("id", "targetAgent", "action", "payload") if not task.get(k)]
+    missing = [k for k in ("id", "targetAgent", "action", "payload") if task.get(k) is None]
     if missing:
         raise AgencyError(
             INVALID_TASK,
