@@ -105,6 +105,8 @@ function makeEnv(ids) {
     insertBefore(n, ref) { n.parentNode = this; const i = this.children.indexOf(ref); if (i < 0) this.children.push(n); else this.children.splice(i, 0, n); return n; }
     removeChild(n) { const i = this.children.indexOf(n); if (i >= 0) this.children.splice(i, 1); n.parentNode = null; return n; }
     remove() { if (this.parentNode) this.parentNode.removeChild(this); }
+    after(...nodes) { if (!this.parentNode) return; const i = this.parentNode.children.indexOf(this); const els = nodes.map((n) => typeof n === "string" ? Object.assign(new El("span"), {_textContent: n}) : n); els.forEach((n) => { if (n.parentNode) n.parentNode.removeChild(n); n.parentNode = this.parentNode; }); this.parentNode.children.splice(i + 1, 0, ...els); }
+    before(...nodes) { if (!this.parentNode) return; const i = this.parentNode.children.indexOf(this); const els = nodes.map((n) => typeof n === "string" ? Object.assign(new El("span"), {_textContent: n}) : n); els.forEach((n) => { if (n.parentNode) n.parentNode.removeChild(n); n.parentNode = this.parentNode; }); this.parentNode.children.splice(i, 0, ...els); }
     addEventListener(t, fn) { (this._listeners[t] || (this._listeners[t] = [])).push(fn); }
     removeEventListener(t, fn) { const a = this._listeners[t]; if (a) { const i = a.indexOf(fn); if (i >= 0) a.splice(i, 1); } }
     dispatch(t, ev) { ev = ev || {}; ev.type = t; if (ev.target === undefined) ev.target = this; if (!ev.preventDefault) ev.preventDefault = () => {}; (this._listeners[t] || []).slice().forEach((fn) => fn.call(this, ev)); }
