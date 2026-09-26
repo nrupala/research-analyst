@@ -180,3 +180,29 @@ def diagram_visual(
         ties_to=ties_to,
         caption=caption,
     )
+
+
+def _d2_esc(text: str) -> str:
+    """Escape double quotes for D2 label strings."""
+    return text.replace('"', "'")
+
+
+def d2_catalyst_watchlist(
+    ticker: str,
+    near_term: list[str] | None = None,
+    structural: list[str] | None = None,
+) -> str:
+    """D2 source: near-term vs structural catalysts -> monitoring decision."""
+    near_term = near_term or []
+    structural = structural or []
+    lines = [
+        "direction: right",
+        f'watch: "{ticker} \u2014 catalyst watchlist"',
+        '"near-term catalysts" -> watch',
+        '"structural catalysts" -> watch',
+    ]
+    for c in near_term[:3]:
+        lines.append(f'"{_d2_esc(c[:44])}" -> "near-term catalysts"')
+    for c in structural[:3]:
+        lines.append(f'"{_d2_esc(c[:44])}" -> "structural catalysts"')
+    return "\n".join(lines) + "\n"
