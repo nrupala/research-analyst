@@ -11,10 +11,10 @@
 
 export * from "./types.js";
 export * from "./guards.js";
-// Modules land here as they ship:
-// export * from "./trends.js";    // Phase B
-// export * from "./dupont.js";    // Phase C
-// export * from "./forensics.js"; // Phase C
-// export * from "./valuation.js"; // Phase D
-// export * from "./allocation.js"; // Phase E
-// export * from "./expected.js";   // Phase F
+export * from "./trends.js"; // Phase B — multi-year trends, per-share truth serum
+export * from "./dupont.js"; // Phase C — DuPont decomposition + ROE attribution
+export * from "./forensics.js"; // Phase C — earnings forensics (Sloan, Altman, Beneish)
+export * from "./valuation.js"; // Phase D — DCF, reverse DCF, WACC, multiples
+export * from "./allocation.js"; // Phase E — capital allocation track record
+export * from "./expected.js"; // Phase F — expected value, tornado, margin of safety
+export * from "./lenses/index.js"; // mental-model lenses (Graham…Marks)
