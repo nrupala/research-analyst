@@ -1287,6 +1287,7 @@ class ReportRenderer:
         parts.extend(self._bear_case_block(disfavors, risk_matrix))
 
         parts.append("### Key Catalysts")
+        parts.append("_Typical catalysts to watch \u2014 not company-specific._")
         for c in catalysts:
             parts.append(f"- {c}")
         parts.append("")
@@ -1300,6 +1301,7 @@ class ReportRenderer:
 
         # Monitoring triggers
         parts.append("### What to Monitor")
+        parts.append("_Standard monitoring checklist \u2014 not company-specific._")
         parts.append("- Earnings trajectory and guidance revisions.")
         parts.append("- Margin trend (expanding or compressing).")
         parts.append("- Competitive dynamics and market share data.")
@@ -2076,6 +2078,7 @@ class ReportRenderer:
         parts.extend(self._bear_case_block(disfavors, risk_matrix))
 
         parts.append("### Catalysts")
+        parts.append("_Typical catalysts to watch \u2014 not company-specific._")
         for c in catalysts:
             parts.append(f"- {c}")
         parts.append("")
@@ -2087,6 +2090,7 @@ class ReportRenderer:
             parts.append("")
 
         parts.append("### What to Monitor")
+        parts.append("_Standard monitoring checklist \u2014 not company-specific._")
         parts.append("- Multi-year revenue growth trajectory")
         parts.append("- Margin sustainability and expansion")
         parts.append("- Capital allocation decisions (ROIC vs WACC)")
