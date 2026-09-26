@@ -136,14 +136,28 @@ class VisualEngine:
         capex_pct: float | None,
         buyback_pct: float | None,
         dividend_pct: float | None,
+        capex_abs: float | None = None,
+        buyback_abs: float | None = None,
+        dividend_abs: float | None = None,
+        currency: str | None = "USD",
+        period: str | None = None,
+        ties_to: str = "Capital allocation analysis",
     ) -> ReportVisual:
         """Capital allocation flow as a server-rendered D2 diagram."""
-        source = diagrams.d2_capital_allocation(ticker, capex_pct, buyback_pct, dividend_pct)
+        source = diagrams.d2_capital_allocation(
+            ticker, capex_pct, buyback_pct, dividend_pct,
+            capex_abs=capex_abs, buyback_abs=buyback_abs,
+            div_abs=dividend_abs, currency=currency,
+        )
+        caption = "Capital deployed by destination"
+        if period:
+            caption += f" ({period})"
+        caption += ". Percentages are shares of total capital deployed."
         return diagrams.diagram_visual(
             source,
             title=f"{ticker} — Capital Allocation Flow",
-            ties_to="Capital allocation analysis (Step 4)",
-            caption="FCF deployment breakdown. Most recent annual period.",
+            ties_to=ties_to,
+            caption=caption,
         )
 
     # ------------------------------------------------------------------
