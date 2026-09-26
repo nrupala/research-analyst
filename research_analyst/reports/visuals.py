@@ -279,7 +279,11 @@ class VisualEngine:
             de = f"{p.debt_to_equity:.2f}x" if p.debt_to_equity is not None else "N/A"
             rows.append(f"| **{p.ticker}** | {p.name[:20]} | {mc} | {gm} | {om} | {pe} | {ev} | {rg} | {roe} | {de} |")
 
-        return ReportVisual(visual_type="table", title="Peer Comparison", content="\n".join(rows), ties_to="Competitive positioning (Step 3)")
+        return ReportVisual(
+            visual_type="table", title="Peer Comparison", content="\n".join(rows),
+            ties_to="Competitive positioning (Step 3)",
+            caption="Profitability, valuation, growth, and leverage versus peers. N/A = data unavailable for that peer.",
+        )
 
     @staticmethod
     def table_risk_matrix(risks: list[StructuredRisk]) -> ReportVisual:
@@ -294,7 +298,11 @@ class VisualEngine:
         for r in risks[:10]:
             rows.append(f"| {r.title} | {r.category.value.title()} | {r.probability} | {r.impact} | {r.timing.value.replace('_', ' ').title()} | {r.nature.value.title()} |")
 
-        return ReportVisual(visual_type="table", title="Structured Risk Matrix", content="\n".join(rows), ties_to="Risk assessment (Step 5/6)")
+        return ReportVisual(
+            visual_type="table", title="Structured Risk Matrix", content="\n".join(rows),
+            ties_to="Risk assessment (Step 5/6)",
+            caption="Top risks by severity (probability \u00d7 impact). Timing and nature per the risk framework; score derivation published below.",
+        )
 
     @staticmethod
     def table_financial_summary(financials: list[FinancialStatement], currency: str | None = None) -> ReportVisual:
@@ -339,7 +347,12 @@ class VisualEngine:
         rows.append(_row("ROE", lambda f: f.roe, "pct"))
         rows.append(_row("Debt/Equity", lambda f: f.debt_to_equity, "ratio"))
 
-        return ReportVisual(visual_type="table", title="Financial Summary", content="\n".join(rows), ties_to="Financial analysis (Step 2)")
+        period_note = f" ({periods[0]}\u2013{periods[-1]})" if len(periods) > 1 else (f" ({periods[0]})" if periods else "")
+        return ReportVisual(
+            visual_type="table", title="Financial Summary", content="\n".join(rows),
+            ties_to="Financial analysis (Step 2)",
+            caption=f"Annual financials{period_note}. Money figures in {sym} billions; margins as % of revenue.",
+        )
 
     @staticmethod
     def table_macro_regime(implications: list) -> ReportVisual:
@@ -356,7 +369,11 @@ class VisualEngine:
             magnitude = getattr(impl, "magnitude", "")
             rows.append(f"| {factor} | {current} | {regime} | {impact.title()} | {magnitude.title()} |")
 
-        return ReportVisual(visual_type="table", title="Macro Environment", content="\n".join(rows), ties_to="Macro context (Step 5)")
+        return ReportVisual(
+            visual_type="table", title="Macro Environment", content="\n".join(rows),
+            ties_to="Macro context (Step 5)",
+            caption="How each macro factor is classified today and what it implies for the sector.",
+        )
 
     # ------------------------------------------------------------------
     # Dividend & yield (v0.1.1)
