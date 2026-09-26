@@ -131,6 +131,33 @@ class VisualEngine:
         )
 
     @staticmethod
+    def svg_thesis_balance(
+        ticker: str, n_favor: int, n_disfavor: int, tilt: str
+    ) -> ReportVisual:
+        """Thesis evidence balance as a server-rendered SVG."""
+        return svg_charts.svg_thesis_balance(ticker, n_favor, n_disfavor, tilt)
+
+    @staticmethod
+    def svg_unit_economics(
+        ticker: str, margins: dict[str, float | None]
+    ) -> ReportVisual | None:
+        """Unit-economics margin bars as a server-rendered SVG."""
+        return svg_charts.svg_unit_economics(ticker, margins)
+
+    @staticmethod
+    def d2_catalyst_watchlist(
+        ticker: str, near_term: list[str], structural: list[str]
+    ) -> ReportVisual:
+        """Catalyst watchlist as a server-rendered D2 diagram."""
+        source = diagrams.d2_catalyst_watchlist(ticker, near_term, structural)
+        return diagrams.diagram_visual(
+            source,
+            title=f"{ticker} \u2014 Catalyst Watchlist",
+            ties_to="Catalysts and monitoring (Step 7)",
+            caption="Near-term vs structural catalysts feeding the monitoring decision.",
+        )
+
+    @staticmethod
     def d2_capital_allocation(
         ticker: str,
         capex_pct: float | None,
