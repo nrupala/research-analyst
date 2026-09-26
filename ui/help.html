@@ -25,6 +25,13 @@ the AGPL-3.0. See COMMERCIAL-LICENSE.md.
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
     <meta name="description" content="Research Analyst - Help &amp; User Guide">
+    <meta property="og:title" content="Help - Research Analyst">
+    <meta property="og:description" content="Research Analyst - Help & User Guide">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Research Analyst">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Help - Research Analyst">
+    <meta name="twitter:description" content="Research Analyst - Help & User Guide">
     <meta property="og:image" content="https://ra.devinfo.dev/og-image.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
@@ -37,6 +44,77 @@ the AGPL-3.0. See COMMERCIAL-LICENSE.md.
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "SoftwareApplication",
+          "name": "Research Analyst",
+          "applicationCategory": "FinanceApplication",
+          "operatingSystem": "Web",
+          "description": "Institutional-grade equity and ETF research agent producing decision-intelligence research comparable to top-tier sell-side and buy-side analysts.",
+          "author": {
+            "@type": "Person",
+            "name": "Nrupal Akolkar",
+            "url": "https://nrupalakolkar.com"
+          },
+          "publisher": {
+            "@type": "Organization",
+            "name": "AIMLDS",
+            "url": "https://aimlds.org"
+          },
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD",
+            "availability": "https://schema.org/OnlineOnly"
+          },
+          "softwareVersion": "0.4.0"
+        },
+        {
+          "@type": "Organization",
+          "name": "AIMLDS",
+          "url": "https://aimlds.org"
+        }
+      ]
+    }
+    </script>
+    <script>
+    // Per-host identity: one static build serves ra.devinfo.dev and ra.aimlds.org.
+    // Canonical + og:url are injected per host (self-referencing) so neither
+    // mirror nominates the other until the owner decides the mirror strategy.
+    (function () {
+      var isAIMLDS = /(^|\.)aimlds\.org$/.test(location.hostname);
+      var origin = location.origin;
+      function addLink(rel, href) {
+        var l = document.createElement("link");
+        l.rel = rel;
+        l.href = href;
+        document.head.appendChild(l);
+      }
+      addLink("canonical", origin + "/help");
+      addLink("alternate", isAIMLDS ? "https://ra.devinfo.dev/help" : "https://ra.aimlds.org/help");
+      var ogUrl = document.createElement("meta");
+      ogUrl.setAttribute("property", "og:url");
+      ogUrl.setAttribute("content", origin + "/help");
+      document.head.appendChild(ogUrl);
+      // Brand links follow the serving host: aimlds.org on the aimlds mirror.
+      document.addEventListener("DOMContentLoaded", function () {
+        if (!isAIMLDS) return;
+        document.querySelectorAll('a[href="https://devinfo.dev"]').forEach(function (a) {
+          a.href = "https://aimlds.org";
+          a.textContent = a.textContent.replace(/devinfo\.dev/g, "aimlds.org");
+          var label = a.getAttribute("aria-label");
+          if (label) a.setAttribute("aria-label", label.replace(/devinfo\.dev/g, "aimlds.org"));
+        });
+        document.querySelectorAll('a[href^="mailto:"]').forEach(function (a) {
+          a.setAttribute("href", a.getAttribute("href").replace(/ra\.devinfo\.dev/g, "ra.aimlds.org"));
+        });
+      });
+    })();
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
