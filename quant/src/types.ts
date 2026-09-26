@@ -60,6 +60,7 @@ export interface StatementSeries {
   // ---- balance sheet ----
   totalAssets: Series;
   totalEquity: Series;
+  totalLiabilities: Series;
   totalDebt: Series;
   cash: Series;
   currentAssets: Series;
@@ -89,6 +90,7 @@ export const SERIES_KEYS = [
   "shareBuybacks",
   "totalAssets",
   "totalEquity",
+  "totalLiabilities",
   "totalDebt",
   "cash",
   "currentAssets",
