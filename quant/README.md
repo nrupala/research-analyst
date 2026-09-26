@@ -30,6 +30,7 @@ Every module consumes a `StatementSeries` (see `src/types.ts`):
 - `src/valuation.ts` — WACC, DCF, reverse DCF, sensitivities (Phase D).
 - `src/allocation.ts` — buyback/dividend/debt track record (Phase E).
 - `src/expected.ts` — probability-weighted scenarios (Phase F).
+- `src/lenses/` — the seven mental-model lenses (Graham, Greenblatt, Lynch, Damodaran, Buffett, Dalio, Marks) as pure reads over the same series.
 
 ## Develop
 
