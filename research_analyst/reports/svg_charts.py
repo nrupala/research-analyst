@@ -36,6 +36,8 @@ import io
 import re
 from typing import Any
 
+# MPLCONFIGDIR is already resolved by research_analyst/__init__.py, which runs
+# before this module and before matplotlib resolves its config dir.
 import matplotlib
 
 matplotlib.use("Agg")
