@@ -9,6 +9,10 @@ User=ra
 Group=ra
 WorkingDirectory=/opt/research-analyst
 EnvironmentFile=/etc/research-analyst/ra.env
+# matplotlib resolves its config/cache dir at import time; without this the
+# --no-create-home system user cannot write ~/.config/matplotlib and it relocates
+# to a throwaway /tmp dir on every start. Must be under ReadWritePaths below.
+Environment=MPLCONFIGDIR=/var/lib/research-analyst/mpl
 ExecStart=/opt/research-analyst/.venv/bin/uvicorn research_analyst.server:app --host 127.0.0.1 --port 8700
 Restart=on-failure
 RestartSec=3

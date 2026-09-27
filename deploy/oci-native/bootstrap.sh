@@ -49,6 +49,10 @@ sudo -u ra /opt/research-analyst/.venv/bin/pip install .
 
 # 4. Persistent cache dir (owned by ra)
 sudo mkdir -p /var/lib/research-analyst/cache && sudo chown -R ra:ra /var/lib/research-analyst
+# 4b. matplotlib config/font cache — must exist and be writable by ra, else the
+#     --no-create-home user cannot build ~/.config/matplotlib and matplotlib
+#     silently relocates to a fresh /tmp dir on every service start.
+sudo mkdir -p /var/lib/research-analyst/mpl && sudo chown -R ra:ra /var/lib/research-analyst/mpl
 
 # 5. Env file (fill RA_MARKET_FRED_API_KEY on box — see ra.env.example)
 sudo mkdir -p /etc/research-analyst
