@@ -600,7 +600,7 @@ else initDisclaimerGate();
 // Tablist arrow-key navigation, wired once (bonus: tabs already work with
 // click + Tab; Left/Right move between tabs per the ARIA tabs pattern).
 (function(){
-    if(typeof document==="undefined"||!dom.reportTabs||dom.reportTabs.hasAttribute("data-arrowkeys"))return;
+    if(typeof document==="undefined"||!dom.reportTabs||dom.reportTabs.getAttribute("data-arrowkeys"))return;
     dom.reportTabs.setAttribute("data-arrowkeys","true");
     dom.reportTabs.addEventListener("keydown",function(e){
         if(e.key!=="ArrowRight"&&e.key!=="ArrowLeft")return;
