@@ -18,6 +18,16 @@
 # the AGPL-3.0. See COMMERCIAL-LICENSE.md.
 
 """Research Analyst — Institutional-grade equity and ETF research agent."""
-# Module: research_analyst/__init__.py | Version: 0.4.0 | Updated: 2026-08-04
+# Module: research_analyst/__init__.py | Version: 0.4.0 | Updated: 2026-09-27
 
 __version__ = "0.4.0"
+
+# matplotlib resolves its config directory once, at import time. On hosts where
+# $HOME is not writable (the systemd `ra` user is created with --no-create-home)
+# it cannot build ~/.config/matplotlib and silently relocates to a fresh temp
+# directory on every start, discarding the font cache. Configure it here, in the
+# package initialiser, so it is set before any submodule — and therefore before
+# any matplotlib import — can run.
+from .mpl_config import MPL_CONFIG_DIR  # noqa: E402
+
+__all__ = ["MPL_CONFIG_DIR", "__version__"]
