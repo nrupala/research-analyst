@@ -86,6 +86,81 @@ curl -X POST https://ra.devinfo.dev/api/research/data?format=csv \
   -o AAPL_source_data.csv
 ```
 
+### Bundle schema (`POST /api/research/data`, JSON)
+
+The JSON body is the canonical form; `?format=csv` flattens the same structure
+with one `section, key, value` triplet per leaf.
+
+| Key | Type | Notes |
+|---|---|---|
+| `schema_version` | string | `"1.1"`. Bumped when a key is removed or its meaning changes. |
+| `ticker`, `company_name`, `currency`, `generated_at`, `security_type` | string | Request identity. `generated_at` is ISO-8601, `""` if unset. |
+| `tables` | array | `{title, rows}` where `rows` is an array of cell arrays parsed from the report's markdown tables. Header and alignment rows are stripped. |
+| `metrics` | object | Flat key/value map, merged across every report in the request. See precedence below. |
+| `scenarios` | array | Valuation scenarios, one per scenario type. Deduplicated by `scenario_type`. |
+| `peers` | array | Peer rows, verbatim cells, header stripped. Deduplicated by ticker. |
+
+#### `metrics` precedence
+
+A request may return several reports. Metrics **accumulate** across them rather
+than the last report winning:
+
+1. A key already holding a non-null value is never overwritten.
+2. A key holding `null` may be filled by a later report.
+3. Two non-null values for the same key: the first wins, so the result does not
+   depend on report ordering.
+
+This matters because the reports describe the same security — a later, sparser
+report must not erase a metric an earlier one computed.
+
+#### Legitimately-null `metrics` keys
+
+Not every `null` is a defect. These are `null` **by design** and carry meaning:
+
+| Key | Why it can be null |
+|---|---|
+| `risk_score` | No score is published when no material risks were identified (a 1–10 score over an empty risk set would be arbitrary). `risk_score_note` is present whenever the value is null, and the full risk inventory is always in `tables`. |
+| `dividend_yield`, `payout_ratio_eps`, `payout_ratio_fcf`, … | The security pays no dividend, or the basis is unavailable. |
+| `peer_median_yield` | No dividend-paying peer in the comparison universe. `peer_yields` holds the per-peer values when they are available. |
+| `fcf_deployment.*_pct_of_fcf` | Free cash flow or the deployment figure is unavailable for the period. |
+
+A `null` is never emitted for a key that simply failed to resolve a field name.
+If a key appears here it is one the model actually defines.
+
+#### Field-name traps
+
+`payout_ratio_eps` and `payout_ratio_fcf` are **different numbers on different
+bases** (dividends ÷ net income vs dividends ÷ free cash flow) and are always
+both emitted. There is deliberately no combined `payout_ratio`: a single
+unqualified figure hides which basis produced it.
+
+`annual_dividends` is split into `annual_dividends_complete_years` and, when the
+current calendar year is in progress, `annual_dividends_partial`. The partial
+year is dividends received to date, not a full-year total, and must not be
+plotted beside completed years without that caveat.
+
+`peer_median_yield` is computed over the whole competitor universe, which is a
+different population from the eight rows in `peers`. `peer_yields` carries the
+per-peer trailing yields so the median can be reproduced; without it the figure
+is unverifiable.
+
+#### Scenarios
+
+Each entry carries `scenario_type`, `label`, `price_low`, `price_high`,
+`revenue_growth`, `operating_margin`, `pe_multiple`, `ev_ebitda_multiple`,
+`implied_upside_low`, `implied_upside_high`, and an `assumptions` array
+(`label`, `value`, `source`, `confidence`).
+
+`pe_multiple` and `ev_ebitda_multiple` are the multiples actually applied,
+published on the model rather than narrated in prose only. Each corresponding
+`assumptions` entry states the base multiple and its source — for example that
+the base P/E blends the company's own trailing P/E with the peer median when the
+two are far apart. Read the `assumptions` entry to know where the number came
+from; the numeric field tells you what was used.
+
+A `null` `pe_multiple` therefore means the P/E method did not apply (no positive
+EPS, or a revenue-multiple fallback was used), not that a number was lost.
+
 ## CLI / TUI / Sync
 
 ```bash

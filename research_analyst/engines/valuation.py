@@ -206,6 +206,12 @@ class ValuationEngine:
 
         assumptions: list[Assumption] = []
         price_estimates: list[float] = []
+        # Multiples actually applied to each scenario. Populated by the
+        # valuation blocks below and published on the model so every consumer
+        # (export, HTML report, SVG chart) reads the same number instead of
+        # parsing it back out of the prose assumptions.
+        scenario_pe: float | None = None
+        scenario_ev_ebitda: float | None = None
 
         # ---- Revenue growth assumption ----
         base_rev_growth = rev_growth if rev_growth is not None else 0.05
@@ -375,8 +381,10 @@ class ValuationEngine:
             assumptions=assumptions,
             revenue_growth=scenario_rev_growth,
             operating_margin=scenario_margin,
-            pe_multiple=None,  # Set in assumptions
-            ev_ebitda_multiple=None,
+            pe_multiple=round(scenario_pe, 2) if scenario_pe is not None else None,
+            ev_ebitda_multiple=(
+                round(scenario_ev_ebitda, 2) if scenario_ev_ebitda is not None else None
+            ),
             implied_price_low=round(price_low, 2),
             implied_price_high=round(price_high, 2),
             implied_upside_low=round(upside_low, 4),

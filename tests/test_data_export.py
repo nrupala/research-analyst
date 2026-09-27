@@ -57,7 +57,12 @@ def _response() -> ResearchResponse:
         scenarios=[scenario],
     )
     dividend = DividendAnalysis(
-        ticker="AAPL", current_yield=0.025, payout_ratio=0.15,
+        # Real model field names. `payout_ratio` was passed here previously and
+        # silently discarded by Pydantic (`extra='ignore'`), which is how a
+        # phantom key survived review; the exporter then read the same phantom
+        # name and shipped null.
+        ticker="AAPL", current_yield=0.025,
+        payout_ratio_eps=0.15, payout_ratio_fcf=0.22,
         annual_dividends={"2023": 2.0, "2024": 2.25}, annual_dividend_rate=2.2,
         pays_dividend=True,
     )

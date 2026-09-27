@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import date
 from typing import Any
 
 from ..quant import to_bps
@@ -53,6 +54,20 @@ from . import diagrams
 from . import svg_charts
 
 logger = logging.getLogger(__name__)
+
+# Metrics rendered in the multi-period financial summary, used to decide
+# whether a period carries any data at all.
+_SUMMARY_METRICS = (
+    "revenue", "gross_profit", "operating_income", "net_income",
+    "gross_margin", "operating_margin", "net_margin", "eps_diluted",
+    "free_cash_flow", "roe", "debt_to_equity",
+)
+
+
+def _has_any_metric(fin: Any) -> bool:
+    """True when at least one summary metric is present for this period."""
+    return any(getattr(fin, name, None) is not None for name in _SUMMARY_METRICS)
+
 
 # ---------------------------------------------------------------------------
 
@@ -305,25 +320,60 @@ class VisualEngine:
             return ReportVisual(visual_type="table", title="Peer Comparison", content="*No peer data.*", ties_to="Competitive analysis")
 
         sym = currency_symbol(currency)
-        header = f"| Ticker | Name | Mkt Cap ({sym}B) | Gross Margin | Op Margin | P/E | EV/EBITDA | Rev Growth | ROE | D/E |"
-        sep = "|:------|:-----|-----------:|------------:|----------:|----:|----------:|-----------:|----:|----:|"
+        header = (
+            f"| Ticker | Name | Mkt Cap ({sym}B) | Gross Margin | Op Margin | P/E "
+            f"| EV/EBITDA | Rev Growth | ROE | D/E | Div Yield |"
+        )
+        sep = (
+            "|:------|:-----|-----------:|------------:|----------:|----:"
+            "----------:|-----------:|----:|----:|----------:|"
+        )
         rows = [header, sep]
+        not_meaningful = 0
 
         for p in peers[:8]:
             mc = f"{sym}{float(p.market_cap) / 1e9:.1f}" if p.market_cap else "N/A"
             gm = f"{p.gross_margin:.1%}" if p.gross_margin is not None else "N/A"
             om = f"{p.operating_margin:.1%}" if p.operating_margin is not None else "N/A"
-            pe = f"{p.pe_ratio:.1f}x" if p.pe_ratio is not None else "N/A"
+            if p.pe_ratio is None:
+                pe = "N/A"
+            elif p.pe_ratio <= 0:
+                # A non-positive P/E is not a valuation signal, it is a symptom
+                # of negative or absent earnings. Rendering "-45.0x" invites the
+                # reader to treat it as an extreme observation.
+                pe = "n/m"
+                not_meaningful += 1
+            else:
+                pe = f"{p.pe_ratio:.1f}x"
             ev = f"{p.ev_ebitda:.1f}x" if p.ev_ebitda is not None else "N/A"
             rg = f"{p.revenue_growth_yoy:.1%}" if p.revenue_growth_yoy is not None else "N/A"
             roe = f"{p.roe:.1%}" if p.roe is not None else "N/A"
             de = f"{p.debt_to_equity:.2f}x" if p.debt_to_equity is not None else "N/A"
-            rows.append(f"| **{p.ticker}** | {p.name[:20]} | {mc} | {gm} | {om} | {pe} | {ev} | {rg} | {roe} | {de} |")
+            dy = f"{p.dividend_yield:.2%}" if p.dividend_yield is not None else "N/A"
+            # Full company name: the paid source-data export re-parses this
+            # table, so truncating it here loses data for the customer.
+            rows.append(
+                f"| **{p.ticker}** | {p.name} | {mc} | {gm} | {om} | {pe} | "
+                f"{ev} | {rg} | {roe} | {de} | {dy} |"
+            )
+
+        caption = (
+            "Profitability, valuation, growth, and leverage versus peers. "
+            "N/A = data unavailable for that peer."
+        )
+        if not_meaningful:
+            caption += (
+                f" n/m = P/E not meaningful for {not_meaningful} peer"
+                f"{'s' if not_meaningful != 1 else ''} "
+                "(non-positive earnings); those values are excluded from "
+                "peer-multiple medians."
+            )
+        caption += " Div Yield is trailing dividend yield."
 
         return ReportVisual(
             visual_type="table", title="Peer Comparison", content="\n".join(rows),
             ties_to="Competitive positioning (Step 3)",
-            caption="Profitability, valuation, growth, and leverage versus peers. N/A = data unavailable for that peer.",
+            caption=caption,
         )
 
     @staticmethod
@@ -352,7 +402,16 @@ class VisualEngine:
             return ReportVisual(visual_type="table", title="Financial Summary", content="*No data.*", ties_to="Financial analysis")
 
         sym = currency_symbol(currency)
-        sorted_fin = sorted(financials, key=lambda f: f.period_end_date or __import__("datetime").date.min)[-5:]
+        by_date = sorted(
+            financials, key=lambda f: f.period_end_date or __import__("datetime").date.min
+        )
+        # A period where every metric is null carries no information and renders
+        # as an all-N/A column, which reads as a data outage rather than an
+        # absent year. Drop it, then say so — silently omitting a year would be
+        # its own kind of dishonesty.
+        complete = [f for f in by_date if _has_any_metric(f)]
+        omitted = [f for f in by_date if not _has_any_metric(f)]
+        sorted_fin = complete[-5:]
         periods = [f.period for f in sorted_fin]
         header = "| Metric | " + " | ".join(periods) + " |"
         sep = "|:-------|" + "|".join(["-------:"] * len(periods)) + "|"
@@ -389,10 +448,20 @@ class VisualEngine:
         rows.append(_row("Debt/Equity", lambda f: f.debt_to_equity, "ratio"))
 
         period_note = f" ({periods[0]}\u2013{periods[-1]})" if len(periods) > 1 else (f" ({periods[0]})" if periods else "")
+        caption = (
+            f"Annual financials{period_note}. Money figures in {sym} billions; "
+            "margins as % of revenue."
+        )
+        if omitted:
+            names = ", ".join(f.period for f in omitted)
+            caption += (
+                f" {names} omitted: no data available for any metric in "
+                f"{'that period' if len(omitted) == 1 else 'those periods'}."
+            )
         return ReportVisual(
             visual_type="table", title="Financial Summary", content="\n".join(rows),
             ties_to="Financial analysis (Step 2)",
-            caption=f"Annual financials{period_note}. Money figures in {sym} billions; margins as % of revenue.",
+            caption=caption,
         )
 
     @staticmethod
@@ -464,7 +533,11 @@ class VisualEngine:
         if div.fcf_coverage is not None:
             rows.append(f"| **FCF Coverage** | {div.fcf_coverage:.2f}x |")
         if div.consecutive_increase_years:
-            rows.append(f"| **Consecutive Increases** | {div.consecutive_increase_years} yrs |")
+            yrs = div.consecutive_increase_years
+            rows.append(
+                f"| **Consecutive Increases** | {yrs} "
+                f"year{'s' if yrs != 1 else ''} |"
+            )
         if div.had_cut:
             sc = f"{div.years_since_cut} yrs ago" if div.years_since_cut is not None else "yes"
             rows.append(f"| **Dividend Cut** | {sc} |")
@@ -473,18 +546,47 @@ class VisualEngine:
         if div.peer_median_yield is not None:
             rows.append(f"| **Peer Median Yield** | {pct(div.peer_median_yield)} ({div.yield_vs_peers or 'n/a'}) |")
         if div.us_10y_yield is not None:
+            # Two separate numbers, deliberately not merged into one row. A row
+            # labelled "vs 10Y Treasury" whose value is the Treasury's own yield
+            # invites the reader to mistake one company's rate for another's.
+            rows.append(f"| **10Y Treasury Yield** | {pct(div.us_10y_yield)} |")
             spread = div.yield_vs_treasury_spread
-            sp = f" ({to_bps(spread):+.0f} bps)" if spread is not None else ""
-            rows.append(f"| **vs 10Y Treasury** | {pct(div.us_10y_yield)}{sp} |")
+            if spread is not None:
+                direction = "above" if spread > 0 else "below"
+                # The parenthetical is the *spread magnitude* (percentage
+                # points), not the company's own yield. Using current_yield here
+                # would reintroduce exactly the conflation the split removes, and
+                # would crash when current_yield is None.
+                rows.append(
+                    f"| **Spread vs 10Y Treasury** | {to_bps(spread):+.0f} bps "
+                    f"({abs(spread) * 100:.2f} pp {direction} 10Y) |"
+                )
         if div.attractiveness_rating:
             rows.append(f"| **Attractiveness** | {div.attractiveness_rating} |")
+
+        caption = div.attractiveness_rationale or "Yields shown as annual percentages."
+        annual = getattr(div, "annual_dividends", {}) or {}
+        current_year = date.today().year
+        partial = {k: v for k, v in annual.items() if int(k) >= current_year}
+        if partial:
+            names = ", ".join(sorted(partial))
+            caption += (
+                f" {names} is a partial year (dividends received to date, not "
+                "a full-year total); growth rates exclude it."
+            )
+        if div.us_10y_yield is not None:
+            caption += (
+                f" 10Y Treasury is a market rate for the US sovereign, shown as "
+                f"the benchmark the {'distribution' if div.is_etf else 'dividend'} "
+                "yield is compared against."
+            )
 
         return ReportVisual(
             visual_type="table",
             title=f"{label} & Yield Summary",
             content="\n".join(rows),
             ties_to="Dividend & yield analysis",
-            caption=div.attractiveness_rationale or "Yields shown as annual percentages.",
+            caption=caption,
         )
 
     @staticmethod
