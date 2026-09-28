@@ -8,7 +8,7 @@ See LICENSE and COMMERCIAL-LICENSE.md for licensing terms (commercial licenses a
 Gate tracker per the ASF quality gates. **A gate is PASS only with recorded
 evidence** (command + observed output). No assumed passes.
 
-Last updated: 2026-09-27 — branch `fix/source-data-export-integrity`
+Last updated: 2026-09-28 — production deployment of PR #84 (`6cff51aa`) recorded below, with three corrections to prior claims. Previous entry: 2026-09-27, branch `fix/source-data-export-integrity`.
 
 ---
 
@@ -25,8 +25,8 @@ Last updated: 2026-09-27 — branch `fix/source-data-export-integrity`
 | | |
 |---|---|
 | **Status** | PASS |
-| **Evidence** | `python -m pytest -q` → **371 passed, 2 skipped** on Windows. Pre-change baseline in the same environment was `340 passed, 2 skipped`; delta `+31` = the new `tests/test_export_integrity.py` suite. Zero regressions: no previously-passing test changed outcome. PR #81 baseline (merged) was `340 passed, 2 skipped` Windows / `341 passed, 1 skipped` Linux (Aetheris). `quant/` suite: 125 tests across 8 files, **not executed in CI** (no `node_modules`; never installed). |
-| **Notes** | The 2 skips are one POSIX-only test and one TUI/environment test; both pre-existing. See Open item 1 for the quant CI gap. |
+| **Evidence** | **PR #84 (quant port, `6cff51aa`)**: `python -m pytest -q` → **466 passed, 2 skipped** on Windows. Baseline before #84 was `375` (373 passed + 2 skipped) in the same environment; delta `+93` = the new `tests/test_quant_engine_parity.py` (parity vs the TypeScript reference) and `tests/test_quant_wiring.py` (route/report/UI wiring) plus fixture data. Of those, `pytest tests/test_quant_engine_parity.py tests/test_quant_wiring.py` → **92 passed**. UI: `node --test ui/tests/quant_tab.test.mjs` → **1 pass, 0 fail**. Zero regressions: no previously-passing test changed outcome. Earlier baselines: PR #83 `375` total (Windows 373+2 / Linux 374+1); PR #81 `340 passed, 2 skipped` Windows / `341 passed, 1 skipped` Linux. |
+| **Notes** | The 2 skips are one POSIX-only test and one TUI/environment test; both pre-existing. The TypeScript `quant/` suite (125 tests, 8 files) is still **not executed in CI** — it is now the parity *reference* for the shipped Python port rather than a shipped runtime path. See Open item 1. |
 
 ## G2 — Lint / typecheck
 
@@ -60,7 +60,7 @@ Last updated: 2026-09-27 — branch `fix/source-data-export-integrity`
 |---|---|
 | **Status** | PASS |
 | **Evidence** | `deploy/oci-native/bootstrap.sh` provisions user, venv, dirs (now including the matplotlib cache dir, step 4b) and `ra.service`. Verified end to end on Aetheris: fresh isolated `git clone` + `python3 -m venv` + `pip install -e ".[dev]"` → `341 passed`. Live service health `200` at loopback, `ra-origin.nrupalakolkar.com`, and `ra.devinfo.dev`. |
-| **Notes** | `bootstrap.sh` must be run on a genuinely fresh host to fully prove this; current evidence is a working live deployment plus a from-clone install. |
+| **Notes** | `bootstrap.sh` must be run on a genuinely fresh host to fully prove this; current evidence is a working live deployment plus a from-clone install. See the Deployment evidence section below for the `6cff51aa` production run. |
 
 ## G6 — Release process
 
@@ -97,10 +97,53 @@ Last updated: 2026-09-27 — branch `fix/source-data-export-integrity`
 
 ---
 
+## Deployment evidence — PR #84 (`6cff51aa`), 2026-09-28
+
+Production host Aetheris (`147.224.174.50`, aarch64, Python 3.12.3). Commands run per
+`deploy/oci-native/README.md`, with Git/pip as `ra` and `systemctl` as root.
+
+| Step | Command | Observed result |
+|---|---|---|
+| Sync | `git fetch origin && git checkout main && git pull --ff-only origin main` | `box HEAD = 6cff51aa62ee64eb0f871b865e2d62a2ac97d658` — exact match to the intended commit |
+| Install | `.venv/bin/pip install --no-deps .` | exit 0, `Successfully installed research-analyst-0.4.0` |
+| Install verification | resolve `research_analyst` from `/` (not the repo root) | `…/.venv/lib/python3.12/site-packages/research_analyst`, containing `quant_engine/` with all 10 modules |
+| Restart | `systemctl restart ra` | `is-active: active`, `NRestarts=0`, PID 2012645 |
+
+### Live verification (from an external host, through Cloudflare → OCI)
+
+| Check | Result |
+|---|---|
+| `GET /api/health` (loopback) | `200` — `{"status":"ok","version":"0.4.0","service":"research-analyst"}` |
+| `GET /api/health` (public) | `ra.devinfo.dev` **200**, `ra.aimlds.org` **200** |
+| Public route origin | response headers show only `cf-ray` + `server: cloudflare`, **no** `fly-request-id` → served by OCI, not Fly |
+| `GET /app.js` (public) | `200`, 44,249 bytes, **37** `quant` matches on both domains (was 0 pre-#84) |
+| `GET /api/research/quant?ticker=AAPL` | **200, not 404** — AAPL, `periods` FY2021–FY2025, `schema_version` 1.0 |
+| Sections returned | **six** — `trends`, `dupont`, `forensics`, `valuation`, `allocation`, `expected_value` |
+| `missing_inputs` | **16** entries, disclosed in the response |
+| Public data bundle (regression) | `schema_version` 1.1, `peer_yields` keys `NVDA,MSFT,AVGO,AMD,CSCO,ORCL,CRM,ADBE` (no markdown), `payout_ratio` absent, 14/14 metrics non-null, `peer_median_yield` = 0.0073656016 |
+| Rendered report | `10Y Treasury Yield` and `Spread vs 10Y Treasury` as separate rows, pp-based parentheticals, full peer names, partial-year disclosure; Damodaran/Buffett lenses + Step 7 present |
+
+### Corrections recorded during this deployment
+
+- **"Five sections" was wrong; the engine has six phases.** Runbook text corrected.
+- **The "skip `pip install` and the box silently no-ops" claim is wrong for this host.** `ra.service`
+  sets `WorkingDirectory=/opt/research-analyst`, so `sys.path[0]` shadows site-packages and uvicorn
+  imports the repo source tree. The pull alone serves the new code; the install is retained as
+  insurance against checkout/install drift. The install is still required for any host that runs
+  uvicorn from a different working directory.
+- **The runbook's own header check could never have worked:** it used `curl -sI` (HEAD), which this
+  API rejects with `405 Method Not Allowed`. Corrected to `curl -s -D - -o /dev/null` (GET).
+- A first-pass install verification was itself invalid: it ran `import` from the repo root and
+  printed the source path while labelled "site-packages". Re-run from `/` to get the real path. The
+  same trap is now documented in the runbook.
+
+---
+
 ## Open items
 
 | # | Item | Gate | Status |
 |---|---|---|---|
+| 0 | **`/api/research/quant` ships hollow in Forensics.** 16 `missing_inputs` on first release. Dominant cause is upstream provider coverage, not the port: `interest_expense` and `tax_expense` are fetched by no provider; all six `altman_z` fields (`currentAssets`, `currentLiabilities`, `retainedEarnings`, `ebit`, `price`, `sharesOutstanding`) and all four `beneish_m` fields (`DSRI`, `AQI`, `DEPI`, `SGAI`, `LVGI`) are unpopulated. Consequence: Altman Z and Beneish M do not compute, and `allocation.incremental_roic` is affected by the same interest/tax gap. Disclosed honestly in the payload — missing stays missing — but this is the thinnest part of what shipped to production, so it is the next PR | G1/G9 | OPEN — next |
 | 1 | `quant/` (125 tests) has no CI job and has never been installed/typechecked; `vitest.config.ts` requests the v8 coverage provider but `@vitest/coverage-v8` is **not** in `devDependencies`; no lockfile; `vitest ^5.0.2` version unverified against the registry | G0/G1/G8 | OPEN |
 | 2 | `CODE_OF_CONDUCT.md` missing — needs an owner decision | G4 | OPEN |
 | 3 | Repo-wide `ruff` backlog; CI lint is non-blocking, so G2 is enforced on changed files only. 26 findings remain in `valuation.py` (9) and `visuals.py` (17), all pre-existing and unchanged-or-improved by this change | G2 | OPEN |
@@ -109,7 +152,7 @@ Last updated: 2026-09-27 — branch `fix/source-data-export-integrity`
 | 6 | Decision log lives outside the repo, so not contributor-visible | G7 | ACCEPTED (with note) |
 | 7 | `us_10y_yield` falls back to a hardcoded `risk_free_rate` instead of a live observation. The split Treasury rows now state the benchmark honestly, but the *source* is still a constant — same class of problem as the old conflated row. Needs a provider decision, not a patch | G1 | OPEN |
 | 8 | `peer_median_yield` is computed over the whole competitor universe while `peers` ships at most 8 rows. `peer_yields` (per-peer yields) is now exported so the median is reproducible *for the peers shown*, but the two populations still differ. Either export the full universe or state the population explicitly in the caption | G1 | OPEN |
-| 9 | Scenario assumption constants are still hardcoded (±3pp operating margin, ×1.2/×0.8 multiple) in `engines/valuation.py`. Deliberately deferred to the `quant/` Python port so `trends` and `sensitivityGrid` are reused rather than reimplemented | G1 | DEFERRED (by decision) |
+| 9 | Scenario assumption constants are still hardcoded in `engines/valuation.py:141-145` (`rev_growth_adj` ±0.03, `margin_adj` ±0.02, `multiple_adj` ×1.20/×0.80). **Re-checked after the #84 port: still hardcoded.** The port did land `quant_engine.sensitivity_grid` / `SensitivityGrid`, so the reusable capability now exists — what is missing is the wiring that makes the scenario engine call it instead of duplicating the math. Deferred decision stands: rewire rather than reimplement | G1 | OPEN (capability now available) |
 | 10 | Low-but-positive peer P/E values (e.g. CHTR 2.9x) render as real numbers. Only non-positive P/E is treated as `n/m`. Decided against automatic outlier suppression — a genuine low multiple should stay visible | G1 | DEFERRED (by decision) |
 | 11 | Removing `metrics.payout_ratio` is a breaking change to a paid API. | G6 | **CLOSED — owner confirmed the clean break** (2026-09-27). Rationale recorded: the key was `null` on every real bundle, so no consumer was reading a real value from it, and retaining a single ambiguous payout figure is the defect being fixed. `schema_version` 1.0 → 1.1 plus the CHANGELOG entry carries the signal. |
 
