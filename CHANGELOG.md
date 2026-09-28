@@ -10,9 +10,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project use
 Releases are cut by tagging the repo (see `docs/VERSIONING.md`); GitHub auto-generates the per-release notes from merged PRs.
 
 ## [Unreleased]
+### Fixed
+- **Paid source-data bundle exported real values as `null`.** Three separate causes, all verified against a real downloaded bundle (META, 2026-09-27):
+  - `metrics.payout_ratio` was read from a `DividendAnalysis` field that does not exist, so it could only ever be `null`. The real values — `payout_ratio_eps` and `payout_ratio_fcf` — were computed and already visible in the report table, but never exported. Both are now emitted. There is deliberately no combined `payout_ratio`: the two figures are on different bases and collapsing them hides which one produced the number.
+  - `metrics.fcf_deployment` read `capex_pct` / `buyback_pct` / `dividend_pct`; the model fields are `capex_pct_of_fcf` / `buyback_pct_of_fcf` / `dividend_pct_of_fcf`. All three sub-keys were permanently `null`.
+  - Each scenario's P/E and EV/EBITDA multiples were computed correctly, then discarded by the engine (`pe_multiple=None  # Set in assumptions`) and exported as `null`. The applied multiples are now published on the model, so the export, the HTML report and the SVG chart all read the same number instead of only narrating it in prose. Each scenario also exports its `assumptions` array, so provenance travels with the number.
+- **`metrics` were last-report-wins while `tables` accumulated.** On any multi-report request a later sparse report erased metrics an earlier one computed — `risk_score` disappeared while the risk table remained. Metrics now merge with an explicit precedence rule (a populated value is never overwritten by a null), documented in the API reference and covered by tests.
+- **`scenarios` and `peers` were duplicated once per report.** Both are now deduplicated by scenario type and ticker respectively.
+- **Peer names were truncated to 20 characters, and the truncation reached the customer.** The export re-parses the rendered markdown table, so `Charter Communicatio` shipped in the paid CSV. Full names now render, and the table gained a `Div Yield` column.
+- **`peer_median_yield` was never exported at all.** It is now emitted, together with `peer_yields` (per-peer trailing yields). The median is computed over the whole competitor universe, which is a different population from the eight exported peer rows, so without the per-peer values the figure could not be reproduced or checked by the customer.
+- **The in-progress dividend year shipped unmarked.** `annual_dividends` mixed a part-year total (2026: 1.575) in with completed years. It is now split into `annual_dividends_complete_years` and `annual_dividends_partial`, and the report caption states that the current year is partial and excluded from growth rates.
+- **A financial period with no data rendered as an all-`N/A` column**, reading as a data outage. All-null periods are now excluded, and the caption names each omitted period and why — silently dropping a year would be its own form of dishonesty.
+- **The `vs 10Y Treasury` row conflated two different numbers.** Its value was the *Treasury's* own yield under a label that invites reading it as the company's. The arithmetic was always correct and is unchanged; it is now split into a `10Y Treasury Yield` level row and a signed `Spread vs 10Y Treasury` row, and the caption identifies the benchmark explicitly. During verification the first implementation of the split was caught printing `-490 bps (0.28% below 10Y)` — the parenthetical used the company's yield instead of the spread magnitude, re-creating the very conflation being removed, and crashing when a yield was absent but a spread present. Both are fixed and pinned by tests.
+- **A non-positive peer P/E rendered as a plain number** (e.g. `-45.0x`), inviting the reader to treat a symptom of negative earnings as an extreme valuation. Non-positive P/E now renders `n/m`, and the caption states the count and that those values are excluded from peer-multiple medians.
+- **`1 yrs`** grammar in the dividend summary (`Consecutive Increases`).
+
+### Changed
+- **`/api/research/data` bundle `schema_version` is now `1.1`** (was `1.0`). Removing `metrics.payout_ratio` is a breaking key change; a deprecation path was considered and rejected — see the note below.
+- **`risk_score: null` is now accompanied by `risk_score_note`.** The null itself is unchanged and correct: no score is published when no material risks are identified, because a 1–10 composite over an empty risk set would be arbitrary. The note states the reason instead of leaving a bare null.
+- ASFQC gate compliance is now tracked in-repo: `ASFQC/GATES.md`, with `BUILD_PLAN.md` and `DEVELOPMENT_PROGRESS_TRACKER.md`. G4 (Contribution docs) is recorded **FAIL** — `CODE_OF_CONDUCT.md` is missing and is an owner decision, not something to author unilaterally. G9 (documentation) is recorded NOT-STARTED.
+
 ### Added
-- **Step 7 Decision Framework enrichment:** 'How to Read This Framework' description (net assessment with favor/disfavor counts and tilt, strongest factor each side, catalyst role, falsifiability pointer), a server-rendered Thesis Balance SVG, and a near-term vs structural Catalyst Watchlist D2 diagram — in comprehensive, tactical, and long-term Step 7.
+- **Step 7 Decision Framework enrichment:** 'How to Read This Framework' description (net assessment with favor/disfavor counts and tilt, strongest factor each side, catalyst role, falsifiability pointer), a server-rendered Thesis Balance SVG, and a near-term vs structural Catalyst Watchlist D2 diagram - in comprehensive, tactical, and long-term Step 7.
 - **Business Model Overview enrichment:** full overview block (company description, sector/industry/market-cap/employees, a 'How It Makes Money' economics paragraph from real revenue and margins, and a Unit Economics margin-bars SVG) in comprehensive Step 7; the same unit-economics block added to long-term Step 1. All new content is derived from the report's own data.
+- **Bundle schema documented** in `docs/API-REFERENCE.md`: every top-level key, the `metrics` precedence rule, which `null` values are legitimate and why, and the field-name traps (`payout_ratio_eps` vs `_fcf`, complete vs partial dividend years, why `peer_yields` must ship with `peer_median_yield`). The key names were previously undocumented, which is part of why the phantom-key defects survived; two tests now assert the docs and the produced bundle agree.
+
+### Deferred
+- Replacing the hardcoded scenario assumption constants (±3pp margin, ×1.2/0.8 multiple) with a data-derived model is **not** in this change. It is gated on the `quant/` Python port so it can reuse the ported `trends` and `sensitivityGrid` rather than being written twice.
+- Flagging low-but-positive peer P/E values (e.g. CHTR 2.9x) as outliers is recorded as a design decision, not implemented here. Only non-positive P/E is treated as not-meaningful; a real low multiple stays visible.
+- `us_10y_yield` still falls back to a hardcoded `risk_free_rate` rather than a live observation. Presenting a constant as an observation is the same class of problem as the Treasury row, so this needs a provider decision rather than a patch.
 
 ## [0.4.0] - 2026-09-02
 ### Added
