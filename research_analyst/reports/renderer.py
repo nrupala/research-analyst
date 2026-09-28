@@ -182,6 +182,13 @@ class ReportRenderer:
         # regression test in tests/test_report_integrity.py proves it.
         sections = self._dedupe_sections(sections, profile.ticker, report_type.value)
 
+        # Quantitative Engine section: appended AFTER the 7 template steps.
+        # It is never a template step and never takes a step number —
+        # step_number=0 renders as a plain "## Quantitative Engine" heading.
+        quant_section = _render_quant_section(ctx)
+        if quant_section is not None:
+            sections.append(quant_section)
+
         # Visual enforcement: if zero visuals, log warning (spec violation)
         if visual_count == 0:
             logger.warning(
@@ -2373,3 +2380,52 @@ class ReportRenderer:
             visuals=visuals,
             data_gaps=gaps,
         ), 0
+
+
+def _render_quant_section(ctx: dict[str, Any]) -> ReportSection | None:
+    """Build the Quantitative Engine section from the report context.
+
+    Runs the ported quant engine over the financials; never raises on data
+    gaps (the section discloses them instead). Returns None only when there
+    are no usable statement periods.
+    """
+    from ..quant_engine.adapter import from_financial_statements
+    from ..quant_engine.series import StatementSeries
+    from .quant_section import render_quant_section
+
+    profile = ctx.get("profile")
+    financials = ctx.get("financials") or []
+    if not financials:
+        return None
+    ticker = getattr(profile, "ticker", "") or ""
+    try:
+        series: StatementSeries = from_financial_statements(financials, ticker)
+    except ValueError as e:  # data-shape validation only; code bugs propagate
+        logger.warning("Quant engine section skipped for %s: %s", ticker, e)
+        return None
+    if not series.periods:
+        return None
+
+    prices = ctx.get("prices")
+    latest = None
+    try:
+        ordered = sorted(financials, key=lambda f: f.period_end_date or date.min)
+        latest = ordered[-1] if ordered else None
+    except Exception:
+        latest = None
+
+    def _f(v: Any) -> float | None:
+        try:
+            return float(v) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    market: dict[str, Any] = {
+        "price": _f(getattr(prices, "current_price", None)),
+        "market_cap": _f(getattr(profile, "market_cap", None)),
+        "enterprise_value": _f(getattr(profile, "enterprise_value", None)),
+        "net_debt": _f(getattr(latest, "net_debt", None)),
+        "currency": getattr(profile, "currency", None),
+    }
+    series.currency = market["currency"]
+    return render_quant_section(series, market)
