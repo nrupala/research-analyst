@@ -32,6 +32,7 @@ but gives consumers exact schemas and typed client SDKs.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -98,3 +99,103 @@ API_RESPONSE_MODELS: dict[str, type[BaseModel]] = {
     "compare": CompareAPIResponse,
     "resolve": ResolveAPIResponse,
 }
+
+
+# ---------------------------------------------------------------------------
+# Quant engine API (GET /api/research/quant)
+# ---------------------------------------------------------------------------
+
+
+class QuantTrendsPayload(BaseModel):
+    revenue_cagr: float | None = None
+    eps_cagr: float | None = None
+    fcf_cagr: float | None = None
+    yoy_revenue_growth_latest: float | None = None
+    gross_margin_latest: float | None = None
+    net_margin_latest: float | None = None
+
+
+class QuantDupontRow(BaseModel):
+    period: str
+    roe: float | None = None
+    net_margin: float | None = None
+    asset_turnover: float | None = None
+    leverage: float | None = None
+
+
+class QuantDupontAttribution(BaseModel):
+    roe_change_pp: float | None = None
+    margin_contribution_pp: float | None = None
+    turnover_contribution_pp: float | None = None
+    leverage_contribution_pp: float | None = None
+
+
+class QuantDupontPayload(BaseModel):
+    rows: list[QuantDupontRow] = Field(default_factory=list)
+    latest: QuantDupontRow | None = None
+    attribution: QuantDupontAttribution | None = None
+
+
+class QuantForensicsPayload(BaseModel):
+    altman_z: float | None = None
+    altman_zone: str | None = None
+    altman_missing: list[str] = Field(default_factory=list)
+    beneish_m: float | None = None
+    beneish_flag: bool | None = None
+    beneish_missing: list[str] = Field(default_factory=list)
+    sloan_accruals: float | None = None
+    cash_conversion: float | None = None
+
+
+class QuantValuationPayload(BaseModel):
+    graham_number: float | None = None
+    lynch_fair_value: float | None = None
+    implied_explicit_stage_growth: float | None = None
+    implied_perpetual_growth: float | None = None
+    discount_rate_used: float | None = None
+
+
+class QuantAllocationPayload(BaseModel):
+    incremental_roic_average: float | None = None
+    operating_tax_rate_latest: float | None = None
+    dividend_payout_on_earnings: float | None = None
+    dividend_payout_on_fcf: float | None = None
+    dividend_years_grown: int = 0
+    dividend_cuts: int = 0
+    debt_net_debt_latest: float | None = None
+    debt_net_debt_to_ebit: float | None = None
+    debt_interest_coverage: float | None = None
+    debt_cagr: float | None = None
+    buyback_shares_cagr: float | None = None
+    buyback_total_spent: float | None = None
+
+
+class QuantScenarioInput(BaseModel):
+    label: str
+    value: float | None = None
+    probability: float | None = None
+
+
+class QuantExpectedValuePayload(BaseModel):
+    expected: float | None = None
+    contributions: list[dict[str, float | str]] | None = None
+    reason: str | None = None
+
+
+class QuantAPIResponse(BaseModel):
+    schema_version: str = SCHEMA_VERSION
+    ticker: str
+    periods: list[str] = Field(default_factory=list)
+    currency: str | None = None
+    generated_at: datetime
+    trends: QuantTrendsPayload = Field(default_factory=QuantTrendsPayload)
+    dupont: QuantDupontPayload = Field(default_factory=QuantDupontPayload)
+    forensics: QuantForensicsPayload = Field(default_factory=QuantForensicsPayload)
+    valuation: QuantValuationPayload = Field(default_factory=QuantValuationPayload)
+    allocation: QuantAllocationPayload = Field(default_factory=QuantAllocationPayload)
+    expected_value: QuantExpectedValuePayload = Field(default_factory=QuantExpectedValuePayload)
+    missing_inputs: list[str] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
+
+
+API_RESPONSE_MODELS["quant"] = QuantAPIResponse

@@ -43,7 +43,7 @@ import time
 import uuid
 from collections import OrderedDict
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -55,6 +55,9 @@ from . import __version__
 from .api_models import (
     CompareAPIRequest,
     CompareAPIResponse,
+    QuantAPIResponse,
+    QuantDupontPayload,
+    QuantExpectedValuePayload,
     ResearchAPIRequest,
     ResearchAPIResponse,
     ResolveAPIRequest,
@@ -532,26 +535,173 @@ def create_app(
             html=api_response.report_html if fmt == "html" else None,
         )
 
+    @app.get("/api/research/quant", response_model=QuantAPIResponse)
+    async def get_quant(
+        request: Request,
+        ticker: str = Query(..., min_length=1, max_length=20),
+        discount_rate: float | None = Query(default=None),
+        scenarios: str | None = Query(default=None),
+    ) -> QuantAPIResponse:
+        """Quant engine results for a ticker (free, no entitlement gate).
+
+        Runs the ported quant engine (trends, DuPont, forensics, valuation,
+        allocation) over the provider financial statements. Optional
+        ``discount_rate`` query param is an analyst assumption (not observed
+        data) enabling the implied-growth inversions. Optional ``scenarios``
+        is a URL-encoded JSON array of {label, value, probability} for the
+        expected-value computation; when absent, expected_value is null with
+        a reason.
+        """
+        from .quant_engine.adapter import from_financial_statements
+        from .quant_engine.expected import ScenarioInput, expected_value
+        from .reports.quant_section import compute_quant_results
+
+        client_ip = request.client.host if request.client else "unknown"
+        if not rate_limiter.allow(client_ip):
+            raise HTTPException(status_code=429, detail="Rate limit exceeded.")
+
+        clean = ticker.upper().strip()
+
+        financials_yf = await orchestrator._fetch_yf_financials(clean)
+        financials_sec = await orchestrator._fetch_sec_financials(clean)
+        financials = financials_yf if financials_yf else financials_sec
+        if not financials:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No financial statements available for '{clean}'.",
+            )
+
+        try:
+            series = from_financial_statements(financials, clean)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e)) from e
+        if not series.periods:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No usable fiscal periods for '{clean}'.",
+            )
+
+        profile = None
+        price_now: float | None = None
+        try:
+            profile = await market_provider.get_company_profile(clean)
+        except Exception as e:
+            logger.debug("Quant endpoint: profile unavailable for %s: %s", clean, e)
+        try:
+            prices = await market_provider.get_price_series(clean, period="1y")
+            price_now = float(prices.current_price) if prices.current_price else None
+        except Exception as e:
+            logger.debug("Quant endpoint: price unavailable for %s: %s", clean, e)
+
+        def _f(v: object) -> float | None:
+            try:
+                return float(v) if v is not None else None  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                return None
+
+        latest_stmt = financials[-1] if financials else None
+        market: dict[str, object] = {
+            "price": price_now,
+            "market_cap": _f(getattr(profile, "market_cap", None)),
+            "enterprise_value": _f(getattr(profile, "enterprise_value", None)),
+            "net_debt": _f(getattr(latest_stmt, "net_debt", None)),
+            "currency": getattr(profile, "currency", None),
+            "discount_rate": discount_rate,
+        }
+        if market["currency"]:
+            series.currency = market["currency"]  # type: ignore[assignment]
+
+        results = compute_quant_results(series, market)
+
+        # Optional expected value over caller-supplied scenarios.
+        ev_expected: float | None = None
+        ev_contribs: list[dict[str, float | str]] | None = None
+        ev_reason: str | None = None
+        if scenarios:
+            try:
+                import json as _json
+
+                raw_scenarios = _json.loads(scenarios)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid scenarios JSON: {e}"
+                ) from e
+            if not isinstance(raw_scenarios, list):
+                raise HTTPException(
+                    status_code=400, detail="scenarios must be a JSON array."
+                )
+            try:
+                parsed = [
+                    ScenarioInput(
+                        label=str(s.get("label", f"scenario_{i}")),
+                        value=s.get("value"),
+                        probability=s.get("probability"),
+                    )
+                    for i, s in enumerate(raw_scenarios)
+                ]
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid scenario entry: {e}"
+                ) from e
+            ev_result = expected_value(parsed)
+            if isinstance(ev_result, dict):
+                ev_reason = ev_result.get("error", "expected value failed validation")
+            else:
+                ev_expected = ev_result.expected
+                # Engine annotates list[dict[str, float]] but emits str labels
+                # at runtime ({"label": ..., "contribution": ...}); cast to the
+                # API model's wider type. Engine file itself stays untouched.
+                ev_contribs = cast("list[dict[str, float | str]]", ev_result.contributions)
+        else:
+            ev_reason = "no scenarios provided"
+
+        _meter(request, "quant")
+        return QuantAPIResponse(
+            ticker=clean,
+            periods=[p.period for p in series.periods],
+            currency=series.currency,
+            generated_at=datetime.now(timezone.utc),
+            trends=results["trends"],
+            dupont=QuantDupontPayload(
+                rows=results["dupont"]["rows"],
+                latest=results["dupont"]["latest"] or None,
+                attribution=results["dupont"]["attribution"] or None,
+            ),
+            forensics=results["forensics"],
+            valuation=results["valuation"],
+            allocation=results["allocation"],
+            expected_value=QuantExpectedValuePayload(
+                expected=ev_expected,
+                contributions=ev_contribs,
+                reason=ev_reason,
+            ),
+            missing_inputs=results["missing_inputs"],
+            assumptions=results["assumptions"],
+        )
+
     @app.post("/api/research/data", response_model=None)
     async def source_data_download(
         body: ResearchAPIRequest,
         request: Request,
         format: str | None = Query(default=None),
     ) -> Response:
-        """Paid feature (8c-2): the raw source-data bundle behind a report.
+        """Source-data bundle for a report.
 
-        Gated by a valid X-RA-Key header when RA_BILLING_PAID_KEYS is set
-        (see BillingConfig). When paid keys are not configured (local/demo),
-        the endpoint is open. Returns JSON (canonical) or CSV.
+        Free for now (2026-09-28 product decision: no premature paywalls).
+        The paid-key gate is neutralized — keys are still accepted and usage
+        is still metered, but none is required. Returns JSON (canonical) or
+        CSV.
         """
         from .data_export import build_bundle, bundle_to_csv
 
-        # --- Paid-key gate ---
-        # Legacy shared-secret keys (RA_BILLING_PAID_KEYS) keep working; hashed,
-        # revocable KeyStore keys (entitlements.py) are also accepted when they
-        # carry the `source.data` entitlement. Open when neither is configured.
+        # --- Paid-key gate (neutralized) ---
+        # 2026-09-28: everything is free for now — no premature paywalls.
+        # The check is preserved behind _SOURCE_DATA_PAYWALLED so the gate
+        # can be re-enabled by flipping the flag. Keys remain accepted and
+        # usage remains metered.
+        _SOURCE_DATA_PAYWALLED = False
         paid_keys = settings.billing.paid_keys
-        if paid_keys or request.app.state.key_store is not None:
+        if _SOURCE_DATA_PAYWALLED and (paid_keys or request.app.state.key_store is not None):
             provided = request.headers.get("x-ra-key", "")
             legacy_ok = bool(paid_keys) and provided in paid_keys
             record = _key_record(request)
