@@ -5,9 +5,9 @@ See LICENSE and COMMERCIAL-LICENSE.md for licensing terms (commercial licenses a
 
 # DEVELOPMENT PROGRESS TRACKER
 
-Effort: Source-Data Export Integrity & Report Clarity
-Branch: `fix/source-data-export-integrity`
-Base: `origin/main` @ `eeb97d8`
+Effort: Source-Data Export Integrity & Report Clarity · **plus** PR #84 quant port (Python) & product wiring
+Branch: merged to `main` — `371620c` (PR #82), `49f090e` (PR #83), `6cff51aa` (PR #84)
+Base: `origin/main` @ `eeb97d8` · **Now at `6cff51aa`**, deployed to Aetheris 2026-09-28
 Plan: `BUILD_PLAN.md` · Gates: `ASFQC/GATES.md`
 
 ---
@@ -22,7 +22,8 @@ Plan: `BUILD_PLAN.md` · Gates: `ASFQC/GATES.md`
 | P3 | Scenario valuation plumbing | **DONE** | `engines/valuation.py` — applied multiples published on the model |
 | P4 | Presentation honesty | **DONE** | `reports/visuals.py` — 3 of the 11 defects; ruff findings 23 → 17 |
 | P5 | Documentation + changelog | **DONE** | `docs/API-REFERENCE.md` bundle-schema section; `CHANGELOG.md` Unreleased entries; 2 docs-vs-payload tests |
-| P6 | Gate review + merge + deploy | **IN PROGRESS** | Gates updated; awaiting commit, PR, CI, and deploy re-authorisation |
+| P6 | Gate review + merge + deploy | **DONE** | PRs #82/#83/#84 merged; #84 deployed to Aetheris at `6cff51aa` and verified live (health 200 on loopback + both public domains; `/api/research/quant` 200 with six sections; `/app.js` 37 quant matches). Evidence in `ASFQC/GATES.md` → "Deployment evidence — PR #84" |
+| P7 | Quant data completeness (next) | **NOT STARTED** | Forensics renders hollow: 16 `missing_inputs`. `interest_expense`/`tax_expense` fetched by no provider; all 6 `altman_z` and 4 `beneish_m` fields unpopulated. Own PR, own test cycle |
 
 ## 2. Agent Work Tracking
 
@@ -39,6 +40,12 @@ Plan: `BUILD_PLAN.md` · Gates: `ASFQC/GATES.md`
 | 2026-09-27 | P5 | Documented the bundle schema (the gap that let phantom keys survive) and bumped `schema_version` 1.0 → 1.1, then bound the two together with a test. | `test_schema_version_tracks_the_documented_shape` parses the `schema_version` row out of the doc and compares it to the emitted value — this caught that I had written 1.1 in the docs while the code still said 1.0 |
 | 2026-09-27 | P5 | Full-suite and lint verification, before/after compared per file. | `python -m pytest -q` → **371 passed, 2 skipped** (baseline 340 + 31 new, zero regressions). `ruff check` on the five touched files → 26 findings, **all pre-existing**: `valuation.py` 9 → 9, `visuals.py` 23 → **17**, `data_export.py` 0, `test_data_export.py` 0 |
 | 2026-09-27 | P6 | Updated `ASFQC/GATES.md` with real evidence and closed G9's bundle-schema gap; raised the deprecation question and two residual-data questions as recorded open items. | G9 → PARTIAL; open items 1–11 with explicit status |
+| 2026-09-28 | P5 | **PR #83** (merged `49f090e`): stripped markdown emphasis from `peer_yields` keys — the live bundle was shipping `"VZ**"`, which made `peers[0].ticker` fail to match its own `peer_yields` entry. | `pytest` on Linux **374 passed, 1 skipped** (Windows 373+2 = same 375 total). Deployed and verified live: `peer_yields` keys `NVDA,MSFT,AVGO,AMD,CSCO,ORCL,CRM,ADBE`, no `*` in any key. |
+| 2026-09-28 | P5 | Diagnosed why the **quant view was absent from production**: the engine was a standalone TypeScript library under `quant/` with **zero** references from `ui/` or `research_analyst/`, no HTTP route, and no deploy path. Confirmed by absence of DuPont/Forensics in the live report while the Python-side lenses and Step 7 were present. Not a deploy failure — never wired in. | `grep quant` over `ui/` and `research_analyst/*.py` → no references; `ASFQC/GATES.md` already recorded it as "not wired into CI or any deploy path" |
+| 2026-09-28 | P6 | Synced local `main` to merged **PR #84** (`6cff51a`) — the Python quant port + product wiring, +5,283 lines / 24 files. Validated before deploying rather than after. | `pytest -q` → **466 passed, 2 skipped** (baseline 375, delta **+93**); `test_quant_engine_parity.py` + `test_quant_wiring.py` → **92 passed**; `node --test ui/tests/quant_tab.test.mjs` → **1 pass, 0 fail** |
+| 2026-09-28 | P6 | **Deployed PR #84 to production** per `deploy/oci-native/README.md`: pull → assert SHA → `pip install --no-deps .` → `systemctl restart ra`. | `box HEAD = 6cff51aa62ee64eb0f871b865e2d62a2ac97d658` (exact match); `pip` exit 0 → `research-analyst-0.4.0`; `quant_engine` present in real site-packages (10 modules); `is-active: active`, `NRestarts=0` |
+| 2026-09-28 | P6 | Verified live from an external host through Cloudflare. | `/api/health` 200 on loopback + `ra.devinfo.dev` + `ra.aimlds.org`; headers show no `fly-request-id` → OCI, not Fly; `/app.js` 200, 44,249 bytes, **37** `quant` matches (was 0); `/api/research/quant?ticker=AAPL` → **200 not 404**, AAPL FY2021–FY2025, `schema_version` 1.0, **six** sections `trends/dupont/forensics/valuation/allocation/expected_value`, **16** `missing_inputs`. Export regression still green: schema 1.1, 14/14 metrics non-null, no `payout_ratio`, clean peer keys. |
+| 2026-09-28 | P6 | Corrected the runbook and recorded deployment evidence in `ASFQC/GATES.md`. **Three prior claims were wrong and are now fixed:** (1) runbook said "five sections" — the engine has **six**; (2) the "skip pip and it silently no-ops" caveat is **wrong for this host** — `WorkingDirectory=/opt/research-analyst` puts the repo source tree ahead of site-packages on `sys.path`, so the pull alone serves the code and the install is drift insurance, not a serving requirement; (3) the runbook's own header check used `curl -sI` (HEAD) which this API rejects with **405**, so it could never have worked — now `curl -s -D -`. Also caught that my **first** install verification was itself invalid (it ran `import` from the repo root and printed the source path while labelled "site-packages"); re-run from `/` to get the true path, and that trap is now documented. | GATES.md: new "Deployment evidence — PR #84" section + G1 evidence + open item 0; item 9 re-checked and still OPEN (constants hardcoded at `valuation.py:141-145`, though `quant_engine.sensitivity_grid` now exists to replace them) |
 
 ## 3. Checkpoints
 
@@ -84,6 +91,16 @@ confirmed by the owner (2026-09-27):
   it. **Owner confirmed: ship the clean break.** Recorded as
   `ASFQC/GATES.md` open item 11 (CLOSED) rather than merged silently.
 
-- **Aetheris deploy is not yet re-authorised for this PR.** The user's
-  approval to deploy was given for PR #81. Re-confirm before P6 completes.
+- **Aetheris deploy authorisation — RESOLVED.** The earlier hold ("approval to deploy was given
+  for PR #81 only; re-confirm before P6 completes") is closed. The owner supplied the runbook
+  explicitly and authorised the PR #84 deploy; it was executed and verified live on 2026-09-28
+  (see P6 in Agent Work Tracking). Future deploys still require explicit owner authorisation, but
+  there is no outstanding re-confirmation for this release.
+
+- **`/api/research/quant` is live but hollow in Forensics — next PR.** 16 `missing_inputs` on the
+  AAPL response. Disclosed honestly in the payload (missing stays missing, and nothing is fabricated
+  to fill it), but it is the thinnest part of what shipped, so it is the natural next unit of work:
+  wire `interest_expense`, `tax_expense` and the balance-sheet/price/share fields through the
+  provider mappings so Altman Z, Beneish M and `incremental_roic` actually compute. Owner decision
+  (2026-09-28): this gets **its own PR with a full test cycle**, not bundled with bookkeeping.
 

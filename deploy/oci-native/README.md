@@ -57,21 +57,87 @@ Then re-add the `ra-origin.nrupalakolkar.com` Public Hostname in Zero Trust (abo
 
 ```bash
 cd /opt/research-analyst
-sudo -u ra git pull --ff-only
-sudo -u ra .venv/bin/pip install .
+sudo -u ra git fetch origin && sudo -u ra git checkout main && sudo -u ra git pull --ff-only origin main
+sudo -u ra git rev-parse HEAD          # <- ALWAYS assert this equals the commit you intend to ship
+sudo -u ra .venv/bin/pip install --no-deps .
 sudo systemctl restart ra
 ```
+
+Run Git and pip as `ra`; `systemctl restart` needs root even when the rest runs as `ra`.
+
+### Why `--no-deps`, and what actually fails if you skip it
+
+`--no-deps` keeps the install from re-resolving the dependency set against the index (use
+`pip install .` only when deliberately changing dependencies). It is *not* the load-bearing step
+for serving, and the commonly-repeated "skip it and the box silently no-ops" claim is **wrong for
+this deployment**:
+
+`ra.service` sets `WorkingDirectory=/opt/research-analyst`, so `sys.path[0]` is the repo root and
+uvicorn imports the **repo source tree** (`/opt/research-analyst/research_analyst/`), which
+shadows the venv's `site-packages` copy. The pull alone therefore serves the new code. The install
+is kept as insurance so the installed copy cannot drift from the checkout.
+
+Verify which copy is actually loaded rather than assuming:
+
+```bash
+SP=$(cd / && /opt/research-analyst/.venv/bin/python -c \
+  "import research_analyst,os;print(os.path.dirname(research_analyst.__file__))")
+echo "$SP"                    # -> .../.venv/lib/python3.12/site-packages/research_analyst
+ls -1 "$SP" | head
+```
+
+Run that from `/`, not from the repo root — from the repo root `import` resolves to the source tree
+and will misleadingly print `/opt/research-analyst/research_analyst`.
 
 ## Verify
 
 ```bash
 # direct origin (OCI):
-curl -s https://ra-origin.nrupalakolkar.com/api/health          # -> {"status":"ok",...,"version":"0.2.1"}
+curl -s https://ra-origin.nrupalakolkar.com/api/health          # -> {"status":"ok",...,"version":"0.4.0"}
 
 # which backend is serving the public route? (header signature)
-curl -sI https://ra.devinfo.dev/api/health | grep -iE 'fly-request-id|via|server|cf-ray'
+# NOTE: use a GET. `curl -sI` sends HEAD, which this API rejects with 405, so the
+# check silently reports nothing useful. -D - dumps response headers on the GET.
+curl -s -D - -o /dev/null https://ra.devinfo.dev/api/health | grep -iE 'fly-request-id|^via|^server|cf-ray'
 #   has  fly-request-id / via: fly.io   => served by FLY
 #   only cf-ray + server: cloudflare    => served by OCI
+
+# both public hostnames must be 200:
+for d in ra.devinfo.dev ra.aimlds.org; do
+  curl -s -o /dev/null -w "$d %{http_code}\n" "https://$d/api/health"
+done
+
+# service state:
+systemctl is-active ra && systemctl show ra -p NRestarts --value   # want: active, 0
+```
+
+### Quant engine (shipped in #84, `6cff51aa`)
+
+```bash
+curl -s "http://127.0.0.1:8700/api/research/quant?ticker=AAPL" -o /tmp/q.json -w "HTTP %{http_code}\n"
+/opt/research-analyst/.venv/bin/python -c "
+import json; d=json.load(open('/tmp/q.json'))
+print('schema  :', d['schema_version'])   # currently 1.0
+print('ticker  :', d['ticker'], d['periods'])
+print('missing :', len(d['missing_inputs']), 'inputs')
+print('sections:', [k for k in ('trends','dupont','forensics','valuation','allocation','expected_value') if k in d])"
+```
+
+Expect **HTTP 200** (not 404) and **six** analytical sections — `trends`, `dupont`, `forensics`,
+`valuation`, `allocation`, `expected_value`. Earlier runbook drafts said "five sections"; the engine
+has six phases, so six is correct.
+
+The response is `schema_version` **1.0** and ships **16 `missing_inputs`** on the initial release.
+That is disclosed behaviour, not a defect: missing stays missing. The dominant cause is upstream
+provider coverage, not the port — `interest_expense` and `tax_expense` are fetched by no provider,
+and all six `altman_z` fields plus all four `beneish_m` fields are unpopulated, so **Forensics
+(Altman Z, Beneish M) renders hollow** and `allocation.incremental_roic` is affected by the same
+interest/tax gap. Closing those gaps is tracked as follow-on work.
+
+Frontend bundle must carry the quant tab:
+
+```bash
+curl -s http://127.0.0.1:8700/app.js | grep -c -i quant   # -> 37 on #84
 ```
 
 FRED liveness: a report's macro table shows a specific **Inflation %** and **Economic Growth %**
