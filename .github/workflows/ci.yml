@@ -32,13 +32,13 @@ jobs:
           pip install "fastapi>=0.115" "uvicorn[standard]>=0.30" "pydantic>=2.7" "pydantic-settings>=2.3" "httpx>=0.27" "yfinance>=0.2.40" "pandas>=2.2" "numpy>=1.26" "scipy>=1.12" "matplotlib>=3.8" "jinja2>=3.1" "python-dateutil>=2.9" "aiofiles>=24.1" "beautifulsoup4>=4.12" "lxml>=5.2"
 
       - name: Lint
-        run: ruff check . || true
+        run: ruff check .
 
       - name: Type check
-        run: mypy research_analyst/ --ignore-missing-imports || true
+        run: mypy research_analyst/ --ignore-missing-imports
 
       - name: Test
-        run: PYTHONPATH=. pytest tests/ -v --tb=short || true
+        run: PYTHONPATH=. pytest tests/ -v --tb=short
 
       - name: Smoke test
         run: |
