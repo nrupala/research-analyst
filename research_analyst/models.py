@@ -763,7 +763,12 @@ class ReportOutput(BaseModel):
         parts.append("---\n")
 
         for section in self.sections:
-            parts.append(f"## Step {section.step_number}: {section.title}\n")
+            # Sections with step_number=0 are post-template appendices
+            # (e.g. the Quantitative Engine section) — never a fake "Step 8".
+            if section.step_number > 0:
+                parts.append(f"## Step {section.step_number}: {section.title}\n")
+            else:
+                parts.append(f"## {section.title}\n")
             parts.append(section.content)
 
             for visual in section.visuals:

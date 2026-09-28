@@ -524,3 +524,9 @@ html { font-size: clamp(14px, 13.3px + 0.22vw, 17px); }
         scroll-behavior: auto !important;
     }
 }
+
+/* Quant tab: discount-rate assumption form */
+.quant-dr{display:flex;align-items:center;gap:.5rem;margin:1rem 0;flex-wrap:wrap}
+.quant-dr label{font-size:.9rem}
+.quant-dr input{width:7rem;padding:.35rem .5rem;border:1px solid #ccc;border-radius:4px;font:inherit}
+.quant-dr button{padding:.35rem .8rem;border:1px solid #ccc;border-radius:4px;background:#f5f5f5;font:inherit;cursor:pointer}

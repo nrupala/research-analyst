@@ -20,6 +20,7 @@
 "use strict";
 var dom={form:document.getElementById("research-form"),ticker:document.getElementById("ticker"),reportType:document.getElementById("report-type"),timeframe:document.getElementById("timeframe"),btnSubmit:document.getElementById("btn-submit"),btnText:document.getElementById("btn-text"),btnSpinner:document.getElementById("btn-spinner"),status:document.getElementById("status"),statusText:document.getElementById("status-text"),progressBar:document.getElementById("progress-bar"),errorPanel:document.getElementById("error-panel"),errorMessage:document.getElementById("error-message"),btnRetry:document.getElementById("btn-retry"),results:document.getElementById("results"),metaBar:document.getElementById("meta-bar"),reportTabs:document.getElementById("report-tabs"),reportContent:document.getElementById("report-content"),btnAbout:document.getElementById("btn-about"),aboutModal:document.getElementById("about-modal"),btnCloseAbout:document.getElementById("btn-close-about"),modeSingle:document.getElementById("mode-single"),modeCompare:document.getElementById("mode-compare"),compareForm:document.getElementById("compare-form"),compareTickers:document.getElementById("compare-tickers"),compareTimeframe:document.getElementById("compare-timeframe"),compareError:document.getElementById("compare-error"),btnCompare:document.getElementById("btn-compare"),btnCompareText:document.getElementById("btn-compare-text"),btnCompareSpinner:document.getElementById("btn-compare-spinner"),btnGetApp:document.getElementById("btn-getapp"),getappModal:document.getElementById("getapp-modal"),btnCloseGetapp:document.getElementById("btn-close-getapp"),resolveCandidates:document.getElementById("resolve-candidates")};
 var currentReports=[],activeTabIndex=0,isLoading=false,currentMode="single",activeTicker="";
+var quantCache={ticker:"",data:null,error:"",discountRate:""};
 // ---- v0.2.2: first-use disclaimer acknowledgment gate ----
 function initDisclaimerGate() {
   const gate = document.getElementById('ra-disclaimer-gate');
@@ -122,6 +123,7 @@ async function runResearchTicker(ticker){
     currentMode="single";
     hideCandidates();setLoading(true);hideError();hideResults();
     currentReports=[];
+    quantCache={ticker:"",data:null,error:"",discountRate:""};
     showStatus("Fetching data for "+ticker+"...",10);
     try{
         showStatus("Running analysis engines...",30);
@@ -217,25 +219,49 @@ function renderTabs(reports){
         dom.reportTabs.appendChild(btn)
     });
     if(!reports.length){dom.reportTabs.style.display="none"}else{dom.reportTabs.style.display=""}
-    if(reports.length){dom.reportContent.setAttribute("aria-labelledby","report-tab-0")}
+    if(reports.length){appendQuantTab();dom.reportContent.setAttribute("aria-labelledby","report-tab-0")}
+}
+
+// Index of the Quant tab within [role="tab"], or -1 when absent.
+function quantTabIndex(){
+    var tabs=dom.reportTabs.querySelectorAll('[role="tab"]');
+    for(var i=0;i<tabs.length;i++){if(tabs[i].id==="report-tab-quant")return i}
+    return -1;
+}
+
+// The Quant tab: same ARIA tab pattern as the report tabs, so the generic
+// arrow-key navigation picks it up with no extra wiring.
+function appendQuantTab(){
+    var q=document.createElement("button");
+    q.type="button";q.id="report-tab-quant";q.className="tab";
+    q.setAttribute("role","tab");q.setAttribute("aria-selected","false");
+    q.setAttribute("aria-controls","report-content");q.tabIndex=-1;
+    q.textContent="Quant";
+    q.addEventListener("click",function(){var i=quantTabIndex();if(i>=0)activateReportTab(i)});
+    dom.reportTabs.appendChild(q);
 }
 
 // Activate one report tab: the visual class and the ARIA state stay in lockstep.
 function activateReportTab(i){
     var tabs=dom.reportTabs.querySelectorAll('[role="tab"]');
+    var isQuant=tabs[i]&&tabs[i].id==="report-tab-quant";
     tabs.forEach(function(t,j){
         var on=j===i;
         t.classList.toggle("tab--active",on);
         t.setAttribute("aria-selected",on?"true":"false");
         t.tabIndex=on?0:-1;
     });
+    if(isQuant){renderQuantTab();return}
     renderReport(i);
 }
 
 // Keep the tabpanel labelled by whichever tab is active (and focusable).
 function syncTabPanel(){
     dom.reportContent.setAttribute("tabindex","0");
-    var tab=dom.reportTabs.querySelector("#report-tab-"+activeTabIndex)||dom.reportTabs.querySelector("#report-tab-compare");
+    var tab=null;
+    var qi=quantTabIndex();
+    if(qi>=0&&activeTabIndex===qi){tab=dom.reportTabs.querySelector("#report-tab-quant")}
+    tab=tab||dom.reportTabs.querySelector("#report-tab-"+activeTabIndex)||dom.reportTabs.querySelector("#report-tab-compare");
     if(tab){dom.reportContent.setAttribute("aria-labelledby",tab.id)}
 }
 
@@ -265,6 +291,125 @@ async function renderReport(idx){
     await new Promise(function(r){requestAnimationFrame(r)});
     addExportToolbar();
     updateExportFooter()
+}
+
+// ---- Quant tab: fetches /api/research/quant and renders the engine phases
+// as tables with formulas in captions/footnotes. Research/education only. ----
+function qfmt(v,pct){
+    if(v===null||v===undefined||!isFinite(v))return"n/a";
+    var x=pct?v*100:v;
+    return x.toFixed(2)+(pct?"%":"");
+}
+function qtable(head,rows,caption){
+    var h='<div class="table-scroll"><table><caption>'+esc(caption)+'</caption><thead><tr>'+
+        head.map(function(c){return"<th>"+esc(c)+"</th>"}).join("")+'</tr></thead><tbody>'+
+        rows.map(function(r){return"<tr>"+r.map(function(c){return"<td>"+c+"</td>"}).join("")+"</tr>"}).join("")+
+        "</tbody></table></div>";
+    return h;
+}
+function qlist(items){
+    return"<ul>"+items.map(function(i){return"<li>"+esc(i)+"</li>"}).join("")+"</ul>";
+}
+
+async function renderQuantTab(){
+    activeTabIndex=quantTabIndex();
+    syncTabPanel();
+    var t=(activeTicker||"").trim();
+    if(!t){dom.reportContent.innerHTML='<p class="status__text">Run a report first, then open the Quant tab.</p>';return}
+    if(quantCache.ticker===t&&quantCache.data){renderQuantData(quantCache.data);return}
+    dom.reportContent.innerHTML='<p class="status__text">Computing quant engine...</p>';
+    try{
+        var url="/api/research/quant?ticker="+encodeURIComponent(t);
+        if(quantCache.discountRate){url+="&discount_rate="+encodeURIComponent(quantCache.discountRate)}
+        var resp=await fetch(url);
+        if(!resp.ok){var err=await resp.json().catch(function(){return{detail:resp.statusText}});throw new Error(err.detail||"HTTP "+resp.status)}
+        var data=await resp.json();
+        quantCache={ticker:t,data:data,error:"",discountRate:quantCache.discountRate};
+        renderQuantData(data);
+    }catch(e){
+        quantCache={ticker:t,data:null,error:e.message||"Quant request failed",discountRate:quantCache.discountRate};
+        dom.reportContent.innerHTML='<p class="status__text">Quant engine unavailable: '+esc(quantCache.error)+'</p>';
+    }
+}
+
+function renderQuantData(data){
+    data=data||{};
+    var cur=data.currency||"";
+    var h='<h2>Quantitative Engine — '+esc(data.ticker||"")+'</h2>';
+    h+='<p class="status__text">Research and education only — computed quantities from reported financial statements, not investment advice.</p>';
+    h+='<p class="status__text">Periods: '+esc((data.periods||[]).join(", ")||"n/a")+'</p>';
+    // Discount-rate assumption (analyst input; implied-growth rows need it).
+    h+='<form id="quant-dr-form" class="quant-dr"><label for="quant-dr">Discount rate (for implied-growth inversions, as a decimal):</label> '+
+        '<input id="quant-dr" type="number" step="0.001" min="0" max="1" value="'+esc(quantCache.discountRate||"")+'" placeholder="e.g. 0.09"> '+
+        '<button type="submit">Apply</button></form>';
+
+    var t=data.trends||{};
+    h+='<h3>Growth &amp; Margins</h3>'+qtable(["Metric","Value","Formula"],
+        [["Revenue CAGR",qfmt(t.revenue_cagr,true),"(last/first)^(1/periods) − 1"],
+         ["Diluted EPS CAGR",qfmt(t.eps_cagr,true),"(last/first)^(1/periods) − 1"],
+         ["Free cash flow CAGR",qfmt(t.fcf_cagr,true),"(last/first)^(1/periods) − 1"],
+         ["Latest YoY revenue growth",qfmt(t.yoy_revenue_growth_latest,true),"rev_t / rev_t−1 − 1"],
+         ["Latest gross margin",qfmt(t.gross_margin_latest,true),"gross_profit / revenue"],
+         ["Latest net margin",qfmt(t.net_margin_latest,true),"net_income / revenue"]],
+        "Compound growth and margins over the statement window.");
+
+    var d=data.dupont||{},dl=d.latest||{},attr=d.attribution||{};
+    var drows=(d.rows||[]).map(function(r){return[r.period,qfmt(r.roe,true),qfmt(r.net_margin,true),qfmt(r.asset_turnover),qfmt(r.leverage)]});
+    h+='<h3>DuPont ROE Decomposition</h3>'+qtable(["Period","ROE","Net margin","Asset turnover","Leverage"],drows,
+        "ROE = net margin × asset turnover × leverage; averages are (current + prior) / 2.");
+    if(attr.roe_change_pp!==null&&attr.roe_change_pp!==undefined){
+        h+='<p class="status__text">ROE change: '+attr.roe_change_pp.toFixed(1)+'pp — margin '+
+            (attr.margin_contribution_pp||0).toFixed(1)+'pp, turnover '+(attr.turnover_contribution_pp||0).toFixed(1)+
+            'pp, leverage '+(attr.leverage_contribution_pp||0).toFixed(1)+'pp.</p>';
+    }
+
+    var f=data.forensics||{};
+    h+='<h3>Forensic Screens</h3>';
+    h+='<p class="status__text">Altman Z and Beneish M are statistical screens, not verdicts. A flag means “look closer”, never “this company will fail / is fraudulent”.</p>';
+    h+=qtable(["Screen","Value","Reading"],
+        [["Altman Z-score",qfmt(f.altman_z),(f.altman_zone||"n/a")+" — safe > 2.99, grey 1.81–2.99, distress < 1.81"],
+         ["Beneish M-score",qfmt(f.beneish_m),f.beneish_flag===null||f.beneish_flag===undefined?"n/a":(f.beneish_flag?"FLAGGED (M > −1.78)":"not flagged")],
+         ["Sloan accruals ratio",qfmt(f.sloan_accruals),"(net_income − operating_cash_flow) / total_assets"],
+         ["Cash conversion",qfmt(f.cash_conversion,true),"operating_cash_flow / net_income"]],
+        "Earnings-quality screens; zones and thresholds shown with each value.");
+
+    var v=data.valuation||{};
+    h+='<h3>Valuation Checks</h3>'+qtable(["Metric","Value","Formula"],
+        [["Graham number",qfmt(v.graham_number)+" "+cur,"√(22.5 × EPS × BVPS)"],
+         ["Lynch fair value (PEG = 1)",qfmt(v.lynch_fair_value)+" "+cur,"EPS × EPS-growth-%"],
+         ["Implied explicit-stage growth",qfmt(v.implied_explicit_stage_growth,true),"reverse DCF bisection: constant g over 5 explicit years + Gordon terminal, solved for current EV"],
+         ["Implied perpetual growth",qfmt(v.implied_perpetual_growth,true),"Gordon algebra: g = (EV×r − FCF) / (EV + FCF)"]],
+        "Two distinct implied-growth models — never a bare “implied growth”.");
+
+    var a=data.allocation||{};
+    h+='<h3>Capital Allocation</h3>'+qtable(["Metric","Value","Formula"],
+        [["Average incremental ROIC",qfmt(a.incremental_roic_average,true),"ΔNOPAT / Δinvested capital (operating tax rate t = tax_expense / (ebit − interest_expense))"],
+         ["Operating tax rate (latest)",qfmt(a.operating_tax_rate_latest,true),"t = tax_expense / (ebit − interest_expense)"],
+         ["Dividend payout on earnings",qfmt(a.dividend_payout_on_earnings,true),"dividends_paid / net_income"],
+         ["Dividend payout on FCF",qfmt(a.dividend_payout_on_fcf,true),"dividends_paid / free_cash_flow"],
+         ["Net debt",qfmt(a.debt_net_debt_latest)+" "+cur,"total_debt − cash"],
+         ["Net debt / EBIT",qfmt(a.debt_net_debt_to_ebit),"net_debt / ebit"],
+         ["Buyback: shares CAGR",qfmt(a.buyback_shares_cagr,true),"share-count CAGR, first → last"]],
+        "Incremental ROIC is n/a when tax/interest inputs are missing — missing stays missing.");
+
+    if(data.missing_inputs&&data.missing_inputs.length){
+        h+='<h3>Missing inputs</h3>'+qlist(data.missing_inputs);
+    }
+    if(data.assumptions&&data.assumptions.length){
+        h+='<h3>Assumptions</h3>'+qlist(data.assumptions);
+    }
+    if(data.expected_value&&data.expected_value.reason){
+        h+='<p class="status__text">Expected value: '+esc(data.expected_value.reason)+'</p>';
+    }
+    dom.reportContent.innerHTML=h;
+    var form=document.getElementById("quant-dr-form");
+    if(form){form.addEventListener("submit",function(e){
+        e.preventDefault();
+        var inp=document.getElementById("quant-dr");
+        quantCache.discountRate=inp&&inp.value?inp.value:"";
+        quantCache.data=null;quantCache.ticker="";
+        renderQuantTab();
+    })}
 }
 
 // Phase F: charts AND diagrams are server-rendered static SVG — nothing to

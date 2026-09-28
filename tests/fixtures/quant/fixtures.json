@@ -1,0 +1,542 @@
+{
+ "cases": {
+  "guards_defined": [
+   1,
+   2,
+   3
+  ],
+  "guards_defined_empty": [],
+  "guards_lastValue": 2,
+  "guards_lastValue_empty": null,
+  "guards_firstValue": 1,
+  "guards_divSeries": [
+   0.5,
+   null,
+   null
+  ],
+  "guards_divSeries_ragged": [
+   1,
+   1,
+   null
+  ],
+  "guards_div": [
+   0.5,
+   null,
+   null
+  ],
+  "guards_mean": [
+   2,
+   null
+  ],
+  "trends_cagr": 0.18920711500272103,
+  "trends_cagr_nulls": [
+   null,
+   null,
+   null,
+   null,
+   null
+  ],
+  "trends_seriesCagr": [
+   0.09139288306110593,
+   0.18707232699504717,
+   null,
+   0.04396114979019283
+  ],
+  "trends_yoyGrowth": [
+   [
+    null,
+    0.10000000000000009,
+    null,
+    null
+   ],
+   [
+    null,
+    null,
+    null
+   ],
+   [
+    null,
+    -1,
+    null
+   ]
+  ],
+  "trends_logLinearTrend": [
+   {
+    "slope": 0.16065540492718572,
+    "rSquared": 0.943443379900142,
+    "direction": "up"
+   },
+   {
+    "slope": 0,
+    "rSquared": 1,
+    "direction": "flat"
+   },
+   null,
+   {
+    "slope": 0.08689365303808115,
+    "rSquared": 0.9988754408896732,
+    "direction": "up"
+   }
+  ],
+  "trends_perShareSeries": [
+   [
+    6.360424028268551,
+    10.211267605633802,
+    13.829787234042554,
+    8.914728682170542,
+    13.229571984435797,
+    21.484375
+   ],
+   [
+    5,
+    null
+   ],
+   [
+    5,
+    null,
+    null
+   ]
+  ],
+  "trends_marginSeries": [
+   [
+    0.2571428571428571,
+    0.3372093023255814,
+    0.3305084745762712,
+    0.19827586206896552,
+    0.2518518518518518,
+    0.3333333333333333
+   ],
+   [
+    0.1,
+    null
+   ]
+  ],
+  "trends_flattery": [
+   {
+    "gapPts": 3.9999999999999996,
+    "interpretation": "per-share growth exceeds total growth — buybacks are flattering the per-share number"
+   },
+   null,
+   {
+    "gapPts": 0.19999999999999948,
+    "interpretation": "per-share and total growth are aligned"
+   },
+   {
+    "gapPts": -3.9999999999999996,
+    "interpretation": "per-share growth lags — dilution or share issuance"
+   }
+  ],
+  "dupont_point": {
+   "netMargin": 0.1,
+   "assetTurnover": 0.2,
+   "leverage": 2.5,
+   "roe": 0.05
+  },
+  "dupont_point_nulls": [
+   null,
+   null,
+   null
+  ],
+  "dupont_series_synthetic": [
+   {
+    "period": "FY2021",
+    "netMargin": 0.15,
+    "assetTurnover": 0.2,
+    "leverage": 1.6666666666666667,
+    "roe": 0.05
+   },
+   {
+    "period": "FY2022",
+    "netMargin": 0.15454545454545454,
+    "assetTurnover": 0.21153846153846154,
+    "leverage": 1.6774193548387097,
+    "roe": 0.054838709677419356
+   },
+   {
+    "period": "FY2023",
+    "netMargin": null,
+    "assetTurnover": null,
+    "leverage": null,
+    "roe": null
+   },
+   {
+    "period": "FY2024",
+    "netMargin": 0.15384615384615385,
+    "assetTurnover": 0.21666666666666667,
+    "leverage": 1.7142857142857142,
+    "roe": 0.05714285714285714
+   }
+  ],
+  "dupont_series_realA": [
+   {
+    "period": "FY2019",
+    "netMargin": 0.2571428571428571,
+    "assetTurnover": 0.23333333333333334,
+    "leverage": 3,
+    "roe": 0.18
+   },
+   {
+    "period": "FY2020",
+    "netMargin": 0.3372093023255814,
+    "assetTurnover": 0.27741935483870966,
+    "leverage": 2.719298245614035,
+    "roe": 0.2543859649122807
+   },
+   {
+    "period": "FY2021",
+    "netMargin": 0.3305084745762712,
+    "assetTurnover": 0.34705882352941175,
+    "leverage": 2.5185185185185186,
+    "roe": 0.28888888888888886
+   },
+   {
+    "period": "FY2022",
+    "netMargin": 0.19827586206896552,
+    "assetTurnover": 0.31351351351351353,
+    "leverage": 2.4025974025974026,
+    "roe": 0.14935064935064934
+   },
+   {
+    "period": "FY2023",
+    "netMargin": 0.2518518518518518,
+    "assetTurnover": 0.34177215189873417,
+    "leverage": 2.46875,
+    "roe": 0.2125
+   },
+   {
+    "period": "FY2024",
+    "netMargin": 0.3333333333333333,
+    "assetTurnover": 0.38372093023255816,
+    "leverage": 2.695924764890282,
+    "roe": 0.3448275862068966
+   }
+  ],
+  "dupont_roeAttribution": {
+   "marginPts": 6.579820619757861,
+   "turnoverPts": 12.612616951972273,
+   "leveragePts": -2.709678951040478
+  },
+  "dupont_roeAttribution_null": null,
+  "dupont_roeAttribution_unchanged": null,
+  "forensics_sloan": [
+   0.02,
+   null,
+   null
+  ],
+  "forensics_cashConversion": [
+   0.8,
+   null,
+   -0.8
+  ],
+  "forensics_altmanZ": [
+   {
+    "z": 2.404561403508772,
+    "zone": "grey",
+    "components": {
+     "x1": 0.17777777777777778,
+     "x2": 0.16666666666666666,
+     "x3": 0.15555555555555556,
+     "x4": 1.7964912280701755,
+     "x5": 0.36666666666666664
+    },
+    "missing": []
+   },
+   {
+    "z": 4.840260545905707,
+    "zone": "safe",
+    "components": {
+     "x1": 0.13709677419354838,
+     "x2": 0.29838709677419356,
+     "x3": 0.043548387096774194,
+     "x4": 6.507692307692308,
+     "x5": 0.20967741935483872
+    },
+    "missing": []
+   },
+   {
+    "z": null,
+    "zone": null,
+    "components": null,
+    "missing": [
+     "periodIndex"
+    ]
+   },
+   {
+    "z": null,
+    "zone": null,
+    "components": null,
+    "missing": [
+     "ebit"
+    ]
+   }
+  ],
+  "forensics_beneishM": [
+   {
+    "m": -2.7092765706895183,
+    "flag": false,
+    "variables": {
+     "dsri": 0.9421487603305786,
+     "gmi": 0.9850746268656717,
+     "aqi": 1.0022222222222223,
+     "sgi": 1.2222222222222223,
+     "depi": 1.0226757369614512,
+     "sgai": 0.9204545454545454,
+     "lvgi": 0.9965277777777778,
+     "tata": -0.08222222222222222
+    },
+    "missing": []
+   },
+   {
+    "m": null,
+    "flag": null,
+    "variables": null,
+    "missing": [
+     "priorPeriod"
+    ]
+   },
+   {
+    "m": -2.71292522174208,
+    "flag": false,
+    "variables": {
+     "dsri": 0.9815384615384616,
+     "gmi": 0.9913793103448276,
+     "aqi": 0.9782608695652176,
+     "sgi": 1.0344827586206897,
+     "depi": 0.9935064935064936,
+     "sgai": 0.986,
+     "lvgi": 0.9721847150958682,
+     "tata": -0.05217391304347826
+    },
+    "missing": []
+   },
+   {
+    "m": null,
+    "flag": null,
+    "variables": null,
+    "missing": [
+     "TATA"
+    ]
+   }
+  ],
+  "forensics_workingCapitalDays": [
+   {
+    "dso": 84.06060606060606,
+    "dio": 1.6483870967741936,
+    "dpo": 259.03225806451616
+   },
+   null,
+   {
+    "dso": 182.5,
+    "dio": 243.33333333333331,
+    "dpo": 182.5
+   }
+  ],
+  "valuation_capm": [
+   0.1,
+   null
+  ],
+  "valuation_wacc": [
+   0.08750000000000001,
+   null,
+   null
+  ],
+  "valuation_dcf": [
+   {
+    "enterpriseValue": 1684.935064935065,
+    "pvExplicit": 292.7933884297521,
+    "pvTerminal": 1392.141676505313,
+    "cashFlows": [
+     110.00000000000001,
+     118.80000000000003,
+     125.92800000000004
+    ]
+   },
+   null,
+   null,
+   {
+    "enterpriseValue": -674.1477272727271,
+    "pvExplicit": -93.28512396694214,
+    "pvTerminal": -580.862603305785,
+    "cashFlows": [
+     -52.5,
+     -55.125
+    ]
+   }
+  ],
+  "valuation_reverseDcf": [
+   {
+    "impliedGrowth": 0.03450551577737543,
+    "converged": true
+   },
+   null,
+   {
+    "impliedGrowth": 1,
+    "converged": false
+   },
+   {
+    "impliedGrowth": -0.5,
+    "converged": false
+   }
+  ],
+  "valuation_impliedPerpetualGrowth": [
+   0,
+   null,
+   null
+  ],
+  "valuation_multiplePercentile": [
+   60,
+   null,
+   null,
+   50
+  ],
+  "valuation_sensitivityGrid": {
+   "rowLabels": [
+    1,
+    2,
+    3
+   ],
+   "colLabels": [
+    0,
+    0.5
+   ],
+   "values": [
+    [
+     10,
+     10.5
+    ],
+    [
+     20,
+     20.5
+    ],
+    [
+     30,
+     30.5
+    ]
+   ]
+  },
+  "allocation_buybackEffectiveness": [
+   {
+    "sharesCagr": -0.019854148796634163,
+    "totalSpent": 167000,
+    "sharesRetired": 270,
+    "impliedAvgPrice": 618.5185185185185,
+    "currentPrice": 200,
+    "premiumVsMarket": 2.0925925925925926
+   },
+   {
+    "sharesCagr": -0.02041389128443849,
+    "totalSpent": 120,
+    "sharesRetired": 6,
+    "impliedAvgPrice": 20,
+    "currentPrice": 180,
+    "premiumVsMarket": -0.8888888888888888
+   }
+  ],
+  "allocation_dividendProfile": [
+   {
+    "payoutOnEarnings": 0,
+    "payoutOnFcf": 0,
+    "yearsGrown": 0,
+    "cuts": 0
+   },
+   {
+    "payoutOnEarnings": 0.5645161290322581,
+    "payoutOnFcf": 0.603448275862069,
+    "yearsGrown": 5,
+    "cuts": 0
+   }
+  ],
+  "allocation_debtProfile": [
+   {
+    "netDebtLatest": -10000,
+    "netDebtToEbit": -0.14285714285714285,
+    "interestCoverage": 350,
+    "debtCagr": -0.03285883999939365
+   },
+   {
+    "netDebtLatest": 20500,
+    "netDebtToEbit": 2.0098039215686274,
+    "interestCoverage": 6.580645161290323,
+    "debtCagr": 0.022924556626030324
+   }
+  ],
+  "expected_expectedValue": [
+   {
+    "expected": 150,
+    "contributions": [
+     {
+      "label": "a",
+      "contribution": 50
+     },
+     {
+      "label": "b",
+      "contribution": 100
+     }
+    ]
+   },
+   {
+    "expected": 201,
+    "contributions": [
+     {
+      "label": "a",
+      "contribution": 33
+     },
+     {
+      "label": "b",
+      "contribution": 66
+     },
+     {
+      "label": "c",
+      "contribution": 102.00000000000001
+     }
+    ]
+   }
+  ],
+  "expected_expectedValue_errors": [
+   {
+    "error": "expectedValue: at least one scenario is required"
+   },
+   {
+    "error": "expectedValue: probabilities sum to 0.9, expected 1 ± 0.01"
+   },
+   {
+    "error": "expectedValue: scenario \"a\" has a missing value"
+   },
+   {
+    "error": "expectedValue: scenario \"a\" has negative probability -0.5"
+   }
+  ],
+  "expected_tornado": [
+   {
+    "name": "a",
+    "lowOutput": 1,
+    "highOutput": 41,
+    "swing": 40
+   },
+   {
+    "name": "b",
+    "lowOutput": 20,
+    "highOutput": 22,
+    "swing": 2
+   }
+  ],
+  "expected_marginOfSafety": [
+   0.2,
+   null,
+   -0.2,
+   null
+  ],
+  "expected_solveForInput": [
+   {
+    "input": 5,
+    "converged": true
+   },
+   {
+    "input": 7,
+    "converged": true
+   },
+   null,
+   null
+  ]
+ }
+}
