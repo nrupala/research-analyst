@@ -685,23 +685,20 @@ def create_app(
         request: Request,
         format: str | None = Query(default=None),
     ) -> Response:
-        """Source-data bundle for a report.
+        """Paid feature (8c-2): the raw source-data bundle behind a report.
 
-        Free for now (2026-09-28 product decision: no premature paywalls).
-        The paid-key gate is neutralized — keys are still accepted and usage
-        is still metered, but none is required. Returns JSON (canonical) or
-        CSV.
+        Gated by a valid X-RA-Key header when RA_BILLING_PAID_KEYS is set
+        (see BillingConfig). When paid keys are not configured (local/demo),
+        the endpoint is open. Returns JSON (canonical) or CSV.
         """
         from .data_export import build_bundle, bundle_to_csv
 
-        # --- Paid-key gate (neutralized) ---
-        # 2026-09-28: everything is free for now — no premature paywalls.
-        # The check is preserved behind _SOURCE_DATA_PAYWALLED so the gate
-        # can be re-enabled by flipping the flag. Keys remain accepted and
-        # usage remains metered.
-        _SOURCE_DATA_PAYWALLED = False
+        # --- Paid-key gate ---
+        # Legacy shared-secret keys (RA_BILLING_PAID_KEYS) keep working; hashed,
+        # revocable KeyStore keys (entitlements.py) are also accepted when they
+        # carry the `source.data` entitlement. Open when neither is configured.
         paid_keys = settings.billing.paid_keys
-        if _SOURCE_DATA_PAYWALLED and (paid_keys or request.app.state.key_store is not None):
+        if paid_keys or request.app.state.key_store is not None:
             provided = request.headers.get("x-ra-key", "")
             legacy_ok = bool(paid_keys) and provided in paid_keys
             record = _key_record(request)
