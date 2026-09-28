@@ -215,8 +215,18 @@ def _extract_scenarios(rep: Any, bundle: dict[str, Any]) -> None:
         })
 
 
+def _clean_cell(cell: str) -> str:
+    """Strip markdown emphasis from a table cell.
+
+    ``**VZ**`` -> ``VZ``. Both ends matter: ``lstrip("*")`` alone leaves the
+    closing ``**`` attached, which would ship as a ``peer_yields`` dict key of
+    ``"VZ**"`` and break dedupe against rows from another report.
+    """
+    return cell.strip().strip("*").strip()
+
+
 def _extract_peers(rep: Any, bundle: dict[str, Any]) -> None:
-    seen = {row[0].lstrip("*").strip() for row in bundle["peers"] if row}
+    seen = {_clean_cell(row[0]) for row in bundle["peers"] if row}
     for sec in getattr(rep, "sections", []):
         for vis in getattr(sec, "visuals", []):
             if vis.visual_type != "table" or "Ticker" not in vis.content:
@@ -229,7 +239,7 @@ def _extract_peers(rep: Any, bundle: dict[str, Any]) -> None:
             for row in rows[1:]:  # skip header
                 if not row:
                     continue
-                ticker = row[0].lstrip("*").strip()
+                ticker = _clean_cell(row[0])
                 if ticker in seen:
                     continue
                 seen.add(ticker)
@@ -243,7 +253,7 @@ def _extract_peers(rep: Any, bundle: dict[str, Any]) -> None:
 
 def _parse_pct(cell: str) -> float | None:
     """'3.41%' -> 0.0341. Returns None for N/A or unparseable cells."""
-    cell = cell.strip().lstrip("*").strip()
+    cell = _clean_cell(cell)
     if not cell or cell.upper() in {"N/A", "NA", "N/M", "-"}:
         return None
     try:

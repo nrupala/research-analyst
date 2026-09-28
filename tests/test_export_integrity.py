@@ -338,14 +338,47 @@ def test_peer_median_yield_is_exported(meta_bundle):
     assert meta_bundle["metrics"]["peer_median_yield"] == 0.0341
 
 
-def test_peer_median_yield_is_reproducible_from_the_export(meta_bundle):
-    """A customer must be able to recompute the median from the bundle.
+def test_peer_yields_keys_are_clean_tickers(meta_bundle):
+    """`peer_yields` keys are programmatic identifiers, not markdown.
 
-    The median is computed over the whole competitor universe, which is a
-    different population from the exported peer rows, so the per-peer yields
-    have to ship with it or the number is unverifiable.
+    The peer table bolds the ticker (`| **VZ** |`), so the exporter has to
+    strip the emphasis from BOTH ends. Stripping only the leading run left
+    the closing `**` attached and shipped keys like `VZ**` on the live
+    download -- caught against the deployed service, not by the unit tests.
     """
-    assert "peer_yields" in meta_bundle["metrics"]
+    keys = list(meta_bundle["metrics"]["peer_yields"])
+    assert keys == ["VZ"], f"expected clean ticker(s), got {keys}"
+    assert all("*" not in k for k in keys)
+
+
+def test_peer_yields_values_match_the_exported_row(meta_bundle):
+    """Each per-peer yield is the Div Yield of the row it is keyed by."""
+    rows = {r[0].strip().strip("*"): r for r in meta_bundle["peers"]}
+    yields = meta_bundle["metrics"]["peer_yields"]
+    assert yields  # only peers with a yield land in the map
+    div_col = [c.strip() for c in PEER_MD.splitlines()[0].split("|")].index("Div Yield") - 1
+    for ticker, frac in yields.items():
+        row = rows[ticker]
+        assert frac == round(float(row[div_col].rstrip("%")) / 100, 6)
+
+
+def test_peer_median_yield_ships_with_per_peer_yields(meta_bundle):
+    """The median is over a wider population than the exported peer rows.
+
+    `peer_median_yield` is computed by the engine over the whole competitor
+    universe, including peers whose Div Yield cell is N/A and therefore has no
+    exported row. So the median is deliberately NOT recomputable from
+    `peer_yields` alone -- that gap is documented in docs/API-REFERENCE.md.
+    What must hold is that the per-peer yields ship alongside it, so a
+    consumer can see which peers contributed and that the number is
+    derived from peer dividend data at all.
+    """
+    m = meta_bundle["metrics"]
+    assert "peer_yields" in m
+    assert m["peer_median_yield"] is not None
+    # 2 of the 3 fixture peers are N/A -> the exported map is strictly smaller
+    # than the peer list, which is exactly the population mismatch.
+    assert len(m["peer_yields"]) < len(meta_bundle["peers"])
 
 
 # ---------------------------------------------------------------------------
