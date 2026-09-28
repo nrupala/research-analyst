@@ -21,8 +21,8 @@
 
 * build_bundle produces a typed, serializable bundle from a ResearchResponse
 * bundle_to_csv flattens it (spreadsheet-friendly)
-* the /api/research/data endpoint returns JSON/CSV, gated by X-RA-Key when
-  paid keys are configured
+* the /api/research/data endpoint returns JSON/CSV; free for now (2026-09-28:
+  the paid-key gate is neutralized)
 """
 # Module: tests/test_data_export.py | Version: 1.0 | Updated: 2026-09-02
 
@@ -151,14 +151,18 @@ def test_data_endpoint_open_when_no_keys():
 
 
 @requires_fastapi
-def test_data_endpoint_gated_by_key():
-    """Paid keys configured -> 401 without a valid X-RA-Key."""
+def test_data_endpoint_free_when_paid_keys_configured():
+    """Everything free for now (2026-09-28): no 401 even with paid keys set.
+
+    The paid-key gate is neutralized; a valid key is still accepted but not
+    required.
+    """
     client = _client(["secret-key-1"])
     resp = client.post(
         "/api/research/data",
         json={"ticker": "AAPL", "report_type": "comprehensive"},
     )
-    assert resp.status_code == 401
+    assert resp.status_code == 200
     ok = client.post(
         "/api/research/data",
         json={"ticker": "AAPL", "report_type": "comprehensive"},

@@ -56,7 +56,7 @@ from research_analyst.server import negotiate_format
 
 def test_json_schemas_all_covers_every_endpoint():
     schemas = json_schemas_all()
-    assert set(schemas) == {"research", "compare", "resolve"}
+    assert set(schemas) == {"research", "compare", "resolve", "quant"}
     for name, schema in schemas.items():
         assert schema["$id"] == f"https://ra.devinfo.dev/schemas/{name}.schema.json"
         assert f"schema_version: {SCHEMA_VERSION}" in schema["$comment"]
@@ -78,6 +78,15 @@ def test_json_schemas_match_wire_payload():
     schemas = json_schemas_all()
     # schema_version is part of every endpoint payload schema
     assert "schema_version" in schemas["research"]["properties"]
+
+
+def test_json_schema_quant_endpoint_typed():
+    schemas = json_schemas_all()
+    props = schemas["quant"]["properties"]
+    assert "ticker" in props
+    for field in ("trends", "valuation", "forensics", "allocation", "dupont"):
+        assert field in props, f"quant schema missing {field}"
+    assert "schema_version" in props
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +133,7 @@ def test_ts_definitions_emit_file(tmp_path):
 
     _cmd_schema_export(_Args())  # type: ignore[arg-type]
     files = sorted(p.name for p in tmp_path.iterdir())
-    expected = ["compare.schema.json", "research.schema.json", "resolve.schema.json", "types.d.ts"]
+    expected = ["compare.schema.json", "quant.schema.json", "research.schema.json", "resolve.schema.json", "types.d.ts"]
     assert files == expected
     assert (tmp_path / "types.d.ts").read_text().startswith("// Auto-generated")
 

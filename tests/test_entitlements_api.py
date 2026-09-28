@@ -65,18 +65,21 @@ def test_source_data_open_when_nothing_configured():
     assert r.status_code == 500
 
 
-def test_source_data_requires_key_when_store_configured():
+def test_source_data_free_when_store_configured():
+    # 2026-09-28: everything free for now — the gate is neutralized, so no
+    # 401 even with a key store configured and no key supplied.
     store, _ = _issue({RA_PRO})
     client = _app(key_store=store)
     r = client.post("/api/research/data", json={"ticker": "AAA"})
-    assert r.status_code == 401
+    # Gate passes (free), pipeline booms -> 500, not 401.
+    assert r.status_code == 500
 
 
-def test_source_data_rejects_key_without_entitlement():
-    store, raw = _issue({RA_PRO})  # no source.data
+def test_source_data_free_for_key_without_entitlement():
+    store, raw = _issue({RA_PRO})  # no source.data — still free
     client = _app(key_store=store)
     r = client.post("/api/research/data", json={"ticker": "AAA"}, headers={"x-ra-key": raw})
-    assert r.status_code == 401
+    assert r.status_code == 500
 
 
 def test_source_data_accepts_entitled_key():
@@ -93,13 +96,14 @@ def test_source_data_accepts_twf_bundle_key():
     assert r.status_code == 500
 
 
-def test_source_data_rejects_revoked_key():
+def test_source_data_free_for_revoked_key():
+    # Free for now: even a revoked key is not rejected at the gate.
     store = KeyStore()
     record, raw = store.create("test", {SOURCE_DATA})
     store.revoke(record.key_id)
     client = _app(key_store=store)
     r = client.post("/api/research/data", json={"ticker": "AAA"}, headers={"x-ra-key": raw})
-    assert r.status_code == 401
+    assert r.status_code == 500
 
 
 def test_usage_requires_key():

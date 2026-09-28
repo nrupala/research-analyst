@@ -55,7 +55,7 @@ class ExpectedValueResult:
     #: Σ value_i × probability_i.
     expected: float
     #: Per-scenario value_i × probability_i, in input order.
-    contributions: list[dict[str, float]]
+    contributions: list[dict[str, float | str]]
 
 
 #: Probability-sum tolerance: Σp must equal 1 ± 0.01. A looser band would
@@ -106,7 +106,7 @@ def expected_value(
             f"{total_probability}, expected 1 ± {PROBABILITY_SUM_TOLERANCE}"
         }
     expected = 0.0
-    contributions: list[dict[str, float]] = []
+    contributions: list[dict[str, float | str]] = []
     for label, value, probability in clean:
         contribution = value * probability
         expected += contribution
