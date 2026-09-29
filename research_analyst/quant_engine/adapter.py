@@ -24,13 +24,14 @@ SEC EDGAR providers) to the pure-function quant engine. Missing values stay
 missing; outflow series are normalized to positive magnitudes per the engine's
 TypeScript contract (quant/src/types.ts).
 
-Interest expense and tax expense are NOT fetched by any provider (verified
-2026-09-28: no ``interest_expense``/``tax_expense`` in models.py or the
-provider payloads), so those series are left all-None. The operating tax
-rate (spec amendment A1) is therefore typically unavailable — callers must
-surface that in their "missing inputs" list rather than fabricate a rate.
+Provider coverage (wired 2026-09-29): interest/tax expense, SGA,
+depreciation & amortization, retained earnings, net PPE, current
+assets/liabilities, receivables, EBIT and share counts are fetched by both
+providers. Any of these series may still be entirely absent on a given
+ticker — callers must surface that via :func:`missing_series_inputs` rather
+than fabricate numbers.
 """
-# Module: research_analyst/quant_engine/adapter.py | Version: 0.1.0 | Updated: 2026-09-28
+# Module: research_analyst/quant_engine/adapter.py | Version: 0.2.0 | Updated: 2026-09-29
 
 from __future__ import annotations
 
@@ -41,15 +42,41 @@ from typing import Callable
 from ..models import FinancialStatement
 from .series import FiscalPeriod, StatementSeries, assert_valid_series
 
-__all__ = ["from_financial_statements", "MISSING_ENGINE_INPUTS"]
+__all__ = [
+    "from_financial_statements",
+    "QUANT_INPUT_KEYS",
+    "missing_series_inputs",
+]
 
-
-#: Engine series keys that the product data layer cannot supply (verified
-#: against models.py + providers on 2026-09-28). Rendered in "missing inputs".
-MISSING_ENGINE_INPUTS: tuple[str, ...] = (
+#: Series keys the quant models actually consume that providers can supply.
+#: A key whose entire column is None on a given ticker is a genuine data gap.
+QUANT_INPUT_KEYS: tuple[str, ...] = (
     "interest_expense",
     "tax_expense",
+    "sga_expense",
+    "depreciation_amortization",
+    "ebit",
+    "current_assets",
+    "current_liabilities",
+    "retained_earnings",
+    "ppe_net",
+    "receivables",
+    "shares_outstanding",
+    "price",
 )
+
+
+def missing_series_inputs(series: StatementSeries) -> list[str]:
+    """Names of significant engine inputs with no data in any period.
+
+    A key is reported only when every period is None (a true provider gap),
+    so the list shrinks automatically as provider coverage improves.
+    """
+    return [
+        key
+        for key in QUANT_INPUT_KEYS
+        if not any(v is not None for v in getattr(series, key))
+    ]
 
 
 def _to_float(value: Decimal | float | int | None) -> float | None:
@@ -114,8 +141,8 @@ def from_financial_statements(
         ebit=col(lambda s: s.ebit),
         net_income=col(lambda s: s.net_income),
         eps_diluted=col(lambda s: s.eps_diluted),
-        sga_expense=list(blank),
-        depreciation_amortization=list(blank),
+        sga_expense=outflow(lambda s: s.sga_expense),
+        depreciation_amortization=outflow(lambda s: s.depreciation_amortization),
         # ---- cash flow (outflows as positive magnitudes) ----
         operating_cash_flow=col(lambda s: s.operating_cash_flow),
         capital_expenditure=outflow(lambda s: s.capex),
@@ -126,18 +153,18 @@ def from_financial_statements(
         total_assets=col(lambda s: s.total_assets),
         total_equity=col(lambda s: s.total_equity),
         total_liabilities=col(lambda s: s.total_liabilities),
-        retained_earnings=list(blank),
-        ppe_net=list(blank),
+        retained_earnings=col(lambda s: s.retained_earnings),
+        ppe_net=col(lambda s: s.ppe_net),
         accounts_payable=list(blank),
         total_debt=col(lambda s: s.total_debt),
         cash=col(lambda s: s.cash_and_equivalents),
         current_assets=col(lambda s: s.current_assets),
         current_liabilities=col(lambda s: s.current_liabilities),
         inventory=list(blank),
-        receivables=list(blank),
+        receivables=col(lambda s: s.receivables),
         # ---- other ----
-        interest_expense=list(blank),
-        tax_expense=list(blank),
+        interest_expense=outflow(lambda s: s.interest_expense),
+        tax_expense=outflow(lambda s: s.tax_expense),
         shares_outstanding=[shares(s) for s in ordered],
         price=list(blank),
     )

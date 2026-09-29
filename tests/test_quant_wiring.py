@@ -32,8 +32,8 @@ from decimal import Decimal
 from research_analyst.api_models import QuantAPIResponse
 from research_analyst.models import FinancialStatement
 from research_analyst.quant_engine.adapter import (
-    MISSING_ENGINE_INPUTS,
     from_financial_statements,
+    missing_series_inputs,
 )
 from research_analyst.reports.quant_section import (
     QUANT_SECTION_TITLE,
@@ -91,14 +91,64 @@ def test_adapter_maps_decimal_to_float_and_missing_to_none():
     assert isinstance(s.revenue[0], float)
 
 
-def test_adapter_leaves_interest_and_tax_unmapped():
-    # Verified 2026-09-28: no provider fetches these; the adapter must not
-    # fabricate them, and must name them as missing engine inputs.
-    stmts = [_stmt(2023), _stmt(2024)]
+def test_adapter_maps_interest_tax_and_balance_sheet_fields():
+    stmts = [
+        _stmt(
+            2024,
+            ebit=Decimal("250"),
+            interest_expense=Decimal("-30"),
+            tax_expense=Decimal("-40"),
+            sga_expense=Decimal("-120"),
+            depreciation_amortization=Decimal("-35"),
+            retained_earnings=Decimal("500"),
+            ppe_net=Decimal("300"),
+            receivables=Decimal("90"),
+        )
+    ]
     s = from_financial_statements(stmts, "TST")
-    assert s.interest_expense == [None, None]
-    assert s.tax_expense == [None, None]
-    assert set(MISSING_ENGINE_INPUTS) == {"interest_expense", "tax_expense"}
+    assert s.ebit == [250.0]
+    # Expense-outflow series normalize to positive magnitudes.
+    assert s.interest_expense == [30.0]
+    assert s.tax_expense == [40.0]
+    assert s.sga_expense == [120.0]
+    assert s.depreciation_amortization == [35.0]
+    assert s.retained_earnings == [500.0]
+    assert s.ppe_net == [300.0]
+    assert s.receivables == [90.0]
+
+
+def test_missing_series_inputs_lists_only_entirely_absent_engine_inputs():
+    # Sparse statements carry only the trend line items the fixture provides.
+    s = from_financial_statements([_stmt(2023), _stmt(2024)], "TST")
+    gaps = missing_series_inputs(s)
+    assert "interest_expense" in gaps
+    assert "tax_expense" in gaps
+    assert "current_assets" in gaps
+    assert "retained_earnings" in gaps
+    assert "receivables" in gaps
+    assert "price" in gaps  # price is only supplied by the server boundary
+    assert "net_income" not in gaps  # present in the fixture
+
+
+def test_missing_series_inputs_empty_when_every_key_wired():
+    stmts = [
+        _stmt(
+            2024,
+            ebit=Decimal("250"),
+            interest_expense=Decimal("-30"),
+            tax_expense=Decimal("-40"),
+            sga_expense=Decimal("-120"),
+            depreciation_amortization=Decimal("-35"),
+            retained_earnings=Decimal("500"),
+            ppe_net=Decimal("300"),
+            receivables=Decimal("90"),
+            current_assets=Decimal("600"),
+            current_liabilities=Decimal("400"),
+        )
+    ]
+    s = from_financial_statements(stmts, "TST")
+    s.price[-1] = 100.0  # what the server does with the latest observed price
+    assert missing_series_inputs(s) == []
 
 
 def test_adapter_prefers_diluted_shares():
@@ -169,8 +219,8 @@ def test_section_title_renders_without_step_number_in_markdown():
     s = from_financial_statements(stmts, "TST")
     sec = render_quant_section(s, {})
     assert sec is not None
-    from research_analyst.models import ReportOutput
     from research_analyst.enums import ReportType
+    from research_analyst.models import ReportOutput
 
     out = ReportOutput(
         report_type=ReportType.COMPREHENSIVE,
@@ -274,7 +324,7 @@ def test_renderer_appends_quant_section_after_seven_steps():
 # ---------------------------------------------------------------------------
 
 
-def _quant_client(stmts):
+def _quant_client(stmts, price: float | None = None):
     """Build a TestClient for /api/research/quant with stubbed providers."""
     try:
         from starlette.testclient import TestClient
@@ -283,7 +333,7 @@ def _quant_client(stmts):
     from unittest.mock import AsyncMock, patch
 
     from research_analyst.enums import SecurityType
-    from research_analyst.models import CompanyProfile
+    from research_analyst.models import CompanyProfile, PriceSeries
     from research_analyst.server import create_app
 
     orch = AsyncMock()
@@ -298,7 +348,17 @@ def _quant_client(stmts):
     )
     mp = AsyncMock()
     mp.get_company_profile = AsyncMock(return_value=profile)
-    mp.get_price_series = AsyncMock(side_effect=Exception("no prices"))
+    if price is not None:
+        prices = PriceSeries(
+            ticker="TST",
+            data=[],
+            period_start=date(2024, 1, 1),
+            period_end=date(2024, 12, 31),
+            current_price=price,
+        )
+        mp.get_price_series = AsyncMock(return_value=prices)
+    else:
+        mp.get_price_series = AsyncMock(side_effect=Exception("no prices"))
     with patch("research_analyst.server.MarketDataProvider", return_value=mp):
         return TestClient(create_app(orchestrator=orch))
 
@@ -316,7 +376,68 @@ def test_quant_endpoint_no_scenarios_returns_null_expected_value():
     assert d["expected_value"]["reason"] == "no scenarios provided"
     # Nulls preserved on the wire.
     assert d["trends"]["fcf_cagr"] is None
-    assert "interest_expense (not fetched by any provider)" in d["missing_inputs"]
+    assert "interest_expense (no data from providers)" in d["missing_inputs"]
+    # No price injected (mock raises) → the price gap is surfaced, not hidden.
+    assert "price (no data from providers)" in d["missing_inputs"]
+
+
+def _wired_stmt(year: int) -> FinancialStatement:
+    """A statement carrying every forensics/allocation input."""
+    return _stmt(
+        year,
+        ebit=Decimal("250"),
+        interest_expense=Decimal("-30"),
+        tax_expense=Decimal("-40"),
+        sga_expense=Decimal("-120"),
+        depreciation_amortization=Decimal("-35"),
+        retained_earnings=Decimal("500"),
+        ppe_net=Decimal("300"),
+        receivables=Decimal("90"),
+        current_assets=Decimal("600"),
+        current_liabilities=Decimal("400"),
+        total_liabilities=Decimal("800"),
+        total_debt=Decimal("200"),
+    )
+
+
+def test_quant_endpoint_wires_latest_price_into_series():
+    client = _quant_client([_wired_stmt(2021 + i) for i in range(4)], price=150.0)
+    if client is None:
+        return
+    r = client.get("/api/research/quant?ticker=tst")
+    assert r.status_code == 200
+    d = r.json()
+    gaps = "\n".join(d["missing_inputs"])
+    # Full wiring + latest price → Altman Z and Beneish M compute (screens run).
+    assert "price" not in gaps
+    assert "altman_z: " not in gaps
+    assert "beneish_m: " not in gaps
+    f = d["forensics"]
+    assert f["altman_z"] is not None
+    assert f["beneish_m"] is not None
+    assert f["altman_missing"] == []
+
+
+def test_quant_endpoint_price_gap_surfaces_altman_x4_missing():
+    # No price → Altman X4 must be named, never fabricated.
+    client = _quant_client([_wired_stmt(2021 + i) for i in range(4)])
+    if client is None:
+        return
+    d = client.get("/api/research/quant?ticker=tst").json()
+    assert "price (no data from providers)" in d["missing_inputs"]
+    assert any("altman_z: price" in g for g in d["missing_inputs"])
+
+
+def test_health_reports_commit_marker():
+    client = _quant_client([_wired_stmt(2024)], price=150.0)
+    if client is None:
+        return
+    d = client.get("/api/health")
+    assert d.status_code == 200
+    body = d.json()
+    assert body["status"] == "ok"
+    assert body["service"] == "research-analyst"
+    assert isinstance(body["commit"], str) and body["commit"]
 
 
 def test_quant_endpoint_scenarios_expected_value():

@@ -93,7 +93,13 @@ and will misleadingly print `/opt/research-analyst/research_analyst`.
 
 ```bash
 # direct origin (OCI):
-curl -s https://ra-origin.nrupalakolkar.com/api/health          # -> {"status":"ok",...,"version":"0.4.0"}
+curl -s https://ra-origin.nrupalakolkar.com/api/health
+#   -> {"status":"ok","version":"0.4.0","service":"research-analyst","commit":"<sha>"}
+
+# deploy marker: version stays 0.4.0 across deploys, so `commit` is the exact-build
+# signal. The served commit must equal the box's git HEAD.
+curl -s https://ra-origin.nrupalakolkar.com/api/health | grep -o '"commit":"[^"]*"'
+sudo -u ra git -C /opt/research-analyst rev-parse --short HEAD      # <- must match
 
 # which backend is serving the public route? (header signature)
 # NOTE: use a GET. `curl -sI` sends HEAD, which this API rejects with 405, so the
@@ -127,12 +133,15 @@ Expect **HTTP 200** (not 404) and **six** analytical sections — `trends`, `dup
 `valuation`, `allocation`, `expected_value`. Earlier runbook drafts said "five sections"; the engine
 has six phases, so six is correct.
 
-The response is `schema_version` **1.0** and ships **16 `missing_inputs`** on the initial release.
-That is disclosed behaviour, not a defect: missing stays missing. The dominant cause is upstream
-provider coverage, not the port — `interest_expense` and `tax_expense` are fetched by no provider,
-and all six `altman_z` fields plus all four `beneish_m` fields are unpopulated, so **Forensics
-(Altman Z, Beneish M) renders hollow** and `allocation.incremental_roic` is affected by the same
-interest/tax gap. Closing those gaps is tracked as follow-on work.
+The response is `schema_version` **1.0** on this release train. On #84 (initial release) it
+shipped **16 `missing_inputs`** and Forensics rendered hollow; the quant provider-wiring change
+closed that: every engine input (interest/tax/SGA/D&A, EBIT, current assets/liabilities, retained
+earnings, net PP&E, receivables, shares outstanding) is mapped through yfinance (primary) and SEC
+companyfacts (fallback), and `price` is injected at the server boundary. `missing_inputs` now
+lists only the keys genuinely absent for the ticker, one entry per key (e.g. `altman_z: price`).
+For a large cap like AAPL expect the wired keys to be absent from the listing. Missing stays
+missing - no value is fabricated - but the reason each remaining entry exists is now a real
+upstream data gap, not a porting gap.
 
 Frontend bundle must carry the quant tab:
 

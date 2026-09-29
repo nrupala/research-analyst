@@ -47,8 +47,6 @@ import numpy as np
 import pandas as pd
 
 from ..config import settings
-from . import markets
-from ..models import SymbolMatch
 from ..models import (
     AnalystEstimates,
     CompanyProfile,
@@ -64,7 +62,9 @@ from ..models import (
     PriceData,
     PriceSeries,
     SecurityType,
+    SymbolMatch,
 )
+from . import markets
 
 logger = logging.getLogger(__name__)
 
@@ -696,18 +696,93 @@ class MarketDataProvider:
                     val = df.loc[key, col] if col in df.columns else None
                     return val if pd.notna(val) else None
 
+                # yfinance row labels drift across versions; take the first
+                # non-null among the known aliases.
+                def _first(df: pd.DataFrame | None, *keys: str) -> Any:
+                    for key in keys:
+                        v = _row(df, key)
+                        if v is not None:
+                            return v
+                    return None
+
                 revenue = _safe_decimal(_row(income, "Total Revenue"))
                 gross_profit = _safe_decimal(_row(income, "Gross Profit"))
                 op_income = _safe_decimal(_row(income, "Operating Income"))
                 ebitda = _safe_decimal(_row(income, "EBITDA"))
                 net_income = _safe_decimal(_row(income, "Net Income"))
                 eps = _safe_float(_row(income, "Diluted EPS"))
+                ebit = _safe_decimal(
+                    _first(income, "EBIT", "Earnings Before Interest and Taxes")
+                ) or op_income
+
+                # Expense lines are stored as positive magnitudes on the model
+                # (mirroring the engine's StatementSeries contract); yfinance
+                # reports them as negative outflows, so normalize here.
+                def _magnitude(v: Decimal | None) -> Decimal | None:
+                    return abs(v) if v is not None else None
+
+                interest_expense = _magnitude(
+                    _safe_decimal(
+                        _first(income, "Interest Expense", "Total Interest Expense", "Interest Expense Net")
+                    )
+                )
+                tax_expense = _magnitude(
+                    _safe_decimal(_first(income, "Tax Provision", "Income Tax Expense"))
+                )
+                sga = _magnitude(
+                    _safe_decimal(
+                        _first(
+                            income,
+                            "Selling General And Administrative",
+                            "Selling General and Administrative",
+                            "Selling, General and Administrative",
+                        )
+                    )
+                )
+                dep_amort = _magnitude(
+                    _safe_decimal(
+                        _first(
+                            income, "Depreciation And Amortization", "Depreciation & Amortization"
+                        )
+                    )
+                    or _safe_decimal(
+                        _first(
+                            cashflow,
+                            "Depreciation And Amortization",
+                            "Depreciation & Amortization",
+                        )
+                    )
+                )
+                shares_basic = _safe_int(
+                    _first(income, "Basic Average Shares", "Basic Shares Outstanding")
+                )
+                shares_dil = _safe_int(
+                    _first(income, "Diluted Average Shares", "Diluted Shares Outstanding")
+                )
 
                 total_assets = _safe_decimal(_row(balance, "Total Assets"))
                 total_liabilities = _safe_decimal(_row(balance, "Total Liabilities Net Minority Interest"))
                 total_equity = _safe_decimal(_row(balance, "Stockholders Equity"))
                 cash = _safe_decimal(_row(balance, "Cash And Cash Equivalents"))
                 total_debt = _safe_decimal(_row(balance, "Total Debt"))
+                current_assets = _safe_decimal(
+                    _first(balance, "Total Current Assets", "Current Assets")
+                )
+                current_liabilities = _safe_decimal(
+                    _first(balance, "Total Current Liabilities", "Current Liabilities")
+                )
+                retained_earnings = _safe_decimal(_row(balance, "Retained Earnings"))
+                ppe_net = _safe_decimal(
+                    _first(
+                        balance,
+                        "Net PPE",
+                        "Net Property, Plant & Equipment",
+                        "Net Property, Plant and Equipment",
+                    )
+                )
+                receivables = _safe_decimal(
+                    _first(balance, "Net Receivables", "Accounts Receivable")
+                )
 
                 op_cf = _safe_decimal(_row(cashflow, "Operating Cash Flow"))
                 capex = _safe_decimal(_row(cashflow, "Capital Expenditure"))
@@ -736,8 +811,15 @@ class MarketDataProvider:
                     gross_profit=gross_profit,
                     operating_income=op_income,
                     ebitda=ebitda,
+                    ebit=ebit,
                     net_income=net_income,
                     eps_diluted=eps,
+                    shares_outstanding=shares_basic,
+                    shares_diluted=shares_dil,
+                    interest_expense=interest_expense,
+                    tax_expense=tax_expense,
+                    sga_expense=sga,
+                    depreciation_amortization=dep_amort,
                     gross_margin=gm,
                     operating_margin=om,
                     net_margin=nm,
@@ -748,6 +830,11 @@ class MarketDataProvider:
                     cash_and_equivalents=cash,
                     total_debt=total_debt,
                     net_debt=net_debt,
+                    current_assets=current_assets,
+                    current_liabilities=current_liabilities,
+                    retained_earnings=retained_earnings,
+                    ppe_net=ppe_net,
+                    receivables=receivables,
                     operating_cash_flow=op_cf,
                     capex=capex,
                     free_cash_flow=fcf,
