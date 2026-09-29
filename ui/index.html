@@ -124,10 +124,11 @@ the AGPL-3.0. See COMMERCIAL-LICENSE.md.
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 
 <script src="/app.js" defer></script>
 
+    <script src="/theme.js"></script>
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -136,13 +137,18 @@ the AGPL-3.0. See COMMERCIAL-LICENSE.md.
     <header class="header" role="banner">
         <div class="header__inner">
             <div class="header__brand">
-                <div class="header__logo" aria-hidden="true">RA</div>
+                <div class="header__logo" aria-hidden="true"><img src="/icons/icon-96x96.png" alt="" width="40" height="40"></div>
                 <div>
                     <h1 class="header__title">Research Analyst</h1>
                     <p class="header__subtitle">Institutional-Grade Equity &amp; ETF Research</p>
                 </div>
             </div>
             <nav class="header__nav" aria-label="Primary">
+                <div class="theme-toggle" role="group" aria-label="Color theme">
+                    <button type="button" data-mode="dark" aria-pressed="true" title="Dark — the analyst's night desk">Dark</button>
+                    <button type="button" data-mode="bright" aria-pressed="false" title="Bright — the analyst's morning desk">Bright</button>
+                    <button type="button" data-mode="night" aria-pressed="false" title="Night — warm night light">Night</button>
+                </div>
                 <a href="https://devinfo.dev" class="btn btn--ghost back-link" aria-label="Back to devinfo.dev">&larr; devinfo.dev</a>
                 <button id="btn-about" class="btn btn--ghost" type="button">About</button>
                 <button id="btn-contact" class="btn btn--ghost" type="button">Contact</button>
