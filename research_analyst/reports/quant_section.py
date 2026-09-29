@@ -39,7 +39,7 @@ from typing import Any
 
 from ..models import Assumption, ReportSection
 from ..quant_engine import allocation, dupont, forensics, guards, trends, valuation
-from ..quant_engine.adapter import MISSING_ENGINE_INPUTS
+from ..quant_engine.adapter import missing_series_inputs
 from ..quant_engine.series import StatementSeries
 
 logger = logging.getLogger(__name__)
@@ -90,8 +90,8 @@ def compute_quant_results(
     missing: list[str] = []
     assumptions: list[str] = []
 
-    for key in MISSING_ENGINE_INPUTS:
-        missing.append(f"{key} (not fetched by any provider)")
+    for key in missing_series_inputs(series):
+        missing.append(f"{key} (no data from providers)")
 
     n = len(series.periods)
     last_idx = n - 1
@@ -215,7 +215,8 @@ def compute_quant_results(
     tax_latest = next((t for t in reversed(tax_rates) if t is not None), None)
     if iroic.average is None:
         missing.append(
-            "incremental_roic (needs interest_expense and tax_expense — not fetched by any provider)"
+            "incremental_roic (needs ebit, interest_expense, tax_expense and "
+            "invested-capital inputs across the interval)"
         )
     divp = allocation.dividend_profile(series)
     debtp = allocation.debt_profile(series)

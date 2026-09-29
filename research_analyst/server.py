@@ -39,10 +39,13 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
+import subprocess
 import time
 import uuid
 from collections import OrderedDict
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, cast
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -66,7 +69,6 @@ from .api_models import (
 from .comparative import MAX_TICKERS, MIN_TICKERS, ComparativeOrchestrator
 from .config import settings
 from .disclaimer import DISCLAIMER_FULL, DISCLAIMER_SHORT, DISCLAIMER_VERSION
-from .enums import ReportType
 from .entitlements import (
     SOURCE_DATA,
     KeyStore,
@@ -74,6 +76,7 @@ from .entitlements import (
     WhiteLabelProfile,
     has_entitlement,
 )
+from .enums import ReportType
 from .exporters import ts_definitions, xml_from_dict
 from .models import ResearchRequest
 from .orchestrator import ResearchOrchestrator
@@ -81,6 +84,43 @@ from .providers.market_data import MarketDataProvider
 from .reports.comparative_renderer import render_html, render_markdown
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Deploy marker (commit identity)
+# ---------------------------------------------------------------------------
+
+_BUILD_COMMIT_CACHE: str | None = None
+
+
+def _build_commit() -> str:
+    """Short commit SHA of the running code, for the deploy marker.
+
+    Resolution order: ``RA_BUILD_COMMIT`` env var (deterministic builds),
+    then ``git rev-parse --short HEAD`` from the repository root, then
+    ``unknown``. Best-effort and cached once per process — never raises.
+    """
+    global _BUILD_COMMIT_CACHE
+    if _BUILD_COMMIT_CACHE is not None:
+        return _BUILD_COMMIT_CACHE
+    commit = os.environ.get("RA_BUILD_COMMIT")
+    if not commit:
+        try:
+            repo_root = Path(__file__).resolve().parents[1]
+            out = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            if out.returncode == 0:
+                commit = out.stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            commit = None
+    _BUILD_COMMIT_CACHE = commit or "unknown"
+    return _BUILD_COMMIT_CACHE
 
 
 # ---------------------------------------------------------------------------
@@ -347,11 +387,12 @@ def create_app(
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:
-        """Health check: service is up + version served (per VERSIONING.md)."""
+        """Health check: service is up + version + commit served (per VERSIONING.md)."""
         return {
             "status": "ok",
             "version": __version__,
             "service": "research-analyst",
+            "commit": _build_commit(),
         }
 
     @app.post("/api/resolve", response_model=ResolveAPIResponse)
@@ -610,6 +651,12 @@ def create_app(
         }
         if market["currency"]:
             series.currency = market["currency"]  # type: ignore[assignment]
+
+        # Latest observed price → the most recent period's price series entry,
+        # so Altman X4 (market leverage) and market-cap screens can compute.
+        # Older periods keep None: their period-end prices are not recreated.
+        if price_now is not None and series.periods:
+            series.price[-1] = price_now
 
         results = compute_quant_results(series, market)
 

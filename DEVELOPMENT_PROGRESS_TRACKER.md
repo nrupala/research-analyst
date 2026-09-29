@@ -5,8 +5,8 @@ See LICENSE and COMMERCIAL-LICENSE.md for licensing terms (commercial licenses a
 
 # DEVELOPMENT PROGRESS TRACKER
 
-Effort: Source-Data Export Integrity & Report Clarity · **plus** PR #84 quant port (Python) & product wiring
-Branch: merged to `main` — `371620c` (PR #82), `49f090e` (PR #83), `6cff51aa` (PR #84)
+Effort: Source-Data Export Integrity & Report Clarity · **plus** PR #84 quant port (Python) & product wiring · **plus** P7 quant provider wiring (Forensics completeness)
+Branch: merged — `371620c` (PR #82), `49f090e` (PR #83), `6cff51aa` (PR #84); **P7 on `feat/quant-provider-wiring` (PR open)**
 Base: `origin/main` @ `eeb97d8` · **Now at `6cff51aa`**, deployed to Aetheris 2026-09-28
 Plan: `BUILD_PLAN.md` · Gates: `ASFQC/GATES.md`
 
@@ -23,7 +23,7 @@ Plan: `BUILD_PLAN.md` · Gates: `ASFQC/GATES.md`
 | P4 | Presentation honesty | **DONE** | `reports/visuals.py` — 3 of the 11 defects; ruff findings 23 → 17 |
 | P5 | Documentation + changelog | **DONE** | `docs/API-REFERENCE.md` bundle-schema section; `CHANGELOG.md` Unreleased entries; 2 docs-vs-payload tests |
 | P6 | Gate review + merge + deploy | **DONE** | PRs #82/#83/#84 merged; #84 deployed to Aetheris at `6cff51aa` and verified live (health 200 on loopback + both public domains; `/api/research/quant` 200 with six sections; `/app.js` 37 quant matches). Evidence in `ASFQC/GATES.md` → "Deployment evidence — PR #84" |
-| P7 | Quant data completeness (next) | **NOT STARTED** | Forensics renders hollow: 16 `missing_inputs`. `interest_expense`/`tax_expense` fetched by no provider; all 6 `altman_z` and 4 `beneish_m` fields unpopulated. Own PR, own test cycle |
+| P7 | Quant data completeness | **IMPLEMENTED — PR open** | Forensics was hollow (16 `missing_inputs`): `interest_expense`/`tax_expense` fetched by no provider; all 6 `altman_z` and 5 `beneish_m` inputs unpopulated. Now every engine input is mapped via yfinance (primary) + SEC companyfacts (fallback); `price` injected at the server boundary. Own PR (`feat/quant-provider-wiring`), own test cycle: 477 passed / 2 skipped, 0 new ruff/mypy findings |
 
 ## 2. Agent Work Tracking
 
@@ -46,6 +46,8 @@ Plan: `BUILD_PLAN.md` · Gates: `ASFQC/GATES.md`
 | 2026-09-28 | P6 | **Deployed PR #84 to production** per `deploy/oci-native/README.md`: pull → assert SHA → `pip install --no-deps .` → `systemctl restart ra`. | `box HEAD = 6cff51aa62ee64eb0f871b865e2d62a2ac97d658` (exact match); `pip` exit 0 → `research-analyst-0.4.0`; `quant_engine` present in real site-packages (10 modules); `is-active: active`, `NRestarts=0` |
 | 2026-09-28 | P6 | Verified live from an external host through Cloudflare. | `/api/health` 200 on loopback + `ra.devinfo.dev` + `ra.aimlds.org`; headers show no `fly-request-id` → OCI, not Fly; `/app.js` 200, 44,249 bytes, **37** `quant` matches (was 0); `/api/research/quant?ticker=AAPL` → **200 not 404**, AAPL FY2021–FY2025, `schema_version` 1.0, **six** sections `trends/dupont/forensics/valuation/allocation/expected_value`, **16** `missing_inputs`. Export regression still green: schema 1.1, 14/14 metrics non-null, no `payout_ratio`, clean peer keys. |
 | 2026-09-28 | P6 | Corrected the runbook and recorded deployment evidence in `ASFQC/GATES.md`. **Three prior claims were wrong and are now fixed:** (1) runbook said "five sections" — the engine has **six**; (2) the "skip pip and it silently no-ops" caveat is **wrong for this host** — `WorkingDirectory=/opt/research-analyst` puts the repo source tree ahead of site-packages on `sys.path`, so the pull alone serves the code and the install is drift insurance, not a serving requirement; (3) the runbook's own header check used `curl -sI` (HEAD) which this API rejects with **405**, so it could never have worked — now `curl -s -D -`. Also caught that my **first** install verification was itself invalid (it ran `import` from the repo root and printed the source path while labelled "site-packages"); re-run from `/` to get the true path, and that trap is now documented. | GATES.md: new "Deployment evidence — PR #84" section + G1 evidence + open item 0; item 9 re-checked and still OPEN (constants hardcoded at `valuation.py:141-145`, though `quant_engine.sensitivity_grid` now exists to replace them) |
+| 2026-09-29 | P7 | **Quant provider wiring (own PR).** Read the engine inputs, adapter, forensics/altman/beneish, `incremental_roic`, `_DiskCache` and the health route; then implemented: `models.py` +7 fields (interest/tax/sga/dep; retained/ppe/receivables); `adapter.py` new `QUANT_INPUT_KEYS` + `missing_series_inputs` (one entry per genuinely-absent key) replacing the wrong `MISSING_ENGINE_INPUTS`; yfinance mapping (primary) and SEC companyfacts mapping (fallback) for every input with a single-fetch cache; `ebit`→`operating_income` fallbacks both sides; expense magnitudes normalized positive at both provider boundaries; `server.py` injects `series.price[-1] = price_now` before `compute_quant_results` and adds a `commit` deploy-marker to `/api/health`. | `pytest tests -q` → **477 passed, 2 skipped** (baseline 466, `+11`, zero regressions); `test_provider_quant_fields.py` 6/6; `ruff`/`mypy` delta vs `HEAD` worktree: **0 new findings** (repo-wide 329 ruff / 100 mypy errors are pre-existing on main; measured twice, identical file sets) |
+| 2026-09-29 | P7 | Docs for the branch: `CHANGELOG.md` (Forensics fix, dynamic missing listing, health `commit` field, SEC mappings), `ASFQC/GATES.md` (G1/G2 evidence, open item 0 → CLOSED, item 3 re-measured), tracker P7, runbook `commit` verify step. Caught and repaired my own docs error (duplicate `### Fixed` header from a careless edit spliced the changelog Fixed block — the section was structurally wrong until corrected). | `Test-Path`/reads confirm the sections; changelog re-read post-repair; gates re-verified |
 
 ## 3. Checkpoints
 
@@ -54,6 +56,7 @@ Plan: `BUILD_PLAN.md` · Gates: `ASFQC/GATES.md`
 | Root cause established for every reported symptom | P0 | DONE — 11 defects, all with file/line evidence |
 | No fix lands without a test that fails first | P1–P4 | **DONE** — 27 characterisation tests were written before any production edit and 24 were observed **failing** against the unfixed code; the 3 that passed were my own fixture bugs (`VisualEngine` vs `VisualsBuilder`, non-existent `ReportType.TECHNICAL`, `FinancialStatement(ticker=…)`), corrected rather than weakened. 4 further guards were added during P4–P5, including one verified by mutation (reinstating the buggy expression fails 2 tests, 29 pass). |
 | Suite green, no regressions | P5 | **DONE** — 371 passed / 2 skipped vs 340 / 2 baseline |
+| Suite green, no regressions | P7 | **DONE** — 477 passed / 2 skipped vs 466 / 2 baseline; 0 new ruff/mypy findings |
 | `ruff` clean on changed files | P5 | **DONE** — 0 new findings; `valuation.py` unchanged at 9, `visuals.py` improved 23 → 17 |
 | ASFQC GATES.md updated with real output | P6 | **DONE** — G1/G2/G6/G9 carry observed output; G4 remains an honest FAIL |
 | Suite green on Linux | P6 | **PENDING** — will be observed on the CI run; Linux floor was `341 passed, 1 skipped` |

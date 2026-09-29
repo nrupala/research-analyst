@@ -367,27 +367,44 @@ class SECEdgarProvider:
             "capex": ("us-gaap", "PaymentsToAcquirePropertyPlantAndEquipment"),
             "eps_diluted": ("us-gaap", "EarningsPerShareDiluted"),
             "shares_diluted": ("us-gaap", "WeightedAverageNumberOfDilutedSharesOutstanding"),
+            "shares_outstanding": ("us-gaap", "CommonStockSharesOutstanding"),
             "ebitda": ("us-gaap", "EarningsBeforeInterestTaxesDepreciationAndAmortization"),
+            "ebit": ("us-gaap", "EarningsBeforeInterestAndTaxesItem"),
             "gross_profit": ("us-gaap", "GrossProfit"),
             "cost_of_revenue": ("us-gaap", "CostOfGoodsAndServicesSold"),
             "dividends": ("us-gaap", "PaymentsOfDividends"),
             "buybacks": ("us-gaap", "PaymentsForRepurchaseOfCommonStock"),
+            "interest_expense": ("us-gaap", "InterestExpense"),
+            "tax_expense": ("us-gaap", "IncomeTaxExpenseBenefit"),
+            "sga_expense": ("us-gaap", "SellingGeneralAndAdministrativeExpense"),
+            "dep_amort": ("us-gaap", "DepreciationDepletionAndAmortization"),
+            "retained_earnings": ("us-gaap", "RetainedEarningsAccumulatedDeficit"),
+            "current_assets": ("us-gaap", "AssetsCurrent"),
+            "current_liabilities": ("us-gaap", "LiabilitiesCurrent"),
+            "ppe_net": ("us-gaap", "PropertyPlantAndEquipmentNet"),
+            "receivables": ("us-gaap", "AccountsReceivableNetCurrent"),
         }
 
         # Fetch each concept — collect annual values keyed by fiscal year end date
         # Using dict of dicts: {period_end_date_str: {field_name: value}}
+        # The companyfacts JSON is one large document per CIK; fetch it once and
+        # reuse it for every concept instead of repeating the same multi-MB GET.
         period_data: dict[str, dict[str, Any]] = {}
+        facts_by_cik: dict[str, dict[str, Any]] = {}
+
+        async def _company_facts() -> dict[str, Any]:
+            url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+            if url not in facts_by_cik:
+                data = await self._get(url)
+                facts_by_cik[url] = data.get("facts", {})
+            return facts_by_cik[url]
 
         for field_name, (taxonomy, concept) in concepts.items():
             try:
-                url = (
-                    f"https://data.sec.gov/api/xbrl/companyfacts/"
-                    f"CIK{cik}.json"
-                )
-                data = await self._get(url)
+                fact_doc = await _company_facts()
 
                 # Navigate the nested structure
-                facts = data.get("facts", {}).get(taxonomy, {}).get(concept, {})
+                facts = fact_doc.get(taxonomy, {}).get(concept, {})
                 units = facts.get("units", {})
 
                 # Try USD first, then shares, then pure
@@ -442,6 +459,7 @@ class SECEdgarProvider:
             gross_profit = _safe_decimal(d.get("gross_profit"))
             operating_income = _safe_decimal(d.get("operating_income"))
             net_income = _safe_decimal(d.get("net_income"))
+            ebit = _safe_decimal(d.get("ebit")) or operating_income
 
             # Compute margins where numerator and denominator exist
             gross_margin = (
@@ -462,6 +480,11 @@ class SECEdgarProvider:
             total_liabilities = _safe_decimal(d.get("total_liabilities"))
             total_debt = _safe_decimal(d.get("total_debt"))
             cash = _safe_decimal(d.get("cash"))
+            current_assets = _safe_decimal(d.get("current_assets"))
+            current_liabilities = _safe_decimal(d.get("current_liabilities"))
+            retained_earnings = _safe_decimal(d.get("retained_earnings"))
+            ppe_net = _safe_decimal(d.get("ppe_net"))
+            receivables = _safe_decimal(d.get("receivables"))
             operating_cf = _safe_decimal(d.get("operating_cf"))
             capex_val = _safe_decimal(d.get("capex"))
 
@@ -504,9 +527,15 @@ class SECEdgarProvider:
                 gross_profit=gross_profit,
                 operating_income=operating_income,
                 ebitda=_safe_decimal(d.get("ebitda")),
+                ebit=ebit,
                 net_income=net_income,
                 eps_diluted=_safe_float(d.get("eps_diluted")),
                 shares_diluted=_safe_int(d.get("shares_diluted")),
+                shares_outstanding=_safe_int(d.get("shares_outstanding")),
+                interest_expense=_safe_decimal(d.get("interest_expense")),
+                tax_expense=_safe_decimal(d.get("tax_expense")),
+                sga_expense=_safe_decimal(d.get("sga_expense")),
+                depreciation_amortization=_safe_decimal(d.get("dep_amort")),
                 gross_margin=gross_margin,
                 operating_margin=op_margin,
                 net_margin=net_margin,
@@ -516,6 +545,11 @@ class SECEdgarProvider:
                 cash_and_equivalents=cash,
                 total_debt=total_debt,
                 net_debt=net_debt,
+                current_assets=current_assets,
+                current_liabilities=current_liabilities,
+                retained_earnings=retained_earnings,
+                ppe_net=ppe_net,
+                receivables=receivables,
                 operating_cash_flow=operating_cf,
                 capex=capex_val,
                 free_cash_flow=fcf,

@@ -31,8 +31,8 @@ from decimal import Decimal
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
-from .disclaimer import DISCLAIMER_SHORT
 
+from .disclaimer import DISCLAIMER_SHORT
 from .enums import (
     AnalysisDomain,
     ReportType,
@@ -43,7 +43,6 @@ from .enums import (
     SecurityType,
     Timeframe,
 )
-
 
 # ---------------------------------------------------------------------------
 # Request / Response
@@ -187,6 +186,10 @@ class FinancialStatement(BaseModel):
     eps_diluted: float | None = None
     shares_outstanding: int | None = None
     shares_diluted: int | None = None
+    interest_expense: Decimal | None = None
+    tax_expense: Decimal | None = None
+    sga_expense: Decimal | None = None
+    depreciation_amortization: Decimal | None = None
 
     # Margins (computed)
     gross_margin: float | None = None
@@ -203,6 +206,9 @@ class FinancialStatement(BaseModel):
     net_debt: Decimal | None = None
     current_assets: Decimal | None = None
     current_liabilities: Decimal | None = None
+    retained_earnings: Decimal | None = None
+    ppe_net: Decimal | None = None
+    receivables: Decimal | None = None
 
     # Cash Flow
     operating_cash_flow: Decimal | None = None
