@@ -1,6 +1,6 @@
 {
   "name": "research-analyst",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "description": "Research Analyst - Institutional-grade equity and ETF research agent",
   "author": "Nrupal Akolkar <nrupalakolkar@gmail.com>",
