@@ -172,9 +172,8 @@ class KeyStore:
 
     # -- persistence (hashes only) -------------------------------------------
     def _load(self) -> None:
-        if self._path is None:
-            return
         try:
+            assert self._path is not None  # narrowed for mypy; caught below if unset
             data = json.loads(self._path.read_text(encoding="utf-8"))
         except Exception as e:
             logger.warning("Could not load API key file %s: %s", self._path, e)

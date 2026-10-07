@@ -46,7 +46,7 @@ import uuid
 from collections import OrderedDict
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -348,8 +348,7 @@ def create_app(
         store = request.app.state.key_store
         if store is None:
             return None
-        record: APIKeyRecord | None = store.verify(request.headers.get("x-ra-key", ""))
-        return record
+        return cast("APIKeyRecord | None", store.verify(request.headers.get("x-ra-key", "")))
 
     def _meter(request: Request, endpoint: str) -> None:
         record = _key_record(request)
@@ -694,6 +693,9 @@ def create_app(
                 ev_reason = ev_result.get("error", "expected value failed validation")
             else:
                 ev_expected = ev_result.expected
+                # Engine annotates list[dict[str, float]] but emits str labels
+                # at runtime ({"label": ..., "contribution": ...}); cast to the
+                # API model's wider type. Engine file itself stays untouched.
                 ev_contribs = ev_result.contributions
         else:
             ev_reason = "no scenarios provided"

@@ -38,9 +38,8 @@ Design:
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import Any, cast
 
 from .. import education
 from ..enums import ReportType, SecurityType
@@ -292,10 +291,7 @@ class ReportRenderer:
         renderer = getattr(self, renderer_key, None)
 
         if renderer is not None:
-            typed_renderer: Callable[[StepTemplate, dict[str, Any]], tuple[ReportSection, int]] = (
-                renderer
-            )
-            return typed_renderer(step, ctx)
+            return cast("tuple[ReportSection, int]", renderer(step, ctx))
 
         # Fallback: generic step renderer
         return self._render_generic_step(step, ctx)
@@ -1420,14 +1416,11 @@ class ReportRenderer:
 
             # Scenario details
             for s in valuation.scenarios:
-                if s.implied_price_low is not None and s.implied_price_high is not None:
-                    parts.append(
-                        f"\n**{s.label}:** "
-                        f"{money(s.implied_price_low, ctx['profile'].currency, 0)} - "
-                        f"{money(s.implied_price_high, ctx['profile'].currency, 0)}"
-                    )
-                else:
-                    parts.append(f"\n**{s.label}:** price range unavailable")
+                parts.append(
+                    f"\n**{s.label}:** "
+                    f"{money(s.implied_price_low or 0.0, ctx['profile'].currency, 0)} - "
+                    f"{money(s.implied_price_high or 0.0, ctx['profile'].currency, 0)}"
+                )
                 if s.implied_upside_low is not None and s.implied_upside_high is not None:
                     parts.append(
                         f"  Implied move: {s.implied_upside_low:.1%} to {s.implied_upside_high:.1%}"
@@ -1655,10 +1648,10 @@ class ReportRenderer:
         profile = ctx["profile"]
         technical = ctx.get("technical")
         prices = ctx["prices"]
-        parts: list[str] = []
-        visuals: list[ReportVisual] = []
-        assumptions: list[Assumption] = []
-        gaps: list[str] = []
+        parts = []
+        visuals = []
+        assumptions = []
+        gaps = []
 
         if profile.description:
             parts.append(profile.description[:300])
@@ -1718,10 +1711,10 @@ class ReportRenderer:
         """Step 2: Technical Analysis & Price Structure."""
         technical = ctx.get("technical")
         indicators = ctx.get("technical_indicators")
-        parts: list[str] = []
+        parts = []
         visuals: list[ReportVisual] = []
         assumptions: list[Assumption] = []
-        gaps: list[str] = []
+        gaps = []
 
         if not technical or not indicators:
             parts.append("**Data Gap:** Technical analysis not available.")
@@ -1796,10 +1789,10 @@ class ReportRenderer:
     ) -> tuple[ReportSection, int]:
         """Step 3: Macro & Sector Context."""
         macro = ctx.get("macro")
-        parts: list[str] = []
+        parts = []
         visuals: list[ReportVisual] = []
         assumptions: list[Assumption] = []
-        gaps: list[str] = []
+        gaps = []
 
         if not macro:
             parts.append("**Data Gap:** Macro analysis not available.")
@@ -1863,10 +1856,10 @@ class ReportRenderer:
         fundamental = ctx.get("fundamental")
         financials = ctx["financials"]
         profile = ctx["profile"]
-        parts: list[str] = []
+        parts = []
         visuals: list[ReportVisual] = []
         assumptions: list[Assumption] = []
-        gaps: list[str] = []
+        gaps = []
 
         if not financials:
             gaps.append("Financial data unavailable.")
@@ -1931,9 +1924,9 @@ class ReportRenderer:
     ) -> tuple[ReportSection, int]:
         """Step 5: Near-Term Risk Map."""
         risk_matrix = ctx.get("risk_matrix")
-        parts: list[str] = []
+        parts = []
         visuals: list[ReportVisual] = []
-        gaps: list[str] = []
+        gaps = []
 
         if not risk_matrix or not risk_matrix.risks:
             gaps.append("Risk matrix not available.")
@@ -1996,10 +1989,10 @@ class ReportRenderer:
     ) -> tuple[ReportSection, int]:
         """Step 6: Scenario-Based Valuation Range."""
         valuation = ctx.get("valuation")
-        parts: list[str] = []
+        parts = []
         visuals: list[ReportVisual] = []
         assumptions: list[Assumption] = []
-        gaps: list[str] = []
+        gaps = []
 
         if not valuation or not valuation.scenarios:
             gaps.append("Valuation not available.")
@@ -2032,7 +2025,7 @@ class ReportRenderer:
             parts.append(
                 f"\n**{s.label}:** {money(s.implied_price_low, ctx['profile'].currency, 0)} "
                 "- "
-                f"{money(s.implied_price_high, ctx['profile'].currency, 0)}"
+                f"{money(s.implied_price_high or 0.0, ctx['profile'].currency, 0)}"
             )
             if s.implied_upside_low is not None and s.implied_upside_high is not None:
                 parts.append(
@@ -2068,8 +2061,8 @@ class ReportRenderer:
         fundamental = ctx.get("fundamental")
         valuation = ctx.get("valuation")
         risk_matrix = ctx.get("risk_matrix")
-        parts: list[str] = []
-        visuals: list[ReportVisual] = []
+        parts = []
+        visuals = []
         gaps: list[str] = []
 
         favors = []
@@ -2191,10 +2184,10 @@ class ReportRenderer:
     ) -> tuple[ReportSection, int]:
         """Step 1: Business Overview & Structural Position."""
         profile = ctx["profile"]
-        parts: list[str] = []
-        visuals: list[ReportVisual] = []
-        assumptions: list[Assumption] = []
-        gaps: list[str] = []
+        parts = []
+        visuals = []
+        assumptions = []
+        gaps = []
 
         if profile.description:
             parts.append(profile.description[:500])
@@ -2245,10 +2238,10 @@ class ReportRenderer:
         financials = ctx["financials"]
         fundamental = ctx.get("fundamental")
         profile = ctx["profile"]
-        parts: list[str] = []
+        parts = []
         visuals: list[ReportVisual] = []
         assumptions: list[Assumption] = []
-        gaps: list[str] = []
+        gaps = []
 
         if not financials:
             gaps.append("No financial statements available.")
@@ -2329,10 +2322,10 @@ class ReportRenderer:
         """Step 3: Competitive Landscape & Moat Assessment."""
         competitive = ctx.get("competitive")
         profile = ctx["profile"]
-        parts: list[str] = []
+        parts = []
         visuals: list[ReportVisual] = []
         assumptions: list[Assumption] = []
-        gaps: list[str] = []
+        gaps = []
 
         if not competitive:
             gaps.append("Competitive analysis not available.")
@@ -2405,9 +2398,9 @@ class ReportRenderer:
         """Step 4: Capital Allocation & Shareholder Returns."""
         fundamental = ctx.get("fundamental")
         profile = ctx["profile"]
-        parts: list[str] = []
+        parts = []
         visuals: list[ReportVisual] = []
-        gaps: list[str] = []
+        gaps = []
 
         cap = getattr(fundamental, "capital_allocation", None) if fundamental else None
 
@@ -2497,9 +2490,9 @@ class ReportRenderer:
     ) -> tuple[ReportSection, int]:
         """Step 5: Risk Assessment."""
         risk_matrix = ctx.get("risk_matrix")
-        parts: list[str] = []
+        parts = []
         visuals: list[ReportVisual] = []
-        gaps: list[str] = []
+        gaps = []
 
         if not risk_matrix or not risk_matrix.risks:
             gaps.append("Risk matrix not available.")
@@ -2564,8 +2557,8 @@ class ReportRenderer:
         competitive = ctx.get("competitive")
         macro = ctx.get("macro")
         risk_matrix = ctx.get("risk_matrix")
-        parts: list[str] = []
-        visuals: list[ReportVisual] = []
+        parts = []
+        visuals = []
         gaps: list[str] = []
 
         favors = []

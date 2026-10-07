@@ -124,7 +124,7 @@ class ResearchTUI:
 # ---------------------------------------------------------------------------
 
 
-def add_tui_parser(subparsers: Any) -> None:
+def add_tui_parser(subparsers: Any) -> Any:
     parser = subparsers.add_parser(
         "tui",
         help="Keyboard-first terminal interface (Bloomberg-style).",
@@ -141,7 +141,7 @@ def add_tui_parser(subparsers: Any) -> None:
         "--timeframe", default="1Y",
         help="Timeframe for headless mode (e.g. 1Y, 3Y).",
     )
-    return
+    return parser
 
 
 def run_tui_command(args: argparse.Namespace) -> None:

@@ -43,7 +43,6 @@ from ..models import (
     DividendAnalysis,
     FinancialStatement,
     ReportVisual,
-    RiskMatrix,
     StructuredRisk,
     TechnicalIndicators,
     ValuationRange,
@@ -97,16 +96,14 @@ class VisualEngine:
 
     @staticmethod
     def svg_financial_trends(
-        financials: list[FinancialStatement],
-        ticker: str,
-        currency: str | None = None,
+        financials: list[Any], ticker: str, currency: str | None = None
     ) -> ReportVisual | None:
         """Revenue + margin trend chart as server-rendered SVG."""
         return svg_charts.svg_financial_trends(financials, ticker, currency)
 
     @staticmethod
     def svg_scenario_valuation(
-        valuation: ValuationRange, currency: str | None = None
+        valuation: Any, currency: str | None = None
     ) -> ReportVisual | None:
         """Scenario valuation range as server-rendered SVG."""
         if not valuation.scenarios:
@@ -115,13 +112,13 @@ class VisualEngine:
 
     @staticmethod
     def svg_peer_comparison(
-        target_ticker: str, peers: list[Competitor], currency: str | None = None
+        target_ticker: str, peers: list[Any], currency: str | None = None
     ) -> ReportVisual:
         """Peer comparison margins/ROE as server-rendered SVG."""
         return svg_charts.svg_peer_comparison(target_ticker, peers, currency)
 
     @staticmethod
-    def svg_risk_heatmap(risk_matrix: RiskMatrix | None) -> ReportVisual | None:
+    def svg_risk_heatmap(risk_matrix: Any) -> ReportVisual | None:
         """Risk matrix probability x impact as server-rendered SVG."""
         if not risk_matrix or not risk_matrix.risks:
             return None
@@ -662,9 +659,7 @@ class VisualEngine:
         )
 
     @staticmethod
-    def svg_dividend_history(
-        div: DividendAnalysis, currency: str | None = None
-    ) -> ReportVisual | None:
+    def svg_dividend_history(div: Any, currency: str | None = None) -> ReportVisual | None:
         """Annual dividend-per-share history as server-rendered SVG."""
         annual = getattr(div, "annual_dividends", {}) or {}
         if len(annual) < 3:
