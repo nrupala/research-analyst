@@ -23,7 +23,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
@@ -106,8 +106,7 @@ class AnalysisConfig(BaseSettings):
     def _parse_int_list(cls, v: Any) -> list[int]:
         if isinstance(v, str):
             return [int(x.strip()) for x in v.split(",")]
-        parsed: list[int] = [int(x) for x in v]
-        return parsed
+        return cast("list[int]", v)
 
 
 class ServerConfig(BaseSettings):

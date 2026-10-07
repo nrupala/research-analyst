@@ -46,7 +46,7 @@ REPORT_TYPES = [
 ]
 
 
-class ResearchScreen(Screen):  # type: ignore[misc]
+class ResearchScreen(Screen):  # type: ignore[misc]  # textual not installed in CI
     """Main screen: input controls on top, scrollable report below."""
 
     BINDINGS = [
@@ -114,7 +114,7 @@ class ResearchScreen(Screen):  # type: ignore[misc]
         self.query_one("#status", Static).update(f"Exported to {path.name}")
 
 
-class ResearchApp(App[None]):  # type: ignore[misc]
+class ResearchApp(App[None]):  # type: ignore[misc]  # textual not installed in CI
     """The Research Analyst TUI application."""
 
     TITLE = "Research Analyst"

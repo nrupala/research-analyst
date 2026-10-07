@@ -40,16 +40,16 @@ import time
 from collections import OrderedDict
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
 from ..config import settings
+from ..enums import SecurityType
 from ..models import (
     CompanyProfile,
     FinancialStatement,
     InsiderTransaction,
-    SecurityType,
 )
 
 logger = logging.getLogger(__name__)
@@ -228,8 +228,7 @@ class SECEdgarProvider:
                         continue
 
                     resp.raise_for_status()
-                    payload: dict[str, Any] = resp.json()
-                    return payload
+                    return cast("dict[str, Any]", resp.json())
 
                 except httpx.HTTPStatusError as e:
                     if e.response.status_code < 500:
@@ -277,7 +276,7 @@ class SECEdgarProvider:
         ticker = _sanitize_ticker(ticker)
         cached = self._cik_cache.get(ticker)
         if cached:
-            return str(cached)
+            return cast("str", cached)
 
         try:
             # Try direct company lookup first

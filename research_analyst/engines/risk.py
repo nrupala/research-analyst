@@ -41,12 +41,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from ..enums import RiskCategory, RiskDuration, RiskNature
 from ..models import (
     CompanyProfile,
-    RiskCategory,
-    RiskDuration,
     RiskMatrix,
-    RiskNature,
     RiskScoreComponent,
     StructuredRisk,
 )

@@ -40,7 +40,7 @@ import json
 import sqlite3
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from .enums import ReportType
 from .models import ResearchRequest
@@ -135,7 +135,7 @@ async def _sync_one(
     ticker: str,
     report_type: str,
     timeframe: str,
-) -> dict[str, Any] | None:
+) -> dict[str, Any]:
     """Run one research request, returning the typed bundle payload."""
     from .enums import Timeframe
 
@@ -186,11 +186,10 @@ def run_sync(
     runner: Callable[[Any], Any] = asyncio.run,
 ) -> SyncResult:
     """Synchronous entry point (calls the async pipeline)."""
-    result: SyncResult = runner(_run_sync_async(
+    return cast("SyncResult", runner(_run_sync_async(
         watchlist_path, out_dir,
         orchestrator=orchestrator, max_age_hours=max_age_hours,
-    ))
-    return result
+    )))
 
 
 async def _run_sync_async(
@@ -216,9 +215,6 @@ async def _run_sync_async(
             payload = await _sync_one(
                 orch, ticker, watchlist["report_type"], watchlist["timeframe"]
             )
-            if payload is None:
-                result.failed[ticker] = "empty payload"
-                continue
             _emit_bundle(out_dir, ticker, watchlist["report_type"], payload, conn)
             result.succeeded.append(ticker)
         except Exception as e:

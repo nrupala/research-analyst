@@ -86,7 +86,7 @@ def bvps(statement: Any) -> float | None:
     """Book value per share from a financial statement."""
     if not statement or not statement.total_equity or not statement.shares_outstanding:
         return None
-    return float(float(statement.total_equity) / float(statement.shares_outstanding))
+    return float(statement.total_equity) / float(statement.shares_outstanding)
 
 
 def ncav(statement: Any) -> float | None:
@@ -95,10 +95,9 @@ def ncav(statement: Any) -> float | None:
         return None
     if not statement.shares_outstanding:
         return None
-    return float(
-        (float(statement.current_assets) - float(statement.current_liabilities))
-        / float(statement.shares_outstanding)
-    )
+    return (
+        float(statement.current_assets) - float(statement.current_liabilities)
+    ) / float(statement.shares_outstanding)
 
 
 def pct_change(current: float | None, prior: float | None) -> float | None:

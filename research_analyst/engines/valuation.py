@@ -41,12 +41,12 @@ import logging
 from decimal import Decimal
 from typing import Any
 
+from ..enums import ScenarioType
 from ..models import (
     Assumption,
     CompanyProfile,
     FinancialStatement,
     PriceSeries,
-    ScenarioType,
     ValuationRange,
     ValuationScenario,
     VariantPerception,

@@ -33,7 +33,6 @@ Design:
 from __future__ import annotations
 
 import asyncio
-import functools
 import hashlib
 import json
 import logging
@@ -48,6 +47,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import settings
+from ..enums import SecurityType
 from ..models import (
     AnalystEstimates,
     CompanyProfile,
@@ -62,7 +62,6 @@ from ..models import (
     PeerSetProvenance,
     PriceData,
     PriceSeries,
-    SecurityType,
     SymbolMatch,
 )
 from . import markets
@@ -1154,7 +1153,10 @@ class MarketDataProvider:
             elif r is None:
                 failed.append(pt)
 
-        peers.sort(key=lambda p: float(p.market_cap or 0), reverse=True)
+        # Issue #67: total deterministic order — market cap descending, ticker
+        # ascending as the tie-break, so equal/unknown market caps never depend
+        # on sort stability for their relative order.
+        peers.sort(key=lambda p: (-float(p.market_cap or 0.0), p.ticker or ""))
         peers = peers[:max_peers]
         resolved = [p.ticker for p in peers]
         missing = [t for t in failed if t not in resolved]
@@ -1270,10 +1272,16 @@ class MarketDataProvider:
         try:
             import yfinance as yf
 
+            def _make_ticker(symbol: str) -> Any:
+                return yf.Ticker(symbol)
+
+            def _history_5d(ticker: Any) -> Any:
+                return ticker.history(period="5d")
+
             for symbol, field in macro_tickers.items():
                 try:
-                    tk = await asyncio.to_thread(functools.partial(yf.Ticker, symbol))
-                    hist = await asyncio.to_thread(tk.history, period="5d")
+                    tk = await asyncio.to_thread(_make_ticker, symbol)
+                    hist = await asyncio.to_thread(_history_5d, tk)
                     if hist is not None and not hist.empty:
                         val = _safe_float(hist["Close"].iloc[-1])
                         if field == "us_10y_yield" and val is not None:
