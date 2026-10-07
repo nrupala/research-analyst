@@ -35,9 +35,9 @@ than fabricate numbers.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date
 from decimal import Decimal
-from typing import Callable
 
 from ..models import FinancialStatement
 from .series import FiscalPeriod, StatementSeries, assert_valid_series
@@ -72,11 +72,7 @@ def missing_series_inputs(series: StatementSeries) -> list[str]:
     A key is reported only when every period is None (a true provider gap),
     so the list shrinks automatically as provider coverage improves.
     """
-    return [
-        key
-        for key in QUANT_INPUT_KEYS
-        if not any(v is not None for v in getattr(series, key))
-    ]
+    return [key for key in QUANT_INPUT_KEYS if not any(v is not None for v in getattr(series, key))]
 
 
 def _to_float(value: Decimal | float | int | None) -> float | None:
@@ -92,9 +88,7 @@ def _to_float(value: Decimal | float | int | None) -> float | None:
     return f
 
 
-def from_financial_statements(
-    statements: list[FinancialStatement], ticker: str
-) -> StatementSeries:
+def from_financial_statements(statements: list[FinancialStatement], ticker: str) -> StatementSeries:
     """Build a :class:`StatementSeries` from product financial statements.
 
     Orders periods oldest → newest by ``period_end_date`` (statements without
@@ -110,7 +104,9 @@ def from_financial_statements(
     def col(fn: Callable[[FinancialStatement], Decimal | float | int | None]) -> list[float | None]:
         return [_to_float(fn(s)) for s in ordered]
 
-    def outflow(fn: Callable[[FinancialStatement], Decimal | float | int | None]) -> list[float | None]:
+    def outflow(
+        fn: Callable[[FinancialStatement], Decimal | float | int | None],
+    ) -> list[float | None]:
         out: list[float | None] = []
         for s in ordered:
             v = _to_float(fn(s))

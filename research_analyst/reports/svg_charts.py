@@ -44,6 +44,7 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
+from matplotlib.ticker import FuncFormatter  # noqa: E402
 
 from ..models import ReportVisual  # noqa: E402
 from .currency import currency_symbol  # noqa: E402
@@ -53,13 +54,13 @@ from .currency import currency_symbol  # noqa: E402
 # ---------------------------------------------------------------------------
 
 C = {
-    "navy": "#1b3a5c",      # primary / revenue / base case
-    "steel": "#5b7a99",     # secondary series
-    "green": "#3a7d44",     # dividends / bull case / positive
-    "amber": "#c98a2d",     # operating margin / medium risk
-    "red": "#b23a3a",       # bear case / critical risk
-    "violet": "#6d5a9e",    # net margin / variant series
-    "slate": "#7a8b99",     # neutral
+    "navy": "#1b3a5c",  # primary / revenue / base case
+    "steel": "#5b7a99",  # secondary series
+    "green": "#3a7d44",  # dividends / bull case / positive
+    "amber": "#c98a2d",  # operating margin / medium risk
+    "red": "#b23a3a",  # bear case / critical risk
+    "violet": "#6d5a9e",  # net margin / variant series
+    "slate": "#7a8b99",  # neutral
     "grid": "#e8edf2",
     "text": "#1f2937",
     "muted": "#6b7280",
@@ -79,17 +80,17 @@ def _new_ax(fig: Any) -> Any:
     ax.grid(True, axis="y", color=C["grid"], linewidth=0.8)
     ax.set_axisbelow(True)
     ax.tick_params(colors=C["muted"], labelsize=10)
-    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _p: _int(v)))
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _p: _int(v)))
     return ax
 
 
 def _int(v: float) -> str:
     if abs(v) >= 1e9:
-        return f"{v/1e9:.1f}B"
+        return f"{v / 1e9:.1f}B"
     if abs(v) >= 1e6:
-        return f"{v/1e6:.1f}M"
+        return f"{v / 1e6:.1f}M"
     if abs(v) >= 1e3:
-        return f"{v/1e3:.0f}K"
+        return f"{v / 1e3:.0f}K"
     if v == int(v):
         return str(int(v))
     return f"{v:.1f}"
@@ -102,8 +103,7 @@ def _title(fig: Any, text: str) -> None:
 def _to_svg(fig: Any) -> str:
     """Render to SVG and make it fluid (width=100%, viewBox preserves ratio)."""
     buf = io.StringIO()
-    fig.savefig(buf, format="svg", bbox_inches="tight", transparent=False,
-                facecolor="white")
+    fig.savefig(buf, format="svg", bbox_inches="tight", transparent=False, facecolor="white")
     plt.close(fig)
     svg = buf.getvalue()
     # matplotlib root <svg> has width/height in pt; swap to fluid 100% width.
@@ -114,8 +114,8 @@ def _to_svg(fig: Any) -> str:
         count=1,
     )
     # Drop matplotlib's XML declaration + DOCTYPE so the div embed is clean.
-    svg = re.sub(r'<\?xml[^>]*\?>\s*', "", svg, count=1)
-    svg = re.sub(r'<!DOCTYPE[^>]*>\s*', "", svg, count=1)
+    svg = re.sub(r"<\?xml[^>]*\?>\s*", "", svg, count=1)
+    svg = re.sub(r"<!DOCTYPE[^>]*>\s*", "", svg, count=1)
     return svg.strip()
 
 
@@ -145,15 +145,13 @@ def svg_financial_trends(
     margins: dict[str, list[float]] = {
         "Gross": [f.gross_margin * 100 if f.gross_margin else np.nan for f in sorted_fin],
         "Operating": [
-            f.operating_margin * 100 if f.operating_margin else np.nan
-            for f in sorted_fin
+            f.operating_margin * 100 if f.operating_margin else np.nan for f in sorted_fin
         ],
         "Net": [f.net_margin * 100 if f.net_margin else np.nan for f in sorted_fin],
     }
 
     fig, ax = _fig()
-    ax.bar(periods, revenues, color=C["navy"], alpha=0.85, width=0.55,
-           label=f"Revenue ({sym}B)")
+    ax.bar(periods, revenues, color=C["navy"], alpha=0.85, width=0.55, label=f"Revenue ({sym}B)")
     ax.set_ylabel(f"Revenue ({sym}B)", color=C["muted"], fontsize=10)
     ax.set_ylim(0, max(revenues) * 1.25 or 1)
 
@@ -166,8 +164,16 @@ def svg_financial_trends(
     for name, color, ls in series:
         vals = margins[name]
         if not np.isnan(vals).all():
-            ax2.plot(periods, vals, label=f"{name} margin %", color=color,
-                     linewidth=1.8, marker="o", markersize=3, linestyle=ls)
+            ax2.plot(
+                periods,
+                vals,
+                label=f"{name} margin %",
+                color=color,
+                linewidth=1.8,
+                marker="o",
+                markersize=3,
+                linestyle=ls,
+            )
     ax2.set_ylabel("Margin %", color=C["muted"], fontsize=10)
     ax2.grid(False)
     ax2.tick_params(colors=C["muted"], labelsize=10)
@@ -190,7 +196,9 @@ def svg_financial_trends(
             "currency": code,
             "periods": periods,
             "revenue_b": revenues,
-            "margins_pct": {k: [None if v != v else round(v, 2) for v in vals] for k, vals in margins.items()},
+            "margins_pct": {
+                k: [None if v != v else round(v, 2) for v in vals] for k, vals in margins.items()
+            },
         },
     )
 
@@ -213,8 +221,16 @@ def svg_scenario_valuation(
     fig, ax = _fig()
     ax.barh(labels, widths, left=lows, color=colors, alpha=0.9, height=0.5)
     for i, (lo, hi) in enumerate(zip(lows, highs)):
-        ax.text(lo + (hi - lo) / 2, i, f"{sym}{lo:,.0f} \u2013 {sym}{hi:,.0f}",
-                ha="center", va="center", color="white", fontsize=9.5, fontweight="bold")
+        ax.text(
+            lo + (hi - lo) / 2,
+            i,
+            f"{sym}{lo:,.0f} \u2013 {sym}{hi:,.0f}",
+            ha="center",
+            va="center",
+            color="white",
+            fontsize=9.5,
+            fontweight="bold",
+        )
     ax.set_xlabel(f"Price ({sym})", color=C["muted"], fontsize=10)
     ax.grid(True, axis="x", color=C["grid"], linewidth=0.8)
     ax.set_axisbelow(True)
@@ -291,10 +307,24 @@ def svg_risk_heatmap(matrix: Any) -> ReportVisual:
         imp = _impact_value(risk.impact)
         severity = prob * imp
         color = C["red"] if severity >= 8 else C["amber"] if severity >= 4 else C["green"]
-        ax.scatter(prob, imp, s=180 + severity * 55, color=color, alpha=0.72,
-                   edgecolors="white", linewidths=1, zorder=3)
-        ax.annotate(risk.title[:22], (prob, imp), xytext=(7, 7),
-                    textcoords="offset points", fontsize=8.5, color=C["text"])
+        ax.scatter(
+            prob,
+            imp,
+            s=180 + severity * 55,
+            color=color,
+            alpha=0.72,
+            edgecolors="white",
+            linewidths=1,
+            zorder=3,
+        )
+        ax.annotate(
+            risk.title[:22],
+            (prob, imp),
+            xytext=(7, 7),
+            textcoords="offset points",
+            fontsize=8.5,
+            color=C["text"],
+        )
     ax.set_xlim(0.5, 3.5)
     ax.set_ylim(0.5, 4.5)
     ax.set_xticks([1, 2, 3])
@@ -378,8 +408,7 @@ def svg_dividend_history(div: Any, currency: str | None = None) -> ReportVisual:
         content=_to_svg(fig),
         ties_to="Dividend growth & consistency",
         caption=(
-            "Annual dividends per share (calendar-year sums). "
-            "The most recent year may be partial."
+            "Annual dividends per share (calendar-year sums). The most recent year may be partial."
         ),
         interactive={
             "type": "dividends",
@@ -397,9 +426,7 @@ def _fig() -> tuple[Any, Any]:
     return fig, ax
 
 
-def svg_thesis_balance(
-    ticker: str, n_favor: int, n_disfavor: int, tilt: str
-) -> ReportVisual:
+def svg_thesis_balance(ticker: str, n_favor: int, n_disfavor: int, tilt: str) -> ReportVisual:
     """Diverging evidence bar: thesis-favoring vs disfavoring factor counts.
 
     Bar length is a *count*, not a weight — one strong factor can outweigh
@@ -420,14 +447,39 @@ def svg_thesis_balance(
     for spine in ("top", "right", "left", "bottom"):
         ax.spines[spine].set_visible(False)
     if n_favor:
-        ax.text(n_favor / 2, 0, f"{n_favor} favor", ha="center", va="center",
-                fontsize=11, fontweight="bold", color="white", zorder=5)
+        ax.text(
+            n_favor / 2,
+            0,
+            f"{n_favor} favor",
+            ha="center",
+            va="center",
+            fontsize=11,
+            fontweight="bold",
+            color="white",
+            zorder=5,
+        )
     if n_disfavor:
-        ax.text(-n_disfavor / 2, 0, f"{n_disfavor} disfavor", ha="center",
-                va="center", fontsize=11, fontweight="bold", color="white",
-                zorder=5)
-    ax.text(0, -0.62, f"Evidence balance tilts {tilt}", ha="center", va="top",
-            fontsize=10, style="italic", color=C["muted"])
+        ax.text(
+            -n_disfavor / 2,
+            0,
+            f"{n_disfavor} disfavor",
+            ha="center",
+            va="center",
+            fontsize=11,
+            fontweight="bold",
+            color="white",
+            zorder=5,
+        )
+    ax.text(
+        0,
+        -0.62,
+        f"Evidence balance tilts {tilt}",
+        ha="center",
+        va="top",
+        fontsize=10,
+        style="italic",
+        color=C["muted"],
+    )
     _title(fig, f"{ticker} \u2014 Thesis Balance")
     return ReportVisual(
         visual_type="svg",
@@ -447,16 +499,13 @@ def svg_thesis_balance(
     )
 
 
-def svg_unit_economics(
-    ticker: str, margins: dict[str, float | None]
-) -> ReportVisual | None:
+def svg_unit_economics(ticker: str, margins: dict[str, float | None]) -> ReportVisual | None:
     """Horizontal margin bars — the company's unit economics at a glance.
 
     ``margins`` maps a label to a decimal margin (0.42 = 42%). Entries that
     are None are skipped; returns None when nothing is available.
     """
-    items = [(label, value) for label, value in margins.items()
-             if value is not None]
+    items = [(label, value) for label, value in margins.items() if value is not None]
     if not items:
         return None
     labels = [label for label, _ in items]
@@ -464,8 +513,7 @@ def svg_unit_economics(
     fig, ax = plt.subplots(figsize=(FIG_WIDTH, 1.6 + 0.9 * len(items)), dpi=DPI)
     fig.patch.set_facecolor("white")
     ax.set_facecolor("white")
-    bars = ax.barh(labels, values, height=0.5, color=C["steel"], alpha=0.9,
-                   zorder=3)
+    bars = ax.barh(labels, values, height=0.5, color=C["steel"], alpha=0.9, zorder=3)
     ax.set_xlabel("Margin (%)", color=C["muted"], fontsize=10)
     ax.set_xlim(min(0, min(values) - 5), 100)
     ax.grid(True, axis="x", color=C["grid"], linewidth=0.8)
@@ -481,7 +529,9 @@ def svg_unit_economics(
             bar.get_y() + bar.get_height() / 2,
             f"{value:.1f}%",
             ha="left" if value >= 0 else "right",
-            va="center", fontsize=10, color=C["text"],
+            va="center",
+            fontsize=10,
+            color=C["text"],
         )
     _title(fig, f"{ticker} \u2014 Unit Economics (latest margins)")
     return ReportVisual(
@@ -490,8 +540,7 @@ def svg_unit_economics(
         content=_to_svg(fig),
         ties_to="Business model economics (Step 7)",
         caption=(
-            "Latest reported margins \u2014 what the company keeps from each "
-            "dollar of revenue."
+            "Latest reported margins \u2014 what the company keeps from each dollar of revenue."
         ),
         interactive={
             "type": "unit_economics",

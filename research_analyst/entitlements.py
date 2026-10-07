@@ -172,6 +172,8 @@ class KeyStore:
 
     # -- persistence (hashes only) -------------------------------------------
     def _load(self) -> None:
+        if self._path is None:
+            return
         try:
             data = json.loads(self._path.read_text(encoding="utf-8"))
         except Exception as e:

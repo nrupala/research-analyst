@@ -39,6 +39,7 @@ Design:
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from ..models import (
     CompanyProfile,
@@ -165,9 +166,7 @@ class RiskEngine:
     # Fundamental risk identification
     # ------------------------------------------------------------------
 
-    def _fundamental_risks(
-        self, profile: CompanyProfile, fund: object
-    ) -> list[StructuredRisk]:
+    def _fundamental_risks(self, profile: CompanyProfile, fund: object) -> list[StructuredRisk]:
         """Identify risks from fundamental analysis."""
         risks: list[StructuredRisk] = []
 
@@ -177,150 +176,174 @@ class RiskEngine:
         debt_to_equity = getattr(fund, "debt_to_equity", None)
         rev_growth = getattr(fund, "revenue_growth_yoy", None)
         op_margin_trend = getattr(fund, "operating_margin_trend", "")
-        net_debt_ebitda = getattr(fund, "net_debt_to_ebitda", None)
-        fcf_to_ni = getattr(fund, "fcf_to_net_income", None)
 
         # High leverage
         if debt_to_equity is not None and debt_to_equity > 1.5:
-            risks.append(StructuredRisk(
-                title="Elevated Financial Leverage",
-                description=(
-                    f"Debt/Equity at {debt_to_equity:.2f}x exceeds 1.5x threshold. "
-                    "Increases sensitivity to rate changes and earnings volatility."
-                ),
-                category=RiskCategory.FINANCIAL,
-                probability="Medium (20-50%)" if debt_to_equity < 2.5 else "High (>50%)",
-                probability_pct=35.0 if debt_to_equity < 2.5 else 55.0,
-                impact="High" if debt_to_equity > 2.5 else "Medium",
-                impact_description="Covenant breach risk, rating downgrade, dividend cut.",
-                timing=RiskDuration.NEAR_TERM if debt_to_equity > 3 else RiskDuration.MEDIUM_TERM,
-                nature=RiskNature.STRUCTURAL,
-                mitigants=[
-                    "Strong free cash flow generation for de-leveraging.",
-                    "Fixed-rate debt structure limits near-term rate exposure.",
-                    "Diversified maturity profile avoids refinancing wall.",
-                ],
-                monitoring_triggers=[
-                    "Net Debt/EBITDA exceeds 4.0x.",
-                    "Interest coverage falls below 3.0x.",
-                    "Credit rating placed on negative watch.",
-                ],
-                second_order_effects=[
-                    "Higher cost of debt constrains future capex or M&A.",
-                    "Equity dilution risk if forced to raise capital.",
-                    "Reduced financial flexibility limits competitive responses.",
-                ],
-            ))
+            risks.append(
+                StructuredRisk(
+                    title="Elevated Financial Leverage",
+                    description=(
+                        f"Debt/Equity at {debt_to_equity:.2f}x exceeds 1.5x threshold. "
+                        "Increases sensitivity to rate changes and earnings volatility."
+                    ),
+                    category=RiskCategory.FINANCIAL,
+                    probability="Medium (20-50%)" if debt_to_equity < 2.5 else "High (>50%)",
+                    probability_pct=35.0 if debt_to_equity < 2.5 else 55.0,
+                    impact="High" if debt_to_equity > 2.5 else "Medium",
+                    impact_description="Covenant breach risk, rating downgrade, dividend cut.",
+                    timing=RiskDuration.NEAR_TERM
+                    if debt_to_equity > 3
+                    else RiskDuration.MEDIUM_TERM,
+                    nature=RiskNature.STRUCTURAL,
+                    mitigants=[
+                        "Strong free cash flow generation for de-leveraging.",
+                        "Fixed-rate debt structure limits near-term rate exposure.",
+                        "Diversified maturity profile avoids refinancing wall.",
+                    ],
+                    monitoring_triggers=[
+                        "Net Debt/EBITDA exceeds 4.0x.",
+                        "Interest coverage falls below 3.0x.",
+                        "Credit rating placed on negative watch.",
+                    ],
+                    second_order_effects=[
+                        "Higher cost of debt constrains future capex or M&A.",
+                        "Equity dilution risk if forced to raise capital.",
+                        "Reduced financial flexibility limits competitive responses.",
+                    ],
+                )
+            )
 
         # Revenue decline
         if rev_growth is not None and rev_growth < -0.05:
-            risks.append(StructuredRisk(
-                title="Revenue Decline",
-                description=(
-                    f"Revenue declined {rev_growth:.1%} YoY. Sustained decline "
-                    "erodes operating leverage and may trigger cost restructuring."
-                ),
-                category=RiskCategory.OPERATIONAL,
-                probability="Medium (20-50%)" if rev_growth > -0.15 else "High (>50%)",
-                probability_pct=40.0 if rev_growth > -0.15 else 60.0,
-                impact="High",
-                impact_description="Margin compression, potential headcount reduction, strategic pivot risk.",
-                timing=RiskDuration.NEAR_TERM,
-                nature=RiskNature.TRANSITORY if rev_growth > -0.10 else RiskNature.STRUCTURAL,
-                mitigants=[
-                    "New product pipeline or market expansion.",
-                    "Cost restructuring to protect margins.",
-                    "Recurring revenue base provides floor.",
-                ],
-                monitoring_triggers=[
-                    "Two consecutive quarters of revenue decline.",
-                    "Customer churn rate exceeding 10%.",
-                    "Management revises guidance downward.",
-                ],
-                second_order_effects=[
-                    "Fixed cost deleverage accelerates margin decline.",
-                    "Key talent attrition as growth narrative weakens.",
-                    "Competitive share loss becomes self-reinforcing.",
-                ],
-            ))
+            risks.append(
+                StructuredRisk(
+                    title="Revenue Decline",
+                    description=(
+                        f"Revenue declined {rev_growth:.1%} YoY. Sustained decline "
+                        "erodes operating leverage and may trigger cost restructuring."
+                    ),
+                    category=RiskCategory.OPERATIONAL,
+                    probability="Medium (20-50%)" if rev_growth > -0.15 else "High (>50%)",
+                    probability_pct=40.0 if rev_growth > -0.15 else 60.0,
+                    impact="High",
+                    impact_description=(
+                        "Margin compression, potential headcount reduction, strategic pivot "
+                        "risk."
+                    ),
+                    timing=RiskDuration.NEAR_TERM,
+                    nature=RiskNature.TRANSITORY if rev_growth > -0.10 else RiskNature.STRUCTURAL,
+                    mitigants=[
+                        "New product pipeline or market expansion.",
+                        "Cost restructuring to protect margins.",
+                        "Recurring revenue base provides floor.",
+                    ],
+                    monitoring_triggers=[
+                        "Two consecutive quarters of revenue decline.",
+                        "Customer churn rate exceeding 10%.",
+                        "Management revises guidance downward.",
+                    ],
+                    second_order_effects=[
+                        "Fixed cost deleverage accelerates margin decline.",
+                        "Key talent attrition as growth narrative weakens.",
+                        "Competitive share loss becomes self-reinforcing.",
+                    ],
+                )
+            )
 
         # Margin compression
         if op_margin_trend == "contracting":
-            risks.append(StructuredRisk(
-                title="Operating Margin Contraction",
-                description=(
-                    "Operating margins contracting over recent periods. "
-                    "May indicate pricing pressure, input cost inflation, or mix shift."
-                ),
-                category=RiskCategory.OPERATIONAL,
-                probability="Medium (20-50%)",
-                probability_pct=40.0,
-                impact="Medium",
-                impact_description="Earnings compression, potential multiple de-rating.",
-                timing=RiskDuration.MEDIUM_TERM,
-                nature=RiskNature.STRUCTURAL if op_margin_trend == "contracting" else RiskNature.TRANSITORY,
-                mitigants=[
-                    "Pricing actions or mix improvement initiatives.",
-                    "Operational efficiency programs.",
-                    "Scale benefits from revenue growth.",
-                ],
-                monitoring_triggers=[
-                    "Gross margin declines for 3+ consecutive quarters.",
-                    "SG&A as % of revenue rising above peer median.",
-                ],
-                second_order_effects=[
-                    "Lower margins reduce reinvestment capacity.",
-                    "Valuation multiple compression if market perceives structural shift.",
-                ],
-            ))
+            risks.append(
+                StructuredRisk(
+                    title="Operating Margin Contraction",
+                    description=(
+                        "Operating margins contracting over recent periods. "
+                        "May indicate pricing pressure, input cost inflation, or mix shift."
+                    ),
+                    category=RiskCategory.OPERATIONAL,
+                    probability="Medium (20-50%)",
+                    probability_pct=40.0,
+                    impact="Medium",
+                    impact_description="Earnings compression, potential multiple de-rating.",
+                    timing=RiskDuration.MEDIUM_TERM,
+                    nature=RiskNature.STRUCTURAL
+                    if op_margin_trend == "contracting"
+                    else RiskNature.TRANSITORY,
+                    mitigants=[
+                        "Pricing actions or mix improvement initiatives.",
+                        "Operational efficiency programs.",
+                        "Scale benefits from revenue growth.",
+                    ],
+                    monitoring_triggers=[
+                        "Gross margin declines for 3+ consecutive quarters.",
+                        "SG&A as % of revenue rising above peer median.",
+                    ],
+                    second_order_effects=[
+                        "Lower margins reduce reinvestment capacity.",
+                        "Valuation multiple compression if market perceives structural shift.",
+                    ],
+                )
+            )
 
         # Weak balance sheet
         if balance_grade == "Weak":
-            risks.append(StructuredRisk(
-                title="Weak Balance Sheet",
-                description=(
-                    f"Balance sheet graded '{balance_grade}'. "
-                    "Multiple metrics (leverage, liquidity, coverage) below healthy thresholds."
-                ),
-                category=RiskCategory.FINANCIAL,
-                probability="Medium (20-50%)",
-                probability_pct=35.0,
-                impact="High",
-                impact_description="Limited financial flexibility, potential capital raise.",
-                timing=RiskDuration.MEDIUM_TERM,
-                nature=RiskNature.STRUCTURAL,
-                mitigants=["Asset sales or divestitures possible.", "Covenant renegotiation."],
-                monitoring_triggers=["Current ratio falls below 1.0x.", "Negative free cash flow for 2+ quarters."],
-                second_order_effects=["Supplier terms may tighten.", "Talent retention suffers as equity comp devalues."],
-            ))
+            risks.append(
+                StructuredRisk(
+                    title="Weak Balance Sheet",
+                    description=(
+                        f"Balance sheet graded '{balance_grade}'. "
+                        "Multiple metrics (leverage, liquidity, coverage) below healthy thresholds."
+                    ),
+                    category=RiskCategory.FINANCIAL,
+                    probability="Medium (20-50%)",
+                    probability_pct=35.0,
+                    impact="High",
+                    impact_description="Limited financial flexibility, potential capital raise.",
+                    timing=RiskDuration.MEDIUM_TERM,
+                    nature=RiskNature.STRUCTURAL,
+                    mitigants=["Asset sales or divestitures possible.", "Covenant renegotiation."],
+                    monitoring_triggers=[
+                        "Current ratio falls below 1.0x.",
+                        "Negative free cash flow for 2+ quarters.",
+                    ],
+                    second_order_effects=[
+                        "Supplier terms may tighten.",
+                        "Talent retention suffers as equity comp devalues.",
+                    ],
+                )
+            )
 
         # Low earnings quality
         if earnings_quality == "Low":
-            risks.append(StructuredRisk(
-                title="Low Earnings Quality",
-                description=(
-                    f"Earnings quality graded '{earnings_quality}'. "
-                    "Large gap between reported earnings and cash flow suggests "
-                    "high accruals or accounting aggressiveness."
-                ),
-                category=RiskCategory.FINANCIAL,
-                probability="Medium (20-50%)",
-                probability_pct=30.0,
-                impact="High",
-                impact_description="Earnings restatement risk, surprise write-downs.",
-                timing=RiskDuration.NEAR_TERM,
-                nature=RiskNature.STRUCTURAL,
-                mitigants=["Auditor review and internal controls.", "Management commentary on accrual items."],
-                monitoring_triggers=[
-                    "FCF/Net Income ratio falls below 0.3x.",
-                    "Auditor change or qualified opinion.",
-                    "Receivables growing faster than revenue.",
-                ],
-                second_order_effects=[
-                    "Institutional holders may reduce positions on quality concerns.",
-                    "Short interest may increase.",
-                ],
-            ))
+            risks.append(
+                StructuredRisk(
+                    title="Low Earnings Quality",
+                    description=(
+                        f"Earnings quality graded '{earnings_quality}'. "
+                        "Large gap between reported earnings and cash flow suggests "
+                        "high accruals or accounting aggressiveness."
+                    ),
+                    category=RiskCategory.FINANCIAL,
+                    probability="Medium (20-50%)",
+                    probability_pct=30.0,
+                    impact="High",
+                    impact_description="Earnings restatement risk, surprise write-downs.",
+                    timing=RiskDuration.NEAR_TERM,
+                    nature=RiskNature.STRUCTURAL,
+                    mitigants=[
+                        "Auditor review and internal controls.",
+                        "Management commentary on accrual items.",
+                    ],
+                    monitoring_triggers=[
+                        "FCF/Net Income ratio falls below 0.3x.",
+                        "Auditor change or qualified opinion.",
+                        "Receivables growing faster than revenue.",
+                    ],
+                    second_order_effects=[
+                        "Institutional holders may reduce positions on quality concerns.",
+                        "Short interest may increase.",
+                    ],
+                )
+            )
 
         return risks
 
@@ -328,82 +351,96 @@ class RiskEngine:
     # Technical risk identification
     # ------------------------------------------------------------------
 
-    def _technical_risks(
-        self, profile: CompanyProfile, tech: object
-    ) -> list[StructuredRisk]:
+    def _technical_risks(self, profile: CompanyProfile, tech: object) -> list[StructuredRisk]:
         """Identify risks from technical analysis."""
         risks: list[StructuredRisk] = []
 
         regime = getattr(tech, "regime", "")
         volatility_score = getattr(tech, "volatility_score", 50.0)
-        distance_high = getattr(tech, "distance_from_52w_high_pct", 0.0)
         patterns = getattr(tech, "patterns", [])
 
         # Bearish technical regime
         if regime == "bearish":
-            risks.append(StructuredRisk(
-                title="Bearish Technical Regime",
-                description=(
-                    "Composite technical score indicates bearish regime. "
-                    "Price below key moving averages with negative momentum."
-                ),
-                category=RiskCategory.OPERATIONAL,
-                probability="Medium (20-50%)",
-                impact="Medium",
-                impact_description="Continued price weakness may trigger stop-losses and forced selling.",
-                timing=RiskDuration.NEAR_TERM,
-                nature=RiskNature.TRANSITORY,
-                mitigants=[
-                    "Oversold conditions may precede mean reversion.",
-                    "Fundamental support at key valuation levels.",
-                ],
-                monitoring_triggers=[
-                    "Death cross (50-day SMA crosses below 200-day).",
-                    "RSI sustained below 30 for 5+ sessions.",
-                    "Volume expansion on down days.",
-                ],
-                second_order_effects=[
-                    "Algorithmic selling amplifies technical breakdowns.",
-                    "Options market makers delta-hedging accelerates moves.",
-                ],
-            ))
+            risks.append(
+                StructuredRisk(
+                    title="Bearish Technical Regime",
+                    description=(
+                        "Composite technical score indicates bearish regime. "
+                        "Price below key moving averages with negative momentum."
+                    ),
+                    category=RiskCategory.OPERATIONAL,
+                    probability="Medium (20-50%)",
+                    impact="Medium",
+                    impact_description=(
+                        "Continued price weakness may trigger stop-losses and forced "
+                        "selling."
+                    ),
+                    timing=RiskDuration.NEAR_TERM,
+                    nature=RiskNature.TRANSITORY,
+                    mitigants=[
+                        "Oversold conditions may precede mean reversion.",
+                        "Fundamental support at key valuation levels.",
+                    ],
+                    monitoring_triggers=[
+                        "Death cross (50-day SMA crosses below 200-day).",
+                        "RSI sustained below 30 for 5+ sessions.",
+                        "Volume expansion on down days.",
+                    ],
+                    second_order_effects=[
+                        "Algorithmic selling amplifies technical breakdowns.",
+                        "Options market makers delta-hedging accelerates moves.",
+                    ],
+                )
+            )
 
         # High volatility
         if volatility_score > 75:
-            risks.append(StructuredRisk(
-                title="Elevated Price Volatility",
-                description=(
-                    f"Volatility score at {volatility_score:.0f}/100 — above-average "
-                    "price swings increase position sizing risk."
-                ),
-                category=RiskCategory.OPERATIONAL,
-                probability="High (>50%)",
-                impact="Medium",
-                impact_description="Wider bid-ask spreads, stop-loss triggers, emotional decision risk.",
-                timing=RiskDuration.NEAR_TERM,
-                nature=RiskNature.TRANSITORY,
-                mitigants=["Reduced position sizing.", "Wider stop-loss bands."],
-                monitoring_triggers=["ATR exceeds 5% of price.", "VIX spike above 30."],
-                second_order_effects=["Options premiums inflate, increasing hedging costs."],
-            ))
+            risks.append(
+                StructuredRisk(
+                    title="Elevated Price Volatility",
+                    description=(
+                        f"Volatility score at {volatility_score:.0f}/100 — above-average "
+                        "price swings increase position sizing risk."
+                    ),
+                    category=RiskCategory.OPERATIONAL,
+                    probability="High (>50%)",
+                    impact="Medium",
+                    impact_description=(
+                        "Wider bid-ask spreads, stop-loss triggers, emotional decision "
+                        "risk."
+                    ),
+                    timing=RiskDuration.NEAR_TERM,
+                    nature=RiskNature.TRANSITORY,
+                    mitigants=["Reduced position sizing.", "Wider stop-loss bands."],
+                    monitoring_triggers=["ATR exceeds 5% of price.", "VIX spike above 30."],
+                    second_order_effects=["Options premiums inflate, increasing hedging costs."],
+                )
+            )
 
         # Bearish patterns
         bearish_patterns = [p for p in patterns if "bearish" in p.lower()]
         if bearish_patterns:
-            risks.append(StructuredRisk(
-                title="Bearish Chart Pattern Detected",
-                description=f"Pattern(s): {', '.join(bearish_patterns)}.",
-                category=RiskCategory.OPERATIONAL,
-                probability="Low (<20%)",
-                probability_pct=15.0,
-                impact="Medium",
-                impact_description="Pattern completion would confirm trend reversal.",
-                timing=RiskDuration.NEAR_TERM,
-                nature=RiskNature.TRANSITORY,
-                mitigants=["Pattern may fail (not all patterns complete).", "Volume must confirm."],
-                monitoring_triggers=["Neckline break on above-average volume."],
-                second_order_effects=["Technical traders pile in, creating self-fulfilling momentum."],
-            ))
+            risks.append(
+                StructuredRisk(
+                    title="Bearish Chart Pattern Detected",
+                    description=f"Pattern(s): {', '.join(bearish_patterns)}.",
+                    category=RiskCategory.OPERATIONAL,
+                    probability="Low (<20%)",
+                    probability_pct=15.0,
+                    impact="Medium",
+                    impact_description="Pattern completion would confirm trend reversal.",
+                    timing=RiskDuration.NEAR_TERM,
+                    nature=RiskNature.TRANSITORY,
+                    mitigants=[
+                        "Pattern may fail (not all patterns complete).",
+                        "Volume must confirm.",
+                    ],
+                    monitoring_triggers=["Neckline break on above-average volume."],
+                    second_order_effects=[
+                        "Technical traders pile in, creating self-fulfilling momentum."
+                    ],
+                )
+            )
 
         return risks
 
@@ -411,9 +448,7 @@ class RiskEngine:
     # Macro risk identification
     # ------------------------------------------------------------------
 
-    def _macro_risks(
-        self, profile: CompanyProfile, macro: object
-    ) -> list[StructuredRisk]:
+    def _macro_risks(self, profile: CompanyProfile, macro: object) -> list[StructuredRisk]:
         """Identify risks from macro analysis."""
         risks: list[StructuredRisk] = []
 
@@ -423,40 +458,39 @@ class RiskEngine:
         # Unfavorable macro environment
         if favorability == "unfavorable":
             headwinds = [
-                impl for impl in implications
-                if getattr(impl, "implication", "") == "headwind"
+                impl for impl in implications if getattr(impl, "implication", "") == "headwind"
             ]
-            headwind_desc = "; ".join(
-                getattr(h, "factor", "") for h in headwinds[:3]
+            headwind_desc = "; ".join(getattr(h, "factor", "") for h in headwinds[:3])
+            risks.append(
+                StructuredRisk(
+                    title="Unfavorable Macro Environment",
+                    description=(
+                        f"Macro environment assessed as unfavorable for {profile.sector}. "
+                        f"Key headwinds: {headwind_desc}."
+                    ),
+                    category=RiskCategory.MACRO,
+                    probability="Medium (20-50%)",
+                    probability_pct=40.0,
+                    impact="High",
+                    impact_description="Multiple compression, demand destruction, earnings miss.",
+                    timing=RiskDuration.MEDIUM_TERM,
+                    nature=RiskNature.TRANSITORY,
+                    mitigants=[
+                        "Counter-cyclical positioning within portfolio.",
+                        "Company-specific growth drivers may offset macro drag.",
+                    ],
+                    monitoring_triggers=[
+                        "Yield curve inversion deepening.",
+                        "ISM Manufacturing below 48.",
+                        "Credit spreads widening above 500bps (HY).",
+                    ],
+                    second_order_effects=[
+                        "Sector rotation away from cyclicals toward defensives.",
+                        "Capital markets activity slows, affecting revenue for financial sector.",
+                        "Consumer confidence decline reduces discretionary spending.",
+                    ],
+                )
             )
-            risks.append(StructuredRisk(
-                title="Unfavorable Macro Environment",
-                description=(
-                    f"Macro environment assessed as unfavorable for {profile.sector}. "
-                    f"Key headwinds: {headwind_desc}."
-                ),
-                category=RiskCategory.MACRO,
-                probability="Medium (20-50%)",
-                probability_pct=40.0,
-                impact="High",
-                impact_description="Multiple compression, demand destruction, earnings miss.",
-                timing=RiskDuration.MEDIUM_TERM,
-                nature=RiskNature.TRANSITORY,
-                mitigants=[
-                    "Counter-cyclical positioning within portfolio.",
-                    "Company-specific growth drivers may offset macro drag.",
-                ],
-                monitoring_triggers=[
-                    "Yield curve inversion deepening.",
-                    "ISM Manufacturing below 48.",
-                    "Credit spreads widening above 500bps (HY).",
-                ],
-                second_order_effects=[
-                    "Sector rotation away from cyclicals toward defensives.",
-                    "Capital markets activity slows, affecting revenue for financial sector.",
-                    "Consumer confidence decline reduces discretionary spending.",
-                ],
-            ))
 
         return risks
 
@@ -464,9 +498,7 @@ class RiskEngine:
     # Competitive risk identification
     # ------------------------------------------------------------------
 
-    def _competitive_risks(
-        self, profile: CompanyProfile, comp: object
-    ) -> list[StructuredRisk]:
+    def _competitive_risks(self, profile: CompanyProfile, comp: object) -> list[StructuredRisk]:
         """Identify risks from competitive analysis."""
         risks: list[StructuredRisk] = []
 
@@ -474,34 +506,39 @@ class RiskEngine:
         positioning = getattr(comp, "positioning_summary", "")
 
         if len(disadvantages) >= 3:
-            risks.append(StructuredRisk(
-                title="Weak Competitive Position",
-                description=(
-                    f"Company ranks below peers on {len(disadvantages)} key metrics. "
-                    f"Positioning: {positioning}"
-                ),
-                category=RiskCategory.COMPETITIVE,
-                probability="Medium (20-50%)",
-                probability_pct=35.0,
-                impact="Medium",
-                impact_description="Market share erosion, pricing pressure, talent loss to competitors.",
-                timing=RiskDuration.LONG_TERM,
-                nature=RiskNature.STRUCTURAL,
-                mitigants=[
-                    "Strategic initiatives to close competitive gaps.",
-                    "M&A to acquire missing capabilities.",
-                    "Niche positioning where company has advantage.",
-                ],
-                monitoring_triggers=[
-                    "Market share data showing sustained losses.",
-                    "Win-rate declining in competitive bids.",
-                    "Key customer defections.",
-                ],
-                second_order_effects=[
-                    "Weaker position reduces pricing power, compressing margins further.",
-                    "R&D investment may need to accelerate, pressuring near-term earnings.",
-                ],
-            ))
+            risks.append(
+                StructuredRisk(
+                    title="Weak Competitive Position",
+                    description=(
+                        f"Company ranks below peers on {len(disadvantages)} key metrics. "
+                        f"Positioning: {positioning}"
+                    ),
+                    category=RiskCategory.COMPETITIVE,
+                    probability="Medium (20-50%)",
+                    probability_pct=35.0,
+                    impact="Medium",
+                    impact_description=(
+                        "Market share erosion, pricing pressure, talent loss to "
+                        "competitors."
+                    ),
+                    timing=RiskDuration.LONG_TERM,
+                    nature=RiskNature.STRUCTURAL,
+                    mitigants=[
+                        "Strategic initiatives to close competitive gaps.",
+                        "M&A to acquire missing capabilities.",
+                        "Niche positioning where company has advantage.",
+                    ],
+                    monitoring_triggers=[
+                        "Market share data showing sustained losses.",
+                        "Win-rate declining in competitive bids.",
+                        "Key customer defections.",
+                    ],
+                    second_order_effects=[
+                        "Weaker position reduces pricing power, compressing margins further.",
+                        "R&D investment may need to accelerate, pressuring near-term earnings.",
+                    ],
+                )
+            )
 
         return risks
 
@@ -516,12 +553,15 @@ class RiskEngine:
         sector = profile.sector or ""
 
         # Sector-specific regulatory exposure
-        sector_reg: dict[str, dict] = {
+        sector_reg: dict[str, dict[str, Any]] = {
             "Technology": {
                 "title": "Technology Regulation Risk",
                 "description": (
-                    "Increasing antitrust scrutiny, data privacy regulation (GDPR, CCPA successors), "
-                    "and AI governance frameworks may constrain business models or increase compliance costs."
+                    "Increasing antitrust scrutiny, data privacy regulation (GDPR, CCPA "
+                    "successors), "
+                    "and AI governance frameworks may constrain business models or increase "
+                    "compliance "
+                    "costs."
                 ),
                 "probability": "Medium (20-50%)",
                 "impact": "Medium",
@@ -561,17 +601,27 @@ class RiskEngine:
 
         if sector in sector_reg:
             reg = sector_reg[sector]
-            risks.append(StructuredRisk(
-                title=reg["title"],
-                description=reg["description"],
-                category=RiskCategory.REGULATORY,
-                probability=reg["probability"],
-                impact=reg["impact"],
-                timing=reg["timing"],
-                nature=RiskNature.STRUCTURAL,
-                mitigants=["Compliance infrastructure investment.", "Regulatory lobbying and engagement."],
-                monitoring_triggers=["New legislation introduced.", "Regulatory enforcement actions in sector."],
-                second_order_effects=["Compliance costs create barriers to entry (potential moat for incumbents)."],
-            ))
+            risks.append(
+                StructuredRisk(
+                    title=reg["title"],
+                    description=reg["description"],
+                    category=RiskCategory.REGULATORY,
+                    probability=reg["probability"],
+                    impact=reg["impact"],
+                    timing=reg["timing"],
+                    nature=RiskNature.STRUCTURAL,
+                    mitigants=[
+                        "Compliance infrastructure investment.",
+                        "Regulatory lobbying and engagement.",
+                    ],
+                    monitoring_triggers=[
+                        "New legislation introduced.",
+                        "Regulatory enforcement actions in sector.",
+                    ],
+                    second_order_effects=[
+                        "Compliance costs create barriers to entry (potential moat for incumbents)."
+                    ],
+                )
+            )
 
         return risks

@@ -61,13 +61,13 @@ class TechnicalAnalysis:
     ticker: str = ""
 
     # Composite scores (0-100)
-    trend_score: float = 50.0       # 0=strong downtrend, 100=strong uptrend
-    momentum_score: float = 50.0    # 0=oversold, 100=overbought
+    trend_score: float = 50.0  # 0=strong downtrend, 100=strong uptrend
+    momentum_score: float = 50.0  # 0=oversold, 100=overbought
     volatility_score: float = 50.0  # 0=low vol, 100=high vol
 
     # Overall
-    composite_score: float = 50.0   # Weighted blend
-    regime: str = ""                # "bullish" / "bearish" / "neutral" / "transitioning"
+    composite_score: float = 50.0  # Weighted blend
+    regime: str = ""  # "bullish" / "bearish" / "neutral" / "transitioning"
 
     # Individual signals
     signals: list[TechnicalSignal] = field(default_factory=list)
@@ -135,26 +135,26 @@ class TechnicalEngine:
         # ---- Price context ----
         if series.price_52w_high > 0:
             result.distance_from_52w_high_pct = (
-                (series.current_price - series.price_52w_high) / series.price_52w_high
-            )
+                series.current_price - series.price_52w_high
+            ) / series.price_52w_high
         if series.price_52w_low > 0:
             result.distance_from_52w_low_pct = (
-                (series.current_price - series.price_52w_low) / series.price_52w_low
-            )
+                series.current_price - series.price_52w_low
+            ) / series.price_52w_low
 
         # ---- Key levels ----
         if indicators.support_levels:
             result.nearest_support = indicators.support_levels[0]
             if result.nearest_support and series.current_price:
                 result.support_distance_pct = (
-                    (series.current_price - result.nearest_support) / series.current_price
-                )
+                    series.current_price - result.nearest_support
+                ) / series.current_price
         if indicators.resistance_levels:
             result.nearest_resistance = indicators.resistance_levels[0]
             if result.nearest_resistance and series.current_price:
                 result.resistance_distance_pct = (
-                    (result.nearest_resistance - series.current_price) / series.current_price
-                )
+                    result.nearest_resistance - series.current_price
+                ) / series.current_price
 
         # ---- 1. Trend Score ----
         trend_points = 0.0
@@ -200,15 +200,24 @@ class TechnicalEngine:
         result.trend_score = (trend_points / trend_max * 100) if trend_max > 0 else 50.0
 
         # Signal entries for trend
-        self._add_signal(result, "SMA 200", indicators.price_vs_sma_200,
-                         "bullish" if indicators.price_vs_sma_200 == "above" else "bearish",
-                         "moderate",
-                         f"Price is {indicators.price_vs_sma_200} the 200-day SMA.")
-        self._add_signal(result, "SMA 50/200 Cross", indicators.sma_50_vs_200,
-                         "bullish" if indicators.sma_50_vs_200 == "golden_cross" else (
-                             "bearish" if indicators.sma_50_vs_200 == "death_cross" else "neutral"),
-                         "strong" if indicators.sma_50_vs_200 != "neutral" else "weak",
-                         f"50/200 SMA relationship: {indicators.sma_50_vs_200}.")
+        self._add_signal(
+            result,
+            "SMA 200",
+            indicators.price_vs_sma_200,
+            "bullish" if indicators.price_vs_sma_200 == "above" else "bearish",
+            "moderate",
+            f"Price is {indicators.price_vs_sma_200} the 200-day SMA.",
+        )
+        self._add_signal(
+            result,
+            "SMA 50/200 Cross",
+            indicators.sma_50_vs_200,
+            "bullish"
+            if indicators.sma_50_vs_200 == "golden_cross"
+            else ("bearish" if indicators.sma_50_vs_200 == "death_cross" else "neutral"),
+            "strong" if indicators.sma_50_vs_200 != "neutral" else "weak",
+            f"50/200 SMA relationship: {indicators.sma_50_vs_200}.",
+        )
 
         # ---- 2. Momentum Score ----
         mom_points = 0.0
@@ -227,10 +236,14 @@ class TechnicalEngine:
             else:
                 mom_points += 5  # Overbought = bearish
 
-            self._add_signal(result, "RSI (14)", f"{indicators.rsi_14:.1f}",
-                             indicators.rsi_signal or "neutral",
-                             "strong" if indicators.rsi_14 < 30 or indicators.rsi_14 > 70 else "moderate",
-                             f"RSI at {indicators.rsi_14:.1f} — {indicators.rsi_signal}.")
+            self._add_signal(
+                result,
+                "RSI (14)",
+                f"{indicators.rsi_14:.1f}",
+                indicators.rsi_signal or "neutral",
+                "strong" if indicators.rsi_14 < 30 or indicators.rsi_14 > 70 else "moderate",
+                f"RSI at {indicators.rsi_14:.1f} — {indicators.rsi_signal}.",
+            )
 
         # MACD
         if indicators.macd is not None:
@@ -244,10 +257,14 @@ class TechnicalEngine:
             else:
                 mom_points += 10
 
-            self._add_signal(result, "MACD", f"{indicators.macd:.4f}",
-                             indicators.macd_crossover if indicators.macd_crossover != "none" else "neutral",
-                             "strong" if indicators.macd_crossover != "none" else "moderate",
-                             f"MACD crossover: {indicators.macd_crossover}.")
+            self._add_signal(
+                result,
+                "MACD",
+                f"{indicators.macd:.4f}",
+                indicators.macd_crossover if indicators.macd_crossover != "none" else "neutral",
+                "strong" if indicators.macd_crossover != "none" else "moderate",
+                f"MACD crossover: {indicators.macd_crossover}.",
+            )
 
         # YTD return momentum
         mom_max += 30
@@ -307,9 +324,14 @@ class TechnicalEngine:
         elif indicators.obv_trend == "distribution" and indicators.volume_trend == "increasing":
             vol_signal = "bearish"
 
-        self._add_signal(result, "Volume / OBV", indicators.obv_trend,
-                         vol_signal, "moderate",
-                         f"OBV trend: {indicators.obv_trend}. Volume trend: {indicators.volume_trend}.")
+        self._add_signal(
+            result,
+            "Volume / OBV",
+            indicators.obv_trend,
+            vol_signal,
+            "moderate",
+            f"OBV trend: {indicators.obv_trend}. Volume trend: {indicators.volume_trend}.",
+        )
 
         # ---- 5. Composite Score ----
         volume_score = 50.0
@@ -336,17 +358,23 @@ class TechnicalEngine:
             result.regime = "bearish"
 
         # ---- Assumptions ----
-        result.assumptions.append(Assumption(
-            label="Technical Scoring Weights",
-            value=f"Trend: {self._WEIGHTS['trend']:.0%}, Momentum: {self._WEIGHTS['momentum']:.0%}, "
-                  f"Volatility: {self._WEIGHTS['volatility']:.0%}, Volume: {self._WEIGHTS['volume']:.0%}",
-            source="Engine default weights",
-        ))
-        result.assumptions.append(Assumption(
-            label="Composite Score",
-            value=f"{result.composite_score:.1f}/100 ({result.regime})",
-            source="Weighted blend of trend, momentum, volatility, volume scores",
-        ))
+        result.assumptions.append(
+            Assumption(
+                label="Technical Scoring Weights",
+                value=f"Trend: {self._WEIGHTS['trend']:.0%}, Momentum: "
+                f"{self._WEIGHTS['momentum']:.0%}, "
+                f"Volatility: {self._WEIGHTS['volatility']:.0%}, Volume: "
+                f"{self._WEIGHTS['volume']:.0%}",
+                source="Engine default weights",
+            )
+        )
+        result.assumptions.append(
+            Assumption(
+                label="Composite Score",
+                value=f"{result.composite_score:.1f}/100 ({result.regime})",
+                source="Weighted blend of trend, momentum, volatility, volume scores",
+            )
+        )
 
         return result
 
@@ -361,10 +389,12 @@ class TechnicalEngine:
     ) -> None:
         """Add a signal entry if the value is non-empty."""
         if value:
-            result.signals.append(TechnicalSignal(
-                indicator=indicator,
-                value=value,
-                signal=signal,
-                strength=strength,
-                description=description,
-            ))
+            result.signals.append(
+                TechnicalSignal(
+                    indicator=indicator,
+                    value=value,
+                    signal=signal,
+                    strength=strength,
+                    description=description,
+                )
+            )

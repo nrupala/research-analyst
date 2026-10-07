@@ -35,8 +35,8 @@ secret bindings by name+type, never their contents.
 import json
 import os
 import sys
-import urllib.request
 import urllib.error
+import urllib.request
 
 API = "https://api.cloudflare.com/client/v4"
 TOKEN = os.environ["CF_API_TOKEN"]
@@ -94,21 +94,21 @@ def write_file(path, text):
 
 
 def main():
-    listing = _get_json("/accounts/{}/workers/scripts".format(ACCOUNT))
+    listing = _get_json(f"/accounts/{ACCOUNT}/workers/scripts")
     scripts = listing.get("result") or []
-    print("Found {} workers".format(len(scripts)))
+    print(f"Found {len(scripts)} workers")
     failures = 0
     for s in scripts:
         name = s.get("id")
         try:
             code, ctype = _get(
-                "/accounts/{}/workers/scripts/{}".format(ACCOUNT, name)
+                f"/accounts/{ACCOUNT}/workers/scripts/{name}"
             )
             modules = parse_modules(code, ctype)
             for fname, text in modules.items():
                 write_file(os.path.join(OUT, name, "src", fname), text)
             settings = _get_json(
-                "/accounts/{}/workers/scripts/{}/settings".format(ACCOUNT, name)
+                f"/accounts/{ACCOUNT}/workers/scripts/{name}/settings"
             ).get("result", {})
             meta = {
                 "name": name,
@@ -123,16 +123,16 @@ def main():
                 os.path.join(OUT, name, "metadata.json"),
                 json.dumps(meta, indent=2, sort_keys=True) + "\n",
             )
-            print("  ok: {} ({} module(s))".format(name, len(modules)))
+            print(f"  ok: {name} ({len(modules)} module(s))")
         except urllib.error.HTTPError as e:
             failures += 1
             print(
-                "  FAIL {}: HTTP {} {}".format(name, e.code, e.read()[:200]),
+                f"  FAIL {name}: HTTP {e.code} {e.read()[:200]}",
                 file=sys.stderr,
             )
         except Exception as e:  # noqa: BLE001 - fail-soft per worker
             failures += 1
-            print("  FAIL {}: {}".format(name, e), file=sys.stderr)
+            print(f"  FAIL {name}: {e}", file=sys.stderr)
     # Non-zero exit only if EVERY worker failed (likely auth/config), so a single
     # flaky worker never blocks the rest of the backup.
     if scripts and failures == len(scripts):

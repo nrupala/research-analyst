@@ -56,6 +56,7 @@ logger = logging.getLogger(__name__)
 # Output model
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class FundamentalAnalysis:
     """Structured output of fundamental analysis."""
@@ -179,11 +180,11 @@ class FundamentalEngine:
         if prior:
             result.revenue_growth_yoy = self._growth_rate(latest.revenue, prior.revenue)
             result.earnings_growth_yoy = self._growth_rate(latest.net_income, prior.net_income)
-            result.fcf_growth_yoy = self._growth_rate(
-                latest.free_cash_flow, prior.free_cash_flow
-            )
+            result.fcf_growth_yoy = self._growth_rate(latest.free_cash_flow, prior.free_cash_flow)
             if latest.eps_diluted is not None and prior.eps_diluted and prior.eps_diluted != 0:
-                result.eps_growth_yoy = (latest.eps_diluted - prior.eps_diluted) / abs(prior.eps_diluted)
+                result.eps_growth_yoy = (latest.eps_diluted - prior.eps_diluted) / abs(
+                    prior.eps_diluted
+                )
         else:
             result.data_gaps.append("Only one period available; cannot compute YoY growth.")
 
@@ -226,17 +227,21 @@ class FundamentalEngine:
         )
 
         # ---- Assumptions ----
-        result.assumptions.append(Assumption(
-            label="Analysis Period",
-            value=f"{result.periods_analyzed} annual periods, most recent: {latest.period}",
-            source="SEC/yfinance financial statements",
-        ))
+        result.assumptions.append(
+            Assumption(
+                label="Analysis Period",
+                value=f"{result.periods_analyzed} annual periods, most recent: {latest.period}",
+                source="SEC/yfinance financial statements",
+            )
+        )
         if result.revenue_growth_yoy is not None:
-            result.assumptions.append(Assumption(
-                label="Revenue Growth (YoY)",
-                value=f"{result.revenue_growth_yoy:.1%}",
-                source=f"{latest.period} vs {prior.period}" if prior else "N/A",
-            ))
+            result.assumptions.append(
+                Assumption(
+                    label="Revenue Growth (YoY)",
+                    value=f"{result.revenue_growth_yoy:.1%}",
+                    source=f"{latest.period} vs {prior.period}" if prior else "N/A",
+                )
+            )
 
         return result
 
@@ -402,13 +407,14 @@ class FundamentalEngine:
         return result
 
     @staticmethod
-    def _analyze_capital_allocation(stmt: FinancialStatement, ticker: str = "", market_cap: float | None = None) -> CapitalAllocation:
+    def _analyze_capital_allocation(
+        stmt: FinancialStatement, ticker: str = "", market_cap: float | None = None
+    ) -> CapitalAllocation:
         """Analyze how the company allocates capital.
 
         Decomposes FCF usage: capex, buybacks, dividends, debt repayment.
         Computes shareholder yield = (buybacks + dividends) / market cap (if available).
         """
-        fcf = stmt.free_cash_flow
 
         # Calculate as % of total capital deployed (not FCF)
         # This ensures percentages sum to ~100% on the allocation diagram
@@ -445,6 +451,7 @@ class FundamentalEngine:
         roic_wacc = None
         if stmt.roic is not None:
             from ..config import settings
+
             roic_wacc = stmt.roic - settings.analysis.default_wacc
 
         # Assessment
@@ -459,9 +466,7 @@ class FundamentalEngine:
 
         if roic_wacc is not None:
             if roic_wacc > 0:
-                assessment_parts.append(
-                    f"ROIC exceeds WACC by {roic_wacc:.1%} — value creation."
-                )
+                assessment_parts.append(f"ROIC exceeds WACC by {roic_wacc:.1%} — value creation.")
             else:
                 assessment_parts.append(
                     f"ROIC trails WACC by {abs(roic_wacc):.1%} — value destruction."
@@ -481,5 +486,7 @@ class FundamentalEngine:
             roic_minus_wacc=roic_wacc,
             shareholder_yield=shareholder_yield,
             reinvestment_rate=reinvestment_rate,
-            assessment=" ".join(assessment_parts) if assessment_parts else "Insufficient data for assessment.",
+            assessment=" ".join(assessment_parts)
+            if assessment_parts
+            else "Insufficient data for assessment.",
         )

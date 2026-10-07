@@ -32,12 +32,11 @@ The browser libraries (Plotly.js, Mermaid.js) handle all rendering.
 
 from __future__ import annotations
 
-import json
 import logging
+from collections.abc import Callable
 from datetime import date
 from typing import Any
 
-from ..quant import to_bps
 from ..models import (
     CompanyProfile,
     Competitor,
@@ -49,18 +48,26 @@ from ..models import (
     TechnicalIndicators,
     ValuationRange,
 )
+from ..quant import to_bps
+from . import diagrams, svg_charts
 from .currency import currency_symbol
-from . import diagrams
-from . import svg_charts
 
 logger = logging.getLogger(__name__)
 
 # Metrics rendered in the multi-period financial summary, used to decide
 # whether a period carries any data at all.
 _SUMMARY_METRICS = (
-    "revenue", "gross_profit", "operating_income", "net_income",
-    "gross_margin", "operating_margin", "net_margin", "eps_diluted",
-    "free_cash_flow", "roe", "debt_to_equity",
+    "revenue",
+    "gross_profit",
+    "operating_income",
+    "net_income",
+    "gross_margin",
+    "operating_margin",
+    "net_margin",
+    "eps_diluted",
+    "free_cash_flow",
+    "roe",
+    "debt_to_equity",
 )
 
 
@@ -70,6 +77,7 @@ def _has_any_metric(fin: Any) -> bool:
 
 
 # ---------------------------------------------------------------------------
+
 
 class VisualEngine:
     """Generates constraint-safe visuals for research reports.
@@ -88,24 +96,32 @@ class VisualEngine:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def svg_financial_trends(financials, ticker, currency=None):
+    def svg_financial_trends(
+        financials: list[FinancialStatement],
+        ticker: str,
+        currency: str | None = None,
+    ) -> ReportVisual | None:
         """Revenue + margin trend chart as server-rendered SVG."""
         return svg_charts.svg_financial_trends(financials, ticker, currency)
 
     @staticmethod
-    def svg_scenario_valuation(valuation, currency=None):
+    def svg_scenario_valuation(
+        valuation: ValuationRange, currency: str | None = None
+    ) -> ReportVisual | None:
         """Scenario valuation range as server-rendered SVG."""
         if not valuation.scenarios:
             return None
         return svg_charts.svg_scenario_valuation(valuation, currency)
 
     @staticmethod
-    def svg_peer_comparison(target_ticker, peers, currency=None):
+    def svg_peer_comparison(
+        target_ticker: str, peers: list[Competitor], currency: str | None = None
+    ) -> ReportVisual:
         """Peer comparison margins/ROE as server-rendered SVG."""
         return svg_charts.svg_peer_comparison(target_ticker, peers, currency)
 
     @staticmethod
-    def svg_risk_heatmap(risk_matrix):
+    def svg_risk_heatmap(risk_matrix: RiskMatrix | None) -> ReportVisual | None:
         """Risk matrix probability x impact as server-rendered SVG."""
         if not risk_matrix or not risk_matrix.risks:
             return None
@@ -146,16 +162,12 @@ class VisualEngine:
         )
 
     @staticmethod
-    def svg_thesis_balance(
-        ticker: str, n_favor: int, n_disfavor: int, tilt: str
-    ) -> ReportVisual:
+    def svg_thesis_balance(ticker: str, n_favor: int, n_disfavor: int, tilt: str) -> ReportVisual:
         """Thesis evidence balance as a server-rendered SVG."""
         return svg_charts.svg_thesis_balance(ticker, n_favor, n_disfavor, tilt)
 
     @staticmethod
-    def svg_unit_economics(
-        ticker: str, margins: dict[str, float | None]
-    ) -> ReportVisual | None:
+    def svg_unit_economics(ticker: str, margins: dict[str, float | None]) -> ReportVisual | None:
         """Unit-economics margin bars as a server-rendered SVG."""
         return svg_charts.svg_unit_economics(ticker, margins)
 
@@ -187,9 +199,14 @@ class VisualEngine:
     ) -> ReportVisual:
         """Capital allocation flow as a server-rendered D2 diagram."""
         source = diagrams.d2_capital_allocation(
-            ticker, capex_pct, buyback_pct, dividend_pct,
-            capex_abs=capex_abs, buyback_abs=buyback_abs,
-            div_abs=dividend_abs, currency=currency,
+            ticker,
+            capex_pct,
+            buyback_pct,
+            dividend_pct,
+            capex_abs=capex_abs,
+            buyback_abs=buyback_abs,
+            div_abs=dividend_abs,
+            currency=currency,
         )
         caption = "Capital deployed by destination"
         if period:
@@ -207,7 +224,9 @@ class VisualEngine:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def ascii_scenario_chart(valuation: ValuationRange, currency: str | None = None) -> ReportVisual:
+    def ascii_scenario_chart(
+        valuation: ValuationRange, currency: str | None = None
+    ) -> ReportVisual:
         """Mandatory ASCII scenario summary."""
         return ReportVisual(
             visual_type="ascii",
@@ -230,7 +249,11 @@ class VisualEngine:
         ]
 
         trend_icon = "^" if indicators.price_vs_sma_200 == "above" else "v"
-        lines.append(f"    Trend:     [{trend_icon}] Price {indicators.price_vs_sma_200 or 'N/A'} SMA 200  |  {indicators.sma_50_vs_200}")
+        lines.append(
+            f"    Trend:     [{trend_icon}] Price {indicators.price_vs_sma_200 or 'N/A'} SMA "
+            "200  |  "
+            f"{indicators.sma_50_vs_200}"
+        )
 
         if indicators.rsi_14 is not None:
             filled = int(indicators.rsi_14 / 100 * 20)
@@ -239,8 +262,15 @@ class VisualEngine:
         else:
             lines.append("    RSI (14):  N/A")
 
-        lines.append(f"    MACD:      {indicators.macd_crossover or 'none'}  |  Histogram: {indicators.macd_histogram or 0:.4f}")
-        lines.append(f"    ATR %:     {indicators.atr_pct or 0:.2f}%  |  ADX: {indicators.adx_14 or 0:.1f} ({indicators.adx_signal})")
+        lines.append(
+            f"    MACD:      {indicators.macd_crossover or 'none'}  |  Histogram: "
+            f"{indicators.macd_histogram or 0:.4f}"
+        )
+        lines.append(
+            f"    ATR %:     {indicators.atr_pct or 0:.2f}%  |  ADX: "
+            f"{indicators.adx_14 or 0:.1f} "
+            f"({indicators.adx_signal})"
+        )
         lines.append(f"    Volume:    {indicators.volume_trend}  |  OBV: {indicators.obv_trend}")
 
         return ReportVisual(
@@ -256,7 +286,7 @@ class VisualEngine:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _latest_statement(financials: list) -> Any | None:
+    def _latest_statement(financials: list[FinancialStatement]) -> Any | None:
         """Latest statement by period end date — never assume list order.
 
         Providers are not contractually most-recent-first, so "latest" must be
@@ -266,7 +296,7 @@ class VisualEngine:
             return None
         dated = [f for f in financials if getattr(f, "period_end_date", None)]
         if dated:
-            return max(dated, key=lambda f: f.period_end_date)
+            return max(dated, key=lambda f: f.period_end_date or date.min)
         return financials[0]
 
     @staticmethod
@@ -314,10 +344,17 @@ class VisualEngine:
         )
 
     @staticmethod
-    def table_peer_comparison(target_ticker: str, peers: list[Competitor], currency: str | None = None) -> ReportVisual:
+    def table_peer_comparison(
+        target_ticker: str, peers: list[Competitor], currency: str | None = None
+    ) -> ReportVisual:
         """Peer comparison table."""
         if not peers:
-            return ReportVisual(visual_type="table", title="Peer Comparison", content="*No peer data.*", ties_to="Competitive analysis")
+            return ReportVisual(
+                visual_type="table",
+                title="Peer Comparison",
+                content="*No peer data.*",
+                ties_to="Competitive analysis",
+            )
 
         sym = currency_symbol(currency)
         header = (
@@ -371,7 +408,9 @@ class VisualEngine:
         caption += " Div Yield is trailing dividend yield."
 
         return ReportVisual(
-            visual_type="table", title="Peer Comparison", content="\n".join(rows),
+            visual_type="table",
+            title="Peer Comparison",
+            content="\n".join(rows),
             ties_to="Competitive positioning (Step 3)",
             caption=caption,
         )
@@ -380,26 +419,48 @@ class VisualEngine:
     def table_risk_matrix(risks: list[StructuredRisk]) -> ReportVisual:
         """Structured risk matrix table sorted by severity."""
         if not risks:
-            return ReportVisual(visual_type="table", title="Risk Matrix", content="*No risks identified.*", ties_to="Risk assessment")
+            return ReportVisual(
+                visual_type="table",
+                title="Risk Matrix",
+                content="*No risks identified.*",
+                ties_to="Risk assessment",
+            )
 
         header = "| Risk | Category | Probability | Impact | Timing | Nature |"
         sep = "|:-----|:---------|-----------:|------:|:------|:------|"
         rows = [header, sep]
 
         for r in risks[:10]:
-            rows.append(f"| {r.title} | {r.category.value.title()} | {r.probability} | {r.impact} | {r.timing.value.replace('_', ' ').title()} | {r.nature.value.title()} |")
+            rows.append(
+                f"| {r.title} | {r.category.value.title()} | {r.probability} | {r.impact} | "
+                f"{r.timing.value.replace('_', ' ').title()} | {r.nature.value.title()} "
+                "|"
+            )
 
         return ReportVisual(
-            visual_type="table", title="Structured Risk Matrix", content="\n".join(rows),
+            visual_type="table",
+            title="Structured Risk Matrix",
+            content="\n".join(rows),
             ties_to="Risk assessment (Step 5/6)",
-            caption="Top risks by severity (probability \u00d7 impact). Timing and nature per the risk framework; score derivation published below.",
+            caption=(
+                "Top risks by severity (probability \u00d7 impact). Timing and nature per the "
+                "risk framework; score derivation published "
+                "below."
+            ),
         )
 
     @staticmethod
-    def table_financial_summary(financials: list[FinancialStatement], currency: str | None = None) -> ReportVisual:
+    def table_financial_summary(
+        financials: list[FinancialStatement], currency: str | None = None
+    ) -> ReportVisual:
         """Multi-period financial summary table."""
         if not financials:
-            return ReportVisual(visual_type="table", title="Financial Summary", content="*No data.*", ties_to="Financial analysis")
+            return ReportVisual(
+                visual_type="table",
+                title="Financial Summary",
+                content="*No data.*",
+                ties_to="Financial analysis",
+            )
 
         sym = currency_symbol(currency)
         by_date = sorted(
@@ -416,8 +477,8 @@ class VisualEngine:
         header = "| Metric | " + " | ".join(periods) + " |"
         sep = "|:-------|" + "|".join(["-------:"] * len(periods)) + "|"
 
-        def _row(label, getter, fmt="dec"):
-            vals = []
+        def _row(label: str, getter: Callable[[FinancialStatement], Any], fmt: str = "dec") -> str:
+            vals: list[str] = []
             for f in sorted_fin:
                 v = getter(f)
                 if v is None:
@@ -447,7 +508,11 @@ class VisualEngine:
         rows.append(_row("ROE", lambda f: f.roe, "pct"))
         rows.append(_row("Debt/Equity", lambda f: f.debt_to_equity, "ratio"))
 
-        period_note = f" ({periods[0]}\u2013{periods[-1]})" if len(periods) > 1 else (f" ({periods[0]})" if periods else "")
+        period_note = (
+            f" ({periods[0]}\u2013{periods[-1]})"
+            if len(periods) > 1
+            else (f" ({periods[0]})" if periods else "")
+        )
         caption = (
             f"Annual financials{period_note}. Money figures in {sym} billions; "
             "margins as % of revenue."
@@ -459,13 +524,15 @@ class VisualEngine:
                 f"{'that period' if len(omitted) == 1 else 'those periods'}."
             )
         return ReportVisual(
-            visual_type="table", title="Financial Summary", content="\n".join(rows),
+            visual_type="table",
+            title="Financial Summary",
+            content="\n".join(rows),
             ties_to="Financial analysis (Step 2)",
             caption=caption,
         )
 
     @staticmethod
-    def table_macro_regime(implications: list) -> ReportVisual:
+    def table_macro_regime(implications: list[Any]) -> ReportVisual:
         """Macro regime summary table."""
         header = "| Factor | Current | Regime | Sector Impact | Magnitude |"
         sep = "|:-------|:--------|:------|--------------:|:----------|"
@@ -477,10 +544,14 @@ class VisualEngine:
             regime = getattr(impl, "regime", "")
             impact = getattr(impl, "implication", "neutral")
             magnitude = getattr(impl, "magnitude", "")
-            rows.append(f"| {factor} | {current} | {regime} | {impact.title()} | {magnitude.title()} |")
+            rows.append(
+                f"| {factor} | {current} | {regime} | {impact.title()} | {magnitude.title()} |"
+            )
 
         return ReportVisual(
-            visual_type="table", title="Macro Environment", content="\n".join(rows),
+            visual_type="table",
+            title="Macro Environment",
+            content="\n".join(rows),
             ties_to="Macro context (Step 5)",
             caption="How each macro factor is classified today and what it implies for the sector.",
         )
@@ -534,17 +605,18 @@ class VisualEngine:
             rows.append(f"| **FCF Coverage** | {div.fcf_coverage:.2f}x |")
         if div.consecutive_increase_years:
             yrs = div.consecutive_increase_years
-            rows.append(
-                f"| **Consecutive Increases** | {yrs} "
-                f"year{'s' if yrs != 1 else ''} |"
-            )
+            rows.append(f"| **Consecutive Increases** | {yrs} year{'s' if yrs != 1 else ''} |")
         if div.had_cut:
             sc = f"{div.years_since_cut} yrs ago" if div.years_since_cut is not None else "yes"
             rows.append(f"| **Dividend Cut** | {sc} |")
         if div.safety_score is not None:
             rows.append(f"| **Safety Score** | {div.safety_score:.0f}/100 ({div.safety_grade}) |")
         if div.peer_median_yield is not None:
-            rows.append(f"| **Peer Median Yield** | {pct(div.peer_median_yield)} ({div.yield_vs_peers or 'n/a'}) |")
+            rows.append(
+                f"| **Peer Median Yield** | {pct(div.peer_median_yield)} "
+                f"({div.yield_vs_peers or 'n/a'}) "
+                "|"
+            )
         if div.us_10y_yield is not None:
             # Two separate numbers, deliberately not merged into one row. A row
             # labelled "vs 10Y Treasury" whose value is the Treasury's own yield
@@ -590,7 +662,9 @@ class VisualEngine:
         )
 
     @staticmethod
-    def svg_dividend_history(div, currency=None):
+    def svg_dividend_history(
+        div: DividendAnalysis, currency: str | None = None
+    ) -> ReportVisual | None:
         """Annual dividend-per-share history as server-rendered SVG."""
         annual = getattr(div, "annual_dividends", {}) or {}
         if len(annual) < 3:

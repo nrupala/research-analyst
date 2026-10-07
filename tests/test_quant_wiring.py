@@ -74,7 +74,9 @@ def test_adapter_orders_oldest_to_newest():
 
 def test_adapter_normalizes_outflow_signs_to_positive_magnitudes():
     stmts = [
-        _stmt(2023, capex=Decimal("-80"), dividends_paid=Decimal("-20"), share_buybacks=Decimal("-10")),
+        _stmt(
+            2023, capex=Decimal("-80"), dividends_paid=Decimal("-20"), share_buybacks=Decimal("-10")
+        ),
         _stmt(2024, capex=Decimal("-90"), dividends_paid=Decimal("-25"), share_buybacks=None),
     ]
     s = from_financial_statements(stmts, "TST")
@@ -197,9 +199,12 @@ def test_section_renders_with_missing_input_disclosure_on_sparse_data():
 
 def test_section_shows_both_implied_growth_models_separately():
     stmts = [
-        _stmt(2022 + i, revenue=Decimal(str(1000 * (1.1 ** i))),
-         net_income=Decimal(str(100 * (1.1 ** i))),
-         free_cash_flow=Decimal(str(80 * (1.1 ** i))))
+        _stmt(
+            2022 + i,
+            revenue=Decimal(str(1000 * (1.1**i))),
+            net_income=Decimal(str(100 * (1.1**i))),
+            free_cash_flow=Decimal(str(80 * (1.1**i))),
+        )
         for i in range(5)
     ]
     s = from_financial_statements(stmts, "GROW")
@@ -447,9 +452,7 @@ def test_quant_endpoint_scenarios_expected_value():
     client = _quant_client([_stmt(2021 + i) for i in range(4)])
     if client is None:
         return
-    sc = urllib.parse.quote(
-        json.dumps([{"label": "base", "value": 100.0, "probability": 1.0}])
-    )
+    sc = urllib.parse.quote(json.dumps([{"label": "base", "value": 100.0, "probability": 1.0}]))
     r = client.get(f"/api/research/quant?ticker=tst&scenarios={sc}")
     assert r.status_code == 200
     ev = r.json()["expected_value"]
@@ -463,9 +466,9 @@ def test_quant_endpoint_discount_rate_enables_implied_growth():
         [
             _stmt(
                 2021 + i,
-                revenue=Decimal(str(1000 * (1.1 ** i))),
-                net_income=Decimal(str(100 * (1.1 ** i))),
-                free_cash_flow=Decimal(str(80 * (1.1 ** i))),
+                revenue=Decimal(str(1000 * (1.1**i))),
+                net_income=Decimal(str(100 * (1.1**i))),
+                free_cash_flow=Decimal(str(80 * (1.1**i))),
             )
             for i in range(5)
         ]

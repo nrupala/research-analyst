@@ -31,8 +31,8 @@ from decimal import Decimal
 
 import pytest
 
-from research_analyst.enums import SecurityType
 from research_analyst.engines.etf import ETFEngine
+from research_analyst.enums import SecurityType
 from research_analyst.models import CompanyProfile, ETFMetadata, ETFTopHolding
 from research_analyst.providers.market_data import _extract_etf_metadata
 from research_analyst.reports.renderer import ReportRenderer

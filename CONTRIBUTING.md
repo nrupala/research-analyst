@@ -105,6 +105,21 @@ Do not bypass this layering. No engine should call an external API directly. No 
 
 ---
 
+## PR-flow discipline (standing rule, 2026-10-05)
+
+Direct pushes to `main` are retired. Every change lands through a pull request:
+
+1. Branch off `main`; open the PR as a **draft**.
+2. Get all checks green (lint, typecheck, tests — see above), then request review.
+3. The **owner merges** — never merge your own PR, never push to `main` directly.
+4. Every PR adds a `CHANGELOG.md` entry under `## [Unreleased]` and bumps the
+   version (patch = fix/chore, minor = feature) in **both** `pyproject.toml`
+   and `package.json` (single source of truth per `docs/VERSIONING.md`).
+5. Merge commits reference the PR number. Releases are cut by tagging
+   `vX.Y.Z` after merge — CI auto-generates the release notes from merged PRs.
+
+---
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the AGPL-3.0 license.

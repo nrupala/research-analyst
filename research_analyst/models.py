@@ -34,19 +34,31 @@ from pydantic import BaseModel, Field, field_validator
 
 from .disclaimer import DISCLAIMER_SHORT
 from .enums import (
-    AnalysisDomain,
-    ReportType,
-    RiskCategory,
-    RiskDuration,
-    RiskNature,
-    ScenarioType,
-    SecurityType,
-    Timeframe,
+    ReportType as ReportType,
+)
+from .enums import (
+    RiskCategory as RiskCategory,
+)
+from .enums import (
+    RiskDuration as RiskDuration,
+)
+from .enums import (
+    RiskNature as RiskNature,
+)
+from .enums import (
+    ScenarioType as ScenarioType,
+)
+from .enums import (
+    SecurityType as SecurityType,
+)
+from .enums import (
+    Timeframe as Timeframe,
 )
 
 # ---------------------------------------------------------------------------
 # Request / Response
 # ---------------------------------------------------------------------------
+
 
 class ResearchRequest(BaseModel):
     """Inbound research request from user or API."""
@@ -114,6 +126,7 @@ class ResearchMetadata(BaseModel):
 # Company / Security Profile
 # ---------------------------------------------------------------------------
 
+
 class CompanyProfile(BaseModel):
     """Core company or ETF profile data."""
 
@@ -166,6 +179,7 @@ class PriceSeries(BaseModel):
 # ---------------------------------------------------------------------------
 # Fundamental Data
 # ---------------------------------------------------------------------------
+
 
 class FinancialStatement(BaseModel):
     """Standardized financial statement line items."""
@@ -280,6 +294,7 @@ class InstitutionalHolder(BaseModel):
 # Technical Analysis
 # ---------------------------------------------------------------------------
 
+
 class TechnicalIndicators(BaseModel):
     """Computed technical indicators at a point in time."""
 
@@ -295,7 +310,7 @@ class TechnicalIndicators(BaseModel):
 
     # Trend
     price_vs_sma_200: str = ""  # "above" / "below"
-    sma_50_vs_200: str = ""     # "golden_cross" / "death_cross" / "neutral"
+    sma_50_vs_200: str = ""  # "golden_cross" / "death_cross" / "neutral"
 
     # Momentum
     rsi_14: float | None = None
@@ -315,9 +330,9 @@ class TechnicalIndicators(BaseModel):
 
     # Volume
     volume_trend: str = ""  # "increasing" / "decreasing" / "stable"
-    obv_trend: str = ""     # "accumulation" / "distribution" / "neutral"
+    obv_trend: str = ""  # "accumulation" / "distribution" / "neutral"
     adx_14: float | None = None
-    adx_signal: str = ""    # "strong_trend" / "weak_trend" / "no_trend"
+    adx_signal: str = ""  # "strong_trend" / "weak_trend" / "no_trend"
 
     # Support / Resistance
     support_levels: list[float] = Field(default_factory=list)
@@ -330,6 +345,7 @@ class TechnicalIndicators(BaseModel):
 # ---------------------------------------------------------------------------
 # Macro Context
 # ---------------------------------------------------------------------------
+
 
 class MacroSnapshot(BaseModel):
     """Point-in-time macro environment data."""
@@ -372,6 +388,7 @@ class MacroSnapshot(BaseModel):
 # Competitor Analysis
 # ---------------------------------------------------------------------------
 
+
 class Competitor(BaseModel):
     """Discovered competitor profile."""
 
@@ -409,6 +426,7 @@ class CompetitiveLandscape(BaseModel):
 # Risk Framework
 # ---------------------------------------------------------------------------
 
+
 class StructuredRisk(BaseModel):
     """Single risk — structured by Probability x Impact x Timing."""
 
@@ -417,7 +435,7 @@ class StructuredRisk(BaseModel):
     category: RiskCategory
     probability: str  # "Low (<20%)" / "Medium (20-50%)" / "High (>50%)"
     probability_pct: float | None = None  # Quantified where possible
-    impact: str       # "Low" / "Medium" / "High" / "Critical"
+    impact: str  # "Low" / "Medium" / "High" / "Critical"
     impact_description: str = ""
     timing: RiskDuration
     nature: RiskNature
@@ -448,6 +466,7 @@ class RiskMatrix(BaseModel):
 # Valuation
 # ---------------------------------------------------------------------------
 
+
 class Assumption(BaseModel):
     """Explicit, traceable assumption — mandatory for every conclusion."""
 
@@ -461,6 +480,7 @@ class Assumption(BaseModel):
 # ---------------------------------------------------------------------------
 # Evidence integrity (#66-#74)
 # ---------------------------------------------------------------------------
+
 
 class SourceRecord(BaseModel):
     """One enumerated, referenceable data source (#74).
@@ -491,8 +511,9 @@ class PeerSetProvenance(BaseModel):
             f"{n} of {m} expected peers resolved."
         )
         if self.missing_tickers:
-            note += " Missing expected peers (data unavailable, excluded — not silently dropped): " + ", ".join(
-                self.missing_tickers
+            note += (
+                " Missing expected peers (data unavailable, excluded — not silently dropped): "
+                + ", ".join(self.missing_tickers)
             )
         return note
 
@@ -553,9 +574,7 @@ class ValuationRange(BaseModel):
         lines: list[str] = []
         if not self.scenarios:
             return ""
-        max_price = max(
-            (s.implied_price_high or 0) for s in self.scenarios
-        ) or 1.0
+        max_price = max((s.implied_price_high or 0) for s in self.scenarios) or 1.0
         for s in self.scenarios:
             if s.implied_price_low is not None and s.implied_price_high is not None:
                 bar_len = int((s.implied_price_high / max_price) * 20)
@@ -578,6 +597,7 @@ class VariantPerception(BaseModel):
 # ---------------------------------------------------------------------------
 # Capital Allocation
 # ---------------------------------------------------------------------------
+
 
 class CapitalAllocation(BaseModel):
     """Capital allocation analysis — capex vs buybacks vs M&A vs dividends."""
@@ -612,6 +632,7 @@ class CapitalAllocation(BaseModel):
 # Dividend & Yield (v0.1.1)
 # ---------------------------------------------------------------------------
 
+
 class DividendPayment(BaseModel):
     """A single dividend distribution (per-share, in the security's currency)."""
 
@@ -633,14 +654,14 @@ class DividendData(BaseModel):
     current_price: float | None = None
 
     # Annualized per-share rates ($/share)
-    dividend_rate: float | None = None            # forward annual
-    trailing_dividend_rate: float | None = None   # trailing 12 months
+    dividend_rate: float | None = None  # forward annual
+    trailing_dividend_rate: float | None = None  # trailing 12 months
 
     # yfinance .info yield fields (raw, un-normalized) — cross-checks only
     info_dividend_yield: float | None = None
     info_payout_ratio: float | None = None
-    five_year_avg_yield: float | None = None      # yfinance reports this as a percent
-    etf_ttm_yield: float | None = None            # ETF distribution yield (fraction)
+    five_year_avg_yield: float | None = None  # yfinance reports this as a percent
+    etf_ttm_yield: float | None = None  # ETF distribution yield (fraction)
 
     # Most recent payment metadata
     ex_dividend_date: date | None = None
@@ -665,8 +686,8 @@ class DividendAnalysis(BaseModel):
     income_label: str = "Dividend"  # "Dividend" or "Distribution" (ETF)
 
     # Yield
-    current_yield: float | None = None        # forward, fraction
-    trailing_yield: float | None = None       # trailing 12m, fraction
+    current_yield: float | None = None  # forward, fraction
+    trailing_yield: float | None = None  # trailing 12m, fraction
     five_year_avg_yield: float | None = None  # fraction
     annual_dividend_rate: float | None = None  # forward $/share
     ex_dividend_date: date | None = None
@@ -677,10 +698,10 @@ class DividendAnalysis(BaseModel):
     dividend_growth_5y_cagr: float | None = None
 
     # Payout / coverage (trailing basis)
-    payout_ratio_eps: float | None = None     # dividends paid / net income
-    payout_ratio_fcf: float | None = None     # dividends paid / free cash flow
-    eps_coverage: float | None = None         # net income / dividends paid
-    fcf_coverage: float | None = None         # free cash flow / dividends paid
+    payout_ratio_eps: float | None = None  # dividends paid / net income
+    payout_ratio_fcf: float | None = None  # dividends paid / free cash flow
+    eps_coverage: float | None = None  # net income / dividends paid
+    fcf_coverage: float | None = None  # free cash flow / dividends paid
 
     # Consistency
     consecutive_increase_years: int = 0
@@ -689,15 +710,15 @@ class DividendAnalysis(BaseModel):
     paying_years: int = 0
 
     # Safety
-    safety_score: float | None = None         # 0-100
-    safety_grade: str = ""                     # Very Safe / Safe / Borderline / At Risk / Unsafe
+    safety_score: float | None = None  # 0-100
+    safety_grade: str = ""  # Very Safe / Safe / Borderline / At Risk / Unsafe
 
     # Yield context
     us_10y_yield: float | None = None
     yield_vs_treasury_spread: float | None = None  # current_yield - 10Y
     peer_median_yield: float | None = None
-    yield_vs_peers: str = ""                   # "above" / "below" / "in line"
-    attractiveness_rating: str = ""            # Attractive / Fairly Valued / Unattractive / Yield-Trap Risk
+    yield_vs_peers: str = ""  # "above" / "below" / "in line"
+    attractiveness_rating: str = ""  # Attractive / Fairly Valued / Unattractive / Yield-Trap Risk
     attractiveness_rationale: str = ""
 
     # Non-payers
@@ -714,6 +735,7 @@ class DividendAnalysis(BaseModel):
 # ---------------------------------------------------------------------------
 # Report Output
 # ---------------------------------------------------------------------------
+
 
 class ReportSection(BaseModel):
     """Single section within a 7-step report."""
@@ -786,9 +808,8 @@ class ReportOutput(BaseModel):
                     if visual.interactive:
                         import base64 as _b64
                         import json as _json
-                        _enc = _b64.b64encode(
-                            _json.dumps(visual.interactive).encode()
-                        ).decode()
+
+                        _enc = _b64.b64encode(_json.dumps(visual.interactive).encode()).decode()
                         parts.append(
                             '<button type="button" class="chart-interactive" '
                             f'data-interactive="{_enc}">'
@@ -840,7 +861,9 @@ class ReportOutput(BaseModel):
                 parts.append("")
                 for sig in lens.signals:
                     read_icon = {
-                        "favor": "▲ Favor", "caution": "▼ Caution", "neutral": "• Neutral",
+                        "favor": "▲ Favor",
+                        "caution": "▼ Caution",
+                        "neutral": "• Neutral",
                     }.get(sig.read, "• Neutral")
                     parts.append(f"- **{sig.label}:** {sig.value} — {read_icon}")
                     if sig.note:
@@ -916,16 +939,17 @@ class ReportOutput(BaseModel):
         sla = metadata.sla_state
         lines.append(f"- Freshness state: **{sla}**")
         if metadata.sla_state == "stale" or metadata.stale_warning:
-            lines.append(f"- ⚠️ **STALE DATA WARNING:** {metadata.stale_warning or 'data may be out of date.'}")
+            lines.append(
+                "- ⚠️ **STALE DATA WARNING:** "
+                f"{metadata.stale_warning or 'data may be out of date.'}"
+            )
         return "\n".join(lines)
 
     @staticmethod
     def _provenance_footer(metadata: ResearchMetadata) -> str:
         """Sources (#74) and input-snapshot (#69) appendix."""
         parts: list[str] = ["\n## Data Sources\n"]
-        records = metadata.source_records or [
-            SourceRecord(name=s) for s in metadata.data_sources
-        ]
+        records = metadata.source_records or [SourceRecord(name=s) for s in metadata.data_sources]
         if records:
             parts.append("Every figure in this report traces to one of the following sources:\n")
             for i, rec in enumerate(records, 1):
@@ -945,7 +969,9 @@ class ReportOutput(BaseModel):
                 "input set taken at report time. Any figure can be traced back to "
                 "these inputs:\n"
             )
-            parts.append(f"- Snapshot taken (UTC): {snap.captured_at_utc.strftime('%Y-%m-%d %H:%M UTC')}")
+            parts.append(
+                f"- Snapshot taken (UTC): {snap.captured_at_utc.strftime('%Y-%m-%d %H:%M UTC')}"
+            )
             parts.append(f"- Input hash: `{snap.input_hash}`")
             for key, value in snap.inputs.items():
                 parts.append(f"- **{key}:** {value}")
@@ -967,12 +993,12 @@ class SymbolMatch(BaseModel):
 
     symbol: str
     name: str = ""
-    exchange: str = ""          # yfinance exchange code / display
-    quote_type: str = ""        # EQUITY / ETF / MUTUALFUND / INDEX / CURRENCY ...
-    market: str = ""            # registry market code (US / UK / IN ...)
-    market_name: str = ""       # human-readable market
-    currency: str = ""          # registry currency for the market
-    score: float = 0.0          # relevance score from the search provider
+    exchange: str = ""  # yfinance exchange code / display
+    quote_type: str = ""  # EQUITY / ETF / MUTUALFUND / INDEX / CURRENCY ...
+    market: str = ""  # registry market code (US / UK / IN ...)
+    market_name: str = ""  # human-readable market
+    currency: str = ""  # registry currency for the market
+    score: float = 0.0  # relevance score from the search provider
 
 
 class SubjectResolution(BaseModel):
@@ -996,6 +1022,7 @@ class SubjectResolution(BaseModel):
 # ETF Metadata (Slice B-B)
 # ---------------------------------------------------------------------------
 
+
 class ETFTopHolding(BaseModel):
     """A single top holding within an ETF."""
 
@@ -1012,11 +1039,11 @@ class ETFMetadata(BaseModel):
     """
 
     ticker: str
-    expense_ratio: Decimal | None = None       # fraction, e.g. 0.0009 = 0.09%
+    expense_ratio: Decimal | None = None  # fraction, e.g. 0.0009 = 0.09%
     distribution_yield: Decimal | None = None  # fraction, e.g. 0.015 = 1.5%
-    aum: Decimal | None = None                 # net assets, in profile currency
-    tracking_index: str = ""                   # underlying index / fund category
-    fund_family: str = ""                      # issuer / fund family
+    aum: Decimal | None = None  # net assets, in profile currency
+    tracking_index: str = ""  # underlying index / fund category
+    fund_family: str = ""  # issuer / fund family
     top_holdings: list[ETFTopHolding] = Field(default_factory=list)
     sector_weights: dict[str, Decimal] = Field(default_factory=dict)  # sector -> fraction
     data_gaps: list[str] = Field(default_factory=list)

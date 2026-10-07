@@ -47,12 +47,14 @@ def _stmt(**kw):
     from research_analyst.models import FinancialStatement
 
     base = dict(
-        period="FY2025", revenue=Decimal("50_000_000_000"),
+        period="FY2025",
+        revenue=Decimal("50_000_000_000"),
         gross_profit=Decimal("20_000_000_000"),
         operating_income=Decimal("10_000_000_000"),
         ebit=Decimal("10_000_000_000"),
         net_income=Decimal("8_000_000_000"),
-        eps_diluted=3.0, shares_outstanding=2_000_000_000,
+        eps_diluted=3.0,
+        shares_outstanding=2_000_000_000,
         total_assets=Decimal("60_000_000_000"),
         total_liabilities=Decimal("25_000_000_000"),
         total_equity=Decimal("35_000_000_000"),
@@ -61,7 +63,9 @@ def _stmt(**kw):
         current_assets=Decimal("30_000_000_000"),
         current_liabilities=Decimal("10_000_000_000"),
         free_cash_flow=Decimal("9_000_000_000"),
-        roe=0.25, roic=0.20, debt_to_equity=0.3,
+        roe=0.25,
+        roic=0.20,
+        debt_to_equity=0.3,
     )
     base.update(kw)
     return FinancialStatement(**base)
@@ -69,10 +73,12 @@ def _stmt(**kw):
 
 def _input(**kw) -> LensInput:
     defaults = dict(
-        ticker="TEST", current_price=50.0,
-        latest=_stmt(), prior=_stmt(revenue=Decimal("45_000_000_000"),
-                                     eps_diluted=2.5),
-        shares_outstanding=2_000_000_000, currency="USD",
+        ticker="TEST",
+        current_price=50.0,
+        latest=_stmt(),
+        prior=_stmt(revenue=Decimal("45_000_000_000"), eps_diluted=2.5),
+        shares_outstanding=2_000_000_000,
+        currency="USD",
     )
     defaults.update(kw)
     return LensInput(**defaults)
@@ -189,11 +195,18 @@ def test_buffett_owner_earnings():
     # OCF 10B - capex 1B = 9B owner earnings -> favor
     from decimal import Decimal
 
-    result = buffett.run(_input(latest=_stmt(
-        operating_cash_flow=Decimal("10_000_000_000"), capex=Decimal("1_000_000_000"),
-        free_cash_flow=Decimal("9_000_000_000"), gross_margin=0.50, roe=0.25,
-        debt_to_equity=0.3,
-    )))
+    result = buffett.run(
+        _input(
+            latest=_stmt(
+                operating_cash_flow=Decimal("10_000_000_000"),
+                capex=Decimal("1_000_000_000"),
+                free_cash_flow=Decimal("9_000_000_000"),
+                gross_margin=0.50,
+                roe=0.25,
+                debt_to_equity=0.3,
+            )
+        )
+    )
     assert result.raw_values["owner_earnings"] == 9_000_000_000
     assert any(s.label == "Owner Earnings" and s.read == "favor" for s in result.signals)
     assert any(s.label == "Gross Margin Persistence" and s.read == "favor" for s in result.signals)
@@ -203,11 +216,18 @@ def test_buffett_owner_earnings():
 def test_buffett_caution_when_weak():
     from decimal import Decimal
 
-    result = buffett.run(_input(latest=_stmt(
-        operating_cash_flow=Decimal("1_000_000_000"), capex=Decimal("3_000_000_000"),
-        free_cash_flow=Decimal("-2_000_000_000"), gross_margin=0.10, roe=0.04,
-        debt_to_equity=1.5,
-    )))
+    result = buffett.run(
+        _input(
+            latest=_stmt(
+                operating_cash_flow=Decimal("1_000_000_000"),
+                capex=Decimal("3_000_000_000"),
+                free_cash_flow=Decimal("-2_000_000_000"),
+                gross_margin=0.10,
+                roe=0.04,
+                debt_to_equity=1.5,
+            )
+        )
+    )
     assert any(s.label == "Owner Earnings" and s.read == "caution" for s in result.signals)
     assert any(s.label == "Return on Equity" and s.read == "caution" for s in result.signals)
 
@@ -227,7 +247,9 @@ def test_dalio_yield_framing():
 
 def test_dalio_beta_framing():
     result = dalio.run(_input(raw={"beta": 1.6}))
-    assert any(s.label == "Market Sensitivity (Beta)" and s.read == "caution" for s in result.signals)
+    assert any(
+        s.label == "Market Sensitivity (Beta)" and s.read == "caution" for s in result.signals
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -247,7 +269,9 @@ def test_marks_cycle_position():
 def test_marks_caution_when_extreme():
     result = marks.run(_input(latest=_stmt(eps_diluted=1.0)))  # P/E 50 -> top of band
     assert result.raw_values["cycle_position"] >= 0.7
-    assert any(s.label == "Cycle Position (P/E vs band)" and s.read == "caution" for s in result.signals)
+    assert any(
+        s.label == "Cycle Position (P/E vs band)" and s.read == "caution" for s in result.signals
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +282,13 @@ def test_marks_caution_when_extreme():
 def test_run_all_returns_typed_results():
     results = run_all(_input())
     assert [r.lens for r in results] == [
-        "graham", "greenblatt", "lynch", "damodaran", "buffett", "dalio", "marks",
+        "graham",
+        "greenblatt",
+        "lynch",
+        "damodaran",
+        "buffett",
+        "dalio",
+        "marks",
     ]
     for r in results:
         assert r.educational_only
@@ -289,13 +319,16 @@ def test_report_output_renders_lenses_section():
 
     report = ReportOutput(
         report_type=ReportType.COMPREHENSIVE,
-        ticker="AAPL", title="AAPL — Comprehensive",
+        ticker="AAPL",
+        title="AAPL — Comprehensive",
         generated_at=datetime(2026, 1, 1, tzinfo=UTC),
         sections=[],
         lenses=[
             LensResult(
-                lens="graham", name="Graham — Margin of Safety",
-                summary="screen applied", signals=[
+                lens="graham",
+                name="Graham — Margin of Safety",
+                summary="screen applied",
+                signals=[
                     LensSignal(label="Graham Number", value="34.37", read="caution", note="x"),
                 ],
                 attribution="public-domain methodology",

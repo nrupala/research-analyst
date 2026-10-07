@@ -22,7 +22,7 @@
 USD/None stays byte-identical ("$"); a non-USD ticker localises its price cell
 (INR -> the rupee symbol). Pure and offline.
 """
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from research_analyst.comparative import (
     ComparativeReport,
@@ -49,7 +49,7 @@ def _report(tickers, currencies, values):
         tickers=tickers,
         company_names={t: t for t in tickers},
         currencies=currencies,
-        generated_at=datetime(2026, 8, 27, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 27, tzinfo=UTC),
         dimensions=[DimensionComparison(name="Valuation", metrics=[_price_metric(values)])],
     )
 
@@ -85,7 +85,7 @@ def _resp(ticker, currency):
         security_type=SecurityType.EQUITY,
         company_name=ticker,
         currency=currency,
-        generated_at=datetime(2026, 8, 27, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 27, tzinfo=UTC),
         reports=[],
         metadata=ResearchMetadata(),
     )

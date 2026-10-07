@@ -34,12 +34,11 @@ from __future__ import annotations
 
 import logging
 from datetime import date
-from typing import Sequence
 
 import numpy as np
 
 from ..config import settings
-from ..models import PriceData, PriceSeries, TechnicalIndicators
+from ..models import PriceSeries, TechnicalIndicators
 
 logger = logging.getLogger(__name__)
 
@@ -369,7 +368,7 @@ def _find_support_resistance(
         # Return cluster centers, sorted by cluster size (most tested first)
         centers = [(np.mean(c), len(c)) for c in clusters]
         centers.sort(key=lambda x: x[1], reverse=True)
-        return [c[0] for c in centers[:num_levels]]
+        return [float(c[0]) for c in centers[:num_levels]]
 
     support = _cluster(support_candidates)
     resistance = _cluster(resistance_candidates)
@@ -402,7 +401,6 @@ def _detect_patterns(
     # Last 60 bars for pattern analysis
     recent_highs = highs[-60:]
     recent_lows = lows[-60:]
-    recent_closes = closes[-60:]
 
     # Find local peaks and troughs (5-bar lookback)
     peaks: list[tuple[int, float]] = []

@@ -200,8 +200,8 @@ def roe_attribution(
     d_roe = l_r - f_r  # decimal, e.g. 0.05
     denom = math.log(l_r / f_r)
 
-    def pts(f: float, l: float) -> float:
-        return (math.log(l / f) / denom) * d_roe * 100
+    def pts(f: float, last: float) -> float:
+        return (math.log(last / f) / denom) * d_roe * 100
 
     assert f_m is not None and l_m is not None
     assert f_t is not None and l_t is not None

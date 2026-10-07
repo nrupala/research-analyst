@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..models import Assumption, CompanyProfile, CompetitiveLandscape, Competitor
 
@@ -56,11 +56,11 @@ class MetricRanking:
     target_value: float | None
     peer_median: float | None
     peer_mean: float | None
-    rank: int | None = None         # 1 = best
+    rank: int | None = None  # 1 = best
     total_peers: int = 0
     percentile: float | None = None  # 0-100, higher = better
-    vs_median: str = ""              # "above" / "below" / "at"
-    gap_pct: float | None = None     # % difference from median
+    vs_median: str = ""  # "above" / "below" / "at"
+    gap_pct: float | None = None  # % difference from median
 
 
 @dataclass
@@ -101,12 +101,18 @@ class CompetitorEngine:
 
     # Metrics where HIGHER is better
     _HIGHER_IS_BETTER = {
-        "gross_margin", "operating_margin", "roe", "roic",
-        "revenue_growth_yoy", "free_cash_flow_yield",
+        "gross_margin",
+        "operating_margin",
+        "roe",
+        "roic",
+        "revenue_growth_yoy",
+        "free_cash_flow_yield",
     }
     # Metrics where LOWER is better
     _LOWER_IS_BETTER = {
-        "pe_ratio", "ev_ebitda", "debt_to_equity",
+        "pe_ratio",
+        "ev_ebitda",
+        "debt_to_equity",
     }
 
     def analyze(
@@ -203,7 +209,8 @@ class CompetitorEngine:
                     elif r.percentile <= 30:
                         result.competitive_disadvantages.append(
                             f"{r.metric}: {self._fmt(r.target_value)} vs median "
-                            f"{self._fmt(r.peer_median)} ({abs(r.gap_pct):.1f}% higher — unfavorable)."
+                            f"{self._fmt(r.peer_median)} ({abs(r.gap_pct):.1f}% higher — "
+                            "unfavorable)."
                         )
                 else:
                     # Higher is better
@@ -257,13 +264,19 @@ class CompetitorEngine:
             )
 
         # ---- Assumptions ----
-        result.assumptions.append(Assumption(
-            label="Peer Universe",
-            value=f"{len(peers)} peers from {profile.sector} sector",
-            source="Curated sector peer map (deterministic); metrics enriched via yfinance",
-            confidence="Medium",
-            note="Peers selected from a curated large-cap sector map; may not capture all direct competitors.",
-        ))
+        result.assumptions.append(
+            Assumption(
+                label="Peer Universe",
+                value=f"{len(peers)} peers from {profile.sector} sector",
+                source="Curated sector peer map (deterministic); metrics enriched via yfinance",
+                confidence="Medium",
+                note=(
+                    "Peers selected from a curated large-cap sector map; may not capture all "
+                    "direct "
+                    "competitors."
+                ),
+            )
+        )
 
         return result
 
@@ -287,10 +300,7 @@ class CompetitorEngine:
         if target_val is None:
             return None
 
-        peer_vals = [
-            getattr(p, attr) for p in peers
-            if getattr(p, attr, None) is not None
-        ]
+        peer_vals = [getattr(p, attr) for p in peers if getattr(p, attr, None) is not None]
         if not peer_vals:
             return None
 
@@ -311,6 +321,7 @@ class CompetitorEngine:
 
         # Stats
         import numpy as np
+
         peer_arr = [float(v) for v in peer_vals]
         median = float(np.median(peer_arr))
         mean = float(np.mean(peer_arr))
@@ -344,7 +355,7 @@ class CompetitorEngine:
         (RC2). Populating margins, ROE, ROIC, revenue growth, and D/E here is
         what makes the section compute.
         """
-        kwargs: dict = dict(
+        kwargs: dict[str, Any] = dict(
             ticker=profile.ticker,
             name=profile.name,
             market_cap=profile.market_cap,
@@ -399,7 +410,9 @@ class CompetitorEngine:
         if target.market_cap and peers:
             max_peer_cap = max(float(p.market_cap or 0) for p in peers)
             if float(target.market_cap or 0) > max_peer_cap:
-                moat_signals.append("Market cap leadership among peer group — potential scale moat.")
+                moat_signals.append(
+                    "Market cap leadership among peer group — potential scale moat."
+                )
 
         return moat_signals
 

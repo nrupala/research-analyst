@@ -37,7 +37,7 @@ def _defined_value(v: float | None) -> bool:
 
 def defined(values: Series) -> list[float]:
     """Non-null, finite values of a series, in order."""
-    return [v for v in values if _defined_value(v)]
+    return [v for v in values if v is not None and _defined_value(v)]
 
 
 def last_value(values: Series) -> float | None:

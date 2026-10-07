@@ -17,7 +17,7 @@
 # A separate commercial license is available for uses incompatible with
 # the AGPL-3.0. See COMMERCIAL-LICENSE.md.
 
-#\!/usr/bin/env python3
+#!/usr/bin/env python3
 """Version bump utility for Research Analyst.
 
 Usage:
@@ -164,7 +164,7 @@ def update_changelog(old_version: str, new_version: str) -> None:
 
 
 def main() -> None:
-    if len(sys.argv) \!= 2 or sys.argv[1] not in ("major", "minor", "patch"):
+    if len(sys.argv) != 2 or sys.argv[1] not in ("major", "minor", "patch"):
         print("Usage: python scripts/bump_version.py [major|minor|patch]")
         sys.exit(1)
 
@@ -175,26 +175,26 @@ def main() -> None:
     print(f"Bumping version: {old} -> {new}")
 
     update_init(new)
-    print(f"  Updated: research_analyst/__init__.py")
+    print("  Updated: research_analyst/__init__.py")
 
     update_pyproject(new)
-    print(f"  Updated: pyproject.toml")
+    print("  Updated: pyproject.toml")
 
     update_manifest(new)
-    print(f"  Updated: ui/manifest.json")
+    print("  Updated: ui/manifest.json")
 
     n = update_file_headers(new)
     print(f"  Updated: {n} Python file headers")
 
     update_changelog(old, new)
-    print(f"  Updated: CHANGELOG.md")
+    print("  Updated: CHANGELOG.md")
 
     print(f"\nVersion bumped to {new}.")
-    print(f"Next steps:")
-    print(f"  git add -A")
+    print("Next steps:")
+    print("  git add -A")
     print(f"  git commit -m \"chore: bump version to {new}\"")
     print(f"  git tag v{new}")
-    print(f"  git push origin main --tags")
+    print("  git push origin main --tags")
 
 
 if __name__ == "__main__":

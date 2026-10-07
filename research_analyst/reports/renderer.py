@@ -38,11 +38,12 @@ Design:
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, date, datetime
 from typing import Any
 
+from .. import education
 from ..enums import ReportType, SecurityType
-from ..quant import fmt_bps
 from ..models import (
     Assumption,
     CapitalAllocation,
@@ -56,10 +57,10 @@ from ..models import (
     TechnicalIndicators,
     ValuationRange,
 )
-from .templates import ReportTemplate, StepTemplate, get_template
-from .. import education
-from .visuals import VisualEngine
+from ..quant import fmt_bps
 from .currency import compact_money, money
+from .templates import StepTemplate, get_template
+from .visuals import VisualEngine
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +195,8 @@ class ReportRenderer:
             logger.warning(
                 "Report for %s (%s) has zero visuals. "
                 "Spec requires at least one visual per report.",
-                profile.ticker, report_type.value,
+                profile.ticker,
+                report_type.value,
             )
 
         title = template.title_format.format(ticker=profile.ticker)
@@ -206,7 +208,7 @@ class ReportRenderer:
             report_type=report_type,
             ticker=profile.ticker,
             title=title,
-            generated_at=datetime.now(timezone.utc),
+            generated_at=datetime.now(UTC),
             sections=sections,
             valuation=valuation,
             risk_matrix=risk_matrix,
@@ -228,7 +230,10 @@ class ReportRenderer:
             if key in seen:
                 logger.warning(
                     "Dropping duplicate section %r (step %d) in %s report for %s",
-                    section.title, section.step_number, report_type, ticker,
+                    section.title,
+                    section.step_number,
+                    report_type,
+                    ticker,
                 )
                 continue
             seen.add(key)
@@ -287,7 +292,10 @@ class ReportRenderer:
         renderer = getattr(self, renderer_key, None)
 
         if renderer is not None:
-            return renderer(step, ctx)
+            typed_renderer: Callable[[StepTemplate, dict[str, Any]], tuple[ReportSection, int]] = (
+                renderer
+            )
+            return typed_renderer(step, ctx)
 
         # Fallback: generic step renderer
         return self._render_generic_step(step, ctx)
@@ -328,7 +336,11 @@ class ReportRenderer:
 
         if div.current_yield is not None:
             ylabel = "Distribution yield" if div.is_etf else "Dividend yield"
-            rate = f" forward ({money(div.annual_dividend_rate, ctx['profile'].currency)}/share)" if div.annual_dividend_rate else ""
+            rate = (
+                f" forward ({money(div.annual_dividend_rate, ctx['profile'].currency)}/share)"
+                if div.annual_dividend_rate
+                else ""
+            )
             parts.append(f"- {ylabel}: **{div.current_yield:.2%}**{rate}")
         if div.us_10y_yield is not None and div.yield_vs_treasury_spread is not None:
             rel = "above" if div.yield_vs_treasury_spread > 0 else "below"
@@ -337,7 +349,9 @@ class ReportRenderer:
                 f"**{fmt_bps(abs(div.yield_vs_treasury_spread))} {rel}**"
             )
         if compact and div.ex_dividend_date is not None:
-            parts.append(f"- Ex-dividend date: **{div.ex_dividend_date.isoformat()}** (near-term event)")
+            parts.append(
+                f"- Ex-dividend date: **{div.ex_dividend_date.isoformat()}** (near-term event)"
+            )
 
         if not compact:
             if div.peer_median_yield is not None:
@@ -368,22 +382,21 @@ class ReportRenderer:
             if div.had_cut:
                 sc = (
                     f"{div.years_since_cut} years ago"
-                    if div.years_since_cut is not None else "in history"
+                    if div.years_since_cut is not None
+                    else "in history"
                 )
                 parts.append(f"- Dividend cut: **{sc}**")
             if div.safety_score is not None:
-                parts.append(
-                    f"- Safety score: **{div.safety_score:.0f}/100 ({div.safety_grade})**"
-                )
+                parts.append(f"- Safety score: **{div.safety_score:.0f}/100 ({div.safety_grade})**")
 
         if div.attractiveness_rating:
             rationale = f" — {div.attractiveness_rationale}" if div.attractiveness_rationale else ""
             parts.append(f"- Attractiveness: **{div.attractiveness_rating}**{rationale}")
         parts.append("")
 
-        visuals.append(VisualEngine.table_dividend_summary(div, currency=ctx['profile'].currency))
+        visuals.append(VisualEngine.table_dividend_summary(div, currency=ctx["profile"].currency))
         if not compact:
-            chart = VisualEngine.svg_dividend_history(div, currency=ctx['profile'].currency)
+            chart = VisualEngine.svg_dividend_history(div, currency=ctx["profile"].currency)
             if chart:
                 visuals.append(chart)
 
@@ -437,9 +450,7 @@ class ReportRenderer:
                 parts.append(f"**Distribution Yield:** {distribution_yield:.2%}")
             aum = etf.get("aum")
             if aum is not None:
-                parts.append(
-                    f"**Assets Under Management:** {money(aum, profile.currency)}"
-                )
+                parts.append(f"**Assets Under Management:** {money(aum, profile.currency)}")
             holdings = etf.get("top_holdings") or []
             if holdings:
                 parts.append("")
@@ -472,8 +483,7 @@ class ReportRenderer:
                 gaps.append("ETF strategy description unavailable.")
             if profile.market_cap:
                 parts.append(
-                    f"**Assets Under Management:** "
-                    f"{money(profile.market_cap, profile.currency)}"
+                    f"**Assets Under Management:** {money(profile.market_cap, profile.currency)}"
                 )
                 assumptions.append(
                     Assumption(
@@ -495,9 +505,9 @@ class ReportRenderer:
     ) -> tuple[ReportSection, int]:
         """Step 1: Executive Summary & Investment Context."""
         profile: CompanyProfile = ctx["profile"]
-        prices: PriceSeries = ctx["prices"]
         financials: list[FinancialStatement] = ctx["financials"]
         fundamental = ctx.get("fundamental")
+        prices: PriceSeries = ctx["prices"]
 
         parts: list[str] = []
         visuals: list[ReportVisual] = []
@@ -522,7 +532,8 @@ class ReportRenderer:
         parts.append(f"**Current Price:** {money(prices.current_price, profile.currency)}")
         if prices.price_52w_high > 0:
             parts.append(
-                f"**52-Week Range:** {money(prices.price_52w_low, profile.currency)} - {money(prices.price_52w_high, profile.currency)}"
+                f"**52-Week Range:** {money(prices.price_52w_low, profile.currency)} - "
+                f"{money(prices.price_52w_high, profile.currency)}"
             )
         if prices.ytd_return:
             parts.append(f"**YTD Return:** {prices.ytd_return:.1%}")
@@ -638,7 +649,9 @@ class ReportRenderer:
         else:
             note = f"{head} deployed {compact_money(total, currency)} of capital: {deployed}."
         if shareholder_yield is not None:
-            note += f" Shareholder yield (buybacks + dividends vs market cap): {shareholder_yield:.1%}."
+            note += (
+                f" Shareholder yield (buybacks + dividends vs market cap): {shareholder_yield:.1%}."
+            )
         if reinvestment_rate is not None:
             note += f" Reinvestment rate (capex vs operating cash flow): {reinvestment_rate:.1%}."
         return note
@@ -657,11 +670,17 @@ class ReportRenderer:
         gaps: list[str] = []
 
         if not financials:
-            parts.append("**Data Gap:** No financial statements available from SEC or market data providers.")
+            parts.append(
+                "**Data Gap:** No financial statements available from SEC or market data providers."
+            )
             gaps.append("Financial statements unavailable.")
             return ReportSection(
-                step_number=step.step_number, title=step.title,
-                content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps,
+                step_number=step.step_number,
+                title=step.title,
+                content="\n".join(parts),
+                visuals=visuals,
+                assumptions=assumptions,
+                data_gaps=gaps,
             ), 0
 
         # Financial summary table
@@ -669,7 +688,9 @@ class ReportRenderer:
         visuals.append(fin_table)
 
         # Plotly trend chart
-        plotly_chart = VisualEngine.svg_financial_trends(financials, profile.ticker, currency=profile.currency)
+        plotly_chart = VisualEngine.svg_financial_trends(
+            financials, profile.ticker, currency=profile.currency
+        )
         if plotly_chart:
             visuals.append(plotly_chart)
 
@@ -728,7 +749,9 @@ class ReportRenderer:
                     parts.append(f"- ROIC: **{roic:.1%}**")
                 if roic_wacc is not None:
                     spread_label = "above" if roic_wacc > 0 else "below"
-                    parts.append(f"- ROIC vs WACC: **{abs(roic_wacc):.1%} {spread_label}** cost of capital")
+                    parts.append(
+                        f"- ROIC vs WACC: **{abs(roic_wacc):.1%} {spread_label}** cost of capital"
+                    )
                 if assessment:
                     parts.append(f"- Assessment: {assessment}")
 
@@ -744,7 +767,11 @@ class ReportRenderer:
                     self._period_fcf(financials, alloc_period or None),
                     [
                         ("capital expenditure", self._abs_or_none(cap_alloc.capex), capex_pct),
-                        ("share repurchases", self._abs_or_none(cap_alloc.share_buybacks), buyback_pct),
+                        (
+                            "share repurchases",
+                            self._abs_or_none(cap_alloc.share_buybacks),
+                            buyback_pct,
+                        ),
                         ("dividends", self._abs_or_none(cap_alloc.dividends), div_pct),
                     ],
                     shareholder_yield=getattr(cap_alloc, "shareholder_yield", None),
@@ -756,7 +783,10 @@ class ReportRenderer:
 
                 # Capital allocation flow chart (honest percentages + dollar amounts)
                 mermaid = VisualEngine.d2_capital_allocation(
-                    profile.ticker, capex_pct, buyback_pct, div_pct,
+                    profile.ticker,
+                    capex_pct,
+                    buyback_pct,
+                    div_pct,
                     capex_abs=self._abs_or_none(cap_alloc.capex),
                     buyback_abs=self._abs_or_none(cap_alloc.share_buybacks),
                     dividend_abs=self._abs_or_none(cap_alloc.dividends),
@@ -780,8 +810,12 @@ class ReportRenderer:
         gaps.extend(d_gaps)
 
         return ReportSection(
-            step_number=step.step_number, title=step.title,
-            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps,
+            step_number=step.step_number,
+            title=step.title,
+            content="\n".join(parts),
+            visuals=visuals,
+            assumptions=assumptions,
+            data_gaps=gaps,
         ), len(visuals)
 
     def _render_comprehensive_step3(
@@ -800,8 +834,12 @@ class ReportRenderer:
             parts.append("**Data Gap:** Competitive analysis not available.")
             gaps.append("Peer discovery returned no results.")
             return ReportSection(
-                step_number=step.step_number, title=step.title,
-                content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps,
+                step_number=step.step_number,
+                title=step.title,
+                content="\n".join(parts),
+                visuals=visuals,
+                assumptions=assumptions,
+                data_gaps=gaps,
             ), 0
 
         landscape = getattr(competitive, "landscape", None)
@@ -816,7 +854,9 @@ class ReportRenderer:
 
         # Peer table
         if peers:
-            peer_table = VisualEngine.table_peer_comparison(profile.ticker, peers, currency=profile.currency)
+            peer_table = VisualEngine.table_peer_comparison(
+                profile.ticker, peers, currency=profile.currency
+            )
             visuals.append(peer_table)
 
         # Positioning summary
@@ -855,8 +895,12 @@ class ReportRenderer:
         gaps.extend(comp_gaps)
 
         return ReportSection(
-            step_number=step.step_number, title=step.title,
-            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps,
+            step_number=step.step_number,
+            title=step.title,
+            content="\n".join(parts),
+            visuals=visuals,
+            assumptions=assumptions,
+            data_gaps=gaps,
         ), len(visuals)
 
     def _render_comprehensive_step4(
@@ -865,7 +909,6 @@ class ReportRenderer:
         """Step 4: Technical Analysis & Market Structure."""
         technical = ctx.get("technical")
         indicators = ctx.get("technical_indicators")
-        prices: PriceSeries = ctx["prices"]
 
         parts: list[str] = []
         visuals: list[ReportVisual] = []
@@ -873,17 +916,25 @@ class ReportRenderer:
         gaps: list[str] = []
 
         if not technical or not indicators:
-            parts.append("**Data Gap:** Technical analysis not available (insufficient price data).")
+            parts.append(
+                "**Data Gap:** Technical analysis not available (insufficient price data)."
+            )
             gaps.append("Technical indicators could not be computed.")
             return ReportSection(
-                step_number=step.step_number, title=step.title,
-                content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps,
+                step_number=step.step_number,
+                title=step.title,
+                content="\n".join(parts),
+                visuals=visuals,
+                assumptions=assumptions,
+                data_gaps=gaps,
             ), 0
 
         regime = getattr(technical, "regime", "neutral")
         composite = getattr(technical, "composite_score", 50.0)
 
-        parts.append(f"**Technical Regime:** {regime.upper()} (Composite Score: {composite:.0f}/100)")
+        parts.append(
+            f"**Technical Regime:** {regime.upper()} (Composite Score: {composite:.0f}/100)"
+        )
         parts.append("")
 
         # ASCII dashboard
@@ -906,10 +957,18 @@ class ReportRenderer:
             parts.append("### Key Levels")
             if support:
                 dist = getattr(technical, "support_distance_pct", 0)
-                parts.append(f"- Nearest support: **{money(support, ctx['profile'].currency)}** ({dist:.1%} below)")
+                parts.append(
+                    f"- Nearest support: **{money(support, ctx['profile'].currency)}** "
+                    f"({dist:.1%} "
+                    "below)"
+                )
             if resistance:
                 dist = getattr(technical, "resistance_distance_pct", 0)
-                parts.append(f"- Nearest resistance: **{money(resistance, ctx['profile'].currency)}** ({dist:.1%} above)")
+                parts.append(
+                    f"- Nearest resistance: **{money(resistance, ctx['profile'].currency)}** "
+                    f"({dist:.1%} "
+                    "above)"
+                )
             parts.append("")
 
         # Patterns
@@ -926,8 +985,12 @@ class ReportRenderer:
         gaps.extend(tech_gaps)
 
         return ReportSection(
-            step_number=step.step_number, title=step.title,
-            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps,
+            step_number=step.step_number,
+            title=step.title,
+            content="\n".join(parts),
+            visuals=visuals,
+            assumptions=assumptions,
+            data_gaps=gaps,
         ), len(visuals)
 
     def _render_comprehensive_step5(
@@ -945,8 +1008,12 @@ class ReportRenderer:
             parts.append("**Data Gap:** Macro analysis not available.")
             gaps.append("Macro data unavailable.")
             return ReportSection(
-                step_number=step.step_number, title=step.title,
-                content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps,
+                step_number=step.step_number,
+                title=step.title,
+                content="\n".join(parts),
+                visuals=visuals,
+                assumptions=assumptions,
+                data_gaps=gaps,
             ), 0
 
         favorability = getattr(macro, "macro_favorability", "neutral")
@@ -957,7 +1024,13 @@ class ReportRenderer:
 
         # Regime summary
         parts.append("### Regime Classification")
-        for regime_attr in ["rate_regime", "inflation_regime", "growth_regime", "credit_regime", "volatility_regime"]:
+        for regime_attr in [
+            "rate_regime",
+            "inflation_regime",
+            "growth_regime",
+            "credit_regime",
+            "volatility_regime",
+        ]:
             val = getattr(macro, regime_attr, "unknown")
             label = regime_attr.replace("_regime", "").replace("_", " ").title()
             parts.append(f"- {label}: **{val}**")
@@ -991,8 +1064,12 @@ class ReportRenderer:
         gaps.extend(macro_gaps)
 
         return ReportSection(
-            step_number=step.step_number, title=step.title,
-            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps,
+            step_number=step.step_number,
+            title=step.title,
+            content="\n".join(parts),
+            visuals=visuals,
+            assumptions=assumptions,
+            data_gaps=gaps,
         ), len(visuals)
 
     @staticmethod
@@ -1035,9 +1112,7 @@ class ReportRenderer:
         return parts
 
     @staticmethod
-    def _bear_case_block(
-        disfavors: list[str], risk_matrix: RiskMatrix | None
-    ) -> list[str]:
+    def _bear_case_block(disfavors: list[str], risk_matrix: RiskMatrix | None) -> list[str]:
         """Explicit bear case plus falsifiability/invalidation criteria (#73).
 
         The bear case is built from the report's own disfavoring factors and
@@ -1049,16 +1124,24 @@ class ReportRenderer:
             for d in disfavors[:3]:
                 parts.append(f"- {d}")
         else:
-            parts.append("- No explicit disfavoring factors were identified — treat the thesis with extra skepticism.")
+            parts.append(
+                "- No explicit disfavoring factors were identified — treat the thesis with "
+                "extra "
+                "skepticism."
+            )
         if risk_matrix and risk_matrix.risks:
             parts.append("")
             parts.append("Highest-severity risks to the thesis:")
             for r in risk_matrix.risks[:2]:
-                parts.append(f"- **{r.title}** ({r.probability}, {r.impact} impact): {r.description}")
+                parts.append(
+                    f"- **{r.title}** ({r.probability}, {r.impact} impact): {r.description}"
+                )
         parts.append("")
         parts.append("### What Would Change Our Thesis (Falsifiability)")
         parts.append(
-            "The thesis above is wrong — and should be discarded or reversed — if any of the following is observed (each would invalidate the thesis):"
+            "The thesis above is wrong — and should be discarded or reversed — if any of the "
+            "following is observed (each would invalidate the "
+            "thesis):"
         )
         triggers: list[str] = []
         if risk_matrix and risk_matrix.risks:
@@ -1100,14 +1183,18 @@ class ReportRenderer:
     def _group_catalysts(catalysts: list[str]) -> tuple[list[str], list[str]]:
         """Split catalysts into near-term vs structural by keyword heuristic."""
         near_kw = (
-            "earning", "guidance", "technical", "breakout", "breakdown",
-            "volume", "report",
+            "earning",
+            "guidance",
+            "technical",
+            "breakout",
+            "breakdown",
+            "volume",
+            "report",
         )
         near_term: list[str] = []
         structural: list[str] = []
         for c in catalysts:
-            (near_term if any(k in c.lower() for k in near_kw)
-             else structural).append(c)
+            (near_term if any(k in c.lower() for k in near_kw) else structural).append(c)
         return near_term, structural
 
     def _decision_framework_extras(
@@ -1162,14 +1249,10 @@ class ReportRenderer:
         )
         parts.append("")
 
-        visuals.append(
-            VisualEngine.svg_thesis_balance(ticker, n_favor, n_disfavor, tilt)
-        )
+        visuals.append(VisualEngine.svg_thesis_balance(ticker, n_favor, n_disfavor, tilt))
         near_term, structural = self._group_catalysts(catalysts)
         if near_term or structural:
-            visuals.append(
-                VisualEngine.d2_catalyst_watchlist(ticker, near_term, structural)
-            )
+            visuals.append(VisualEngine.d2_catalyst_watchlist(ticker, near_term, structural))
         return parts, visuals
 
     def _unit_economics_block(
@@ -1192,9 +1275,7 @@ class ReportRenderer:
             }
         available = {k: v for k, v in margins.items() if v is not None}
 
-        latest = (
-            VisualEngine._latest_statement(financials) if financials else None
-        )
+        latest = VisualEngine._latest_statement(financials) if financials else None
         revenue = getattr(latest, "revenue", None) if latest is not None else None
 
         if revenue:
@@ -1204,24 +1285,15 @@ class ReportRenderer:
             )
             keeps: list[str] = []
             if available.get("Gross margin") is not None:
-                keeps.append(
-                    f"about ${available['Gross margin'] * 100:.0f} as gross profit"
-                )
+                keeps.append(f"about ${available['Gross margin'] * 100:.0f} as gross profit")
             if available.get("Operating margin") is not None:
-                keeps.append(
-                    f"${available['Operating margin'] * 100:.0f} as operating profit"
-                )
+                keeps.append(f"${available['Operating margin'] * 100:.0f} as operating profit")
             if available.get("Net margin") is not None:
                 keeps.append(f"${available['Net margin'] * 100:.0f} as net income")
             if available.get("FCF margin") is not None:
-                keeps.append(
-                    f"${available['FCF margin'] * 100:.0f} as free cash flow"
-                )
+                keeps.append(f"${available['FCF margin'] * 100:.0f} as free cash flow")
             if keeps:
-                econ += (
-                    "; of every $100 of revenue it keeps "
-                    + ", ".join(keeps) + "."
-                )
+                econ += "; of every $100 of revenue it keeps " + ", ".join(keeps) + "."
             else:
                 econ += "."
             parts.append("### How It Makes Money")
@@ -1256,15 +1328,12 @@ class ReportRenderer:
             parts.append(f"**Industry:** {profile.industry}")
         if profile.market_cap:
             parts.append(
-                f"**Market Cap:** "
-                f"{money(float(profile.market_cap) / 1e9, profile.currency, 1)}B"
+                f"**Market Cap:** {money(float(profile.market_cap) / 1e9, profile.currency, 1)}B"
             )
         if profile.employees:
             parts.append(f"**Employees:** {profile.employees:,}")
         parts.append("")
-        econ_parts, econ_visuals = self._unit_economics_block(
-            profile, fundamental, financials
-        )
+        econ_parts, econ_visuals = self._unit_economics_block(profile, fundamental, financials)
         parts.extend(econ_parts)
         visuals.extend(econ_visuals)
         visuals.append(VisualEngine.d2_business_model(profile))
@@ -1287,7 +1356,9 @@ class ReportRenderer:
         parts.append("")
 
         if risk_matrix and risk_matrix.risks:
-            parts.append(f"**Overall Risk Score:** {self._fmt_risk_score(risk_matrix.overall_risk_score)}")
+            parts.append(
+                f"**Overall Risk Score:** {self._fmt_risk_score(risk_matrix.overall_risk_score)}"
+            )
             parts.append(f"**Key Risks:** {risk_matrix.key_risk_summary}")
             parts.append("")
 
@@ -1304,9 +1375,11 @@ class ReportRenderer:
             parts.append("### Top Risks (Detailed)")
             for r in risk_matrix.risks[:3]:
                 parts.append(f"\n**{r.title}** ({r.category.value.title()})")
-                parts.append(f"- Probability: {r.probability} | Impact: {r.impact} | "
-                             f"Timing: {r.timing.value.replace('_', ' ').title()} | "
-                             f"Nature: {r.nature.value.title()}")
+                parts.append(
+                    f"- Probability: {r.probability} | Impact: {r.impact} | "
+                    f"Timing: {r.timing.value.replace('_', ' ').title()} | "
+                    f"Nature: {r.nature.value.title()}"
+                )
                 parts.append(f"- {r.description}")
                 if r.mitigants:
                     parts.append(f"- Mitigants: {'; '.join(r.mitigants[:2])}")
@@ -1326,24 +1399,39 @@ class ReportRenderer:
         parts.append("")
 
         if valuation and valuation.scenarios:
-            parts.append(f"**Current Price:** {money(valuation.current_price, ctx['profile'].currency)}")
+            parts.append(
+                f"**Current Price:** {money(valuation.current_price, ctx['profile'].currency)}"
+            )
             parts.append(f"**Primary Methodology:** {valuation.primary_methodology}")
             parts.append("")
 
             # Mandatory ASCII chart
-            ascii_chart = VisualEngine.ascii_scenario_chart(valuation, currency=ctx['profile'].currency)
+            ascii_chart = VisualEngine.ascii_scenario_chart(
+                valuation, currency=ctx["profile"].currency
+            )
             visuals.append(ascii_chart)
 
             # Plotly scenario chart
-            plotly_scenario = VisualEngine.svg_scenario_valuation(valuation, currency=ctx['profile'].currency)
+            plotly_scenario = VisualEngine.svg_scenario_valuation(
+                valuation, currency=ctx["profile"].currency
+            )
             if plotly_scenario:
                 visuals.append(plotly_scenario)
 
             # Scenario details
             for s in valuation.scenarios:
-                parts.append(f"\n**{s.label}:** {money(s.implied_price_low, ctx['profile'].currency, 0)} - {money(s.implied_price_high, ctx['profile'].currency, 0)}")
+                if s.implied_price_low is not None and s.implied_price_high is not None:
+                    parts.append(
+                        f"\n**{s.label}:** "
+                        f"{money(s.implied_price_low, ctx['profile'].currency, 0)} - "
+                        f"{money(s.implied_price_high, ctx['profile'].currency, 0)}"
+                    )
+                else:
+                    parts.append(f"\n**{s.label}:** price range unavailable")
                 if s.implied_upside_low is not None and s.implied_upside_high is not None:
-                    parts.append(f"  Implied move: {s.implied_upside_low:.1%} to {s.implied_upside_high:.1%}")
+                    parts.append(
+                        f"  Implied move: {s.implied_upside_low:.1%} to {s.implied_upside_high:.1%}"
+                    )
                 parts.append(f"  {s.narrative}")
 
                 # Scenario assumptions
@@ -1366,8 +1454,12 @@ class ReportRenderer:
             gaps.append("Valuation range not available.")
 
         return ReportSection(
-            step_number=step.step_number, title=step.title,
-            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps,
+            step_number=step.step_number,
+            title=step.title,
+            content="\n".join(parts),
+            visuals=visuals,
+            assumptions=assumptions,
+            data_gaps=gaps,
         ), len(visuals)
 
     def _render_comprehensive_step7(
@@ -1441,20 +1533,36 @@ class ReportRenderer:
             adv_count = len(getattr(competitive, "competitive_advantages", []))
             disadv_count = len(getattr(competitive, "competitive_disadvantages", []))
             if adv_count > disadv_count:
-                favors.append(f"Favorable competitive position ({adv_count} advantages vs {disadv_count} disadvantages).")
+                favors.append(
+                    f"Favorable competitive position ({adv_count} advantages vs "
+                    f"{disadv_count} "
+                    "disadvantages)."
+                )
             elif disadv_count > adv_count:
-                disfavors.append(f"Weak competitive position ({disadv_count} disadvantages vs {adv_count} advantages).")
+                disfavors.append(
+                    f"Weak competitive position ({disadv_count} disadvantages vs {adv_count} "
+                    "advantages)."
+                )
 
         # Valuation
         if valuation and valuation.scenarios:
             from ..enums import ScenarioType
-            base = next((s for s in valuation.scenarios if s.scenario_type == ScenarioType.BASE), None)
-            if base and base.implied_upside_low is not None and base.implied_upside_high is not None:
+
+            base = next(
+                (s for s in valuation.scenarios if s.scenario_type == ScenarioType.BASE), None
+            )
+            if (
+                base
+                and base.implied_upside_low is not None
+                and base.implied_upside_high is not None
+            ):
                 avg_upside = (base.implied_upside_low + base.implied_upside_high) / 2
                 if avg_upside > 0.10:
                     favors.append(f"Base case implies {avg_upside:.1%} upside from current price.")
                 elif avg_upside < -0.10:
-                    disfavors.append(f"Base case implies {abs(avg_upside):.1%} downside from current price.")
+                    disfavors.append(
+                        f"Base case implies {abs(avg_upside):.1%} downside from current price."
+                    )
 
         # Catalysts
         catalysts.append("Upcoming earnings report and guidance update.")
@@ -1489,8 +1597,10 @@ class ReportRenderer:
 
         # Risk-adjusted view
         if risk_matrix:
-            parts.append(f"### Risk-Adjusted View")
-            parts.append(f"Overall risk score: **{self._fmt_risk_score(risk_matrix.overall_risk_score)}**")
+            parts.append("### Risk-Adjusted View")
+            parts.append(
+                f"Overall risk score: **{self._fmt_risk_score(risk_matrix.overall_risk_score)}**"
+            )
             parts.append(f"{risk_matrix.key_risk_summary}")
             parts.append("")
 
@@ -1526,24 +1636,29 @@ class ReportRenderer:
         visuals.extend(bm_visuals)
 
         return ReportSection(
-            step_number=step.step_number, title=step.title,
-            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps,
+            step_number=step.step_number,
+            title=step.title,
+            content="\n".join(parts),
+            visuals=visuals,
+            assumptions=assumptions,
+            data_gaps=gaps,
         ), len(visuals)
-
 
     # ==================================================================
     # TACTICAL report step renderers
     # ==================================================================
 
-    def _render_tactical_step1(self, step, ctx):
+    def _render_tactical_step1(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 1: Current Setup & Near-Term Context."""
         profile = ctx["profile"]
-        prices = ctx["prices"]
         technical = ctx.get("technical")
-        parts = []
-        visuals = []
-        assumptions = []
-        gaps = []
+        prices = ctx["prices"]
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        assumptions: list[Assumption] = []
+        gaps: list[str] = []
 
         if profile.description:
             parts.append(profile.description[:300])
@@ -1560,7 +1675,12 @@ class ReportRenderer:
         parts.append(f"**Current Price:** {money(prices.current_price, profile.currency)}")
         if prices.price_52w_high > 0:
             pct_from_high = (prices.current_price - prices.price_52w_high) / prices.price_52w_high
-            parts.append(f"**52-Week Range:** {money(prices.price_52w_low, profile.currency)} - {money(prices.price_52w_high, profile.currency)} (currently {pct_from_high:.1%} from high)")
+            parts.append(
+                f"**52-Week Range:** {money(prices.price_52w_low, profile.currency)} - "
+                f"{money(prices.price_52w_high, profile.currency)} (currently "
+                f"{pct_from_high:.1%} from "
+                "high)"
+            )
         if prices.ytd_return:
             parts.append(f"**YTD Return:** {prices.ytd_return:.1%}")
         if prices.total_return_1y:
@@ -1578,31 +1698,48 @@ class ReportRenderer:
             if latest_stmt and latest_stmt.eps_diluted and latest_stmt.eps_diluted > 0
             else None
         )
-        table = VisualEngine.table_key_metrics(profile, ctx["financials"], prices.current_price, pe_ratio)
+        table = VisualEngine.table_key_metrics(
+            profile, ctx["financials"], prices.current_price, pe_ratio
+        )
         visuals.append(table)
 
-        return ReportSection(step_number=step.step_number, title=step.title,
-            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), len(visuals)
+        return ReportSection(
+            step_number=step.step_number,
+            title=step.title,
+            content="\n".join(parts),
+            visuals=visuals,
+            assumptions=assumptions,
+            data_gaps=gaps,
+        ), len(visuals)
 
-    def _render_tactical_step2(self, step, ctx):
+    def _render_tactical_step2(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 2: Technical Analysis & Price Structure."""
         technical = ctx.get("technical")
         indicators = ctx.get("technical_indicators")
-        prices = ctx["prices"]
-        parts = []
-        visuals = []
-        assumptions = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        assumptions: list[Assumption] = []
+        gaps: list[str] = []
 
         if not technical or not indicators:
             parts.append("**Data Gap:** Technical analysis not available.")
             gaps.append("Technical indicators could not be computed.")
-            return ReportSection(step_number=step.step_number, title=step.title,
-                content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), 0
+            return ReportSection(
+                step_number=step.step_number,
+                title=step.title,
+                content="\n".join(parts),
+                visuals=visuals,
+                assumptions=assumptions,
+                data_gaps=gaps,
+            ), 0
 
         regime = getattr(technical, "regime", "neutral")
         composite = getattr(technical, "composite_score", 50.0)
-        parts.append(f"**Technical Regime:** {regime.upper()} (Composite Score: {composite:.0f}/100)")
+        parts.append(
+            f"**Technical Regime:** {regime.upper()} (Composite Score: {composite:.0f}/100)"
+        )
         parts.append("")
 
         ascii_dash = VisualEngine.ascii_technical_dashboard(indicators, composite, regime)
@@ -1622,10 +1759,18 @@ class ReportRenderer:
             parts.append("### Key Levels")
             if support:
                 dist = getattr(technical, "support_distance_pct", 0)
-                parts.append(f"- Nearest support: **{money(support, ctx['profile'].currency)}** ({dist:.1%} below)")
+                parts.append(
+                    f"- Nearest support: **{money(support, ctx['profile'].currency)}** "
+                    f"({dist:.1%} "
+                    "below)"
+                )
             if resistance:
                 dist = getattr(technical, "resistance_distance_pct", 0)
-                parts.append(f"- Nearest resistance: **{money(resistance, ctx['profile'].currency)}** ({dist:.1%} above)")
+                parts.append(
+                    f"- Nearest resistance: **{money(resistance, ctx['profile'].currency)}** "
+                    f"({dist:.1%} "
+                    "above)"
+                )
             parts.append("")
 
         patterns = getattr(technical, "patterns", [])
@@ -1637,22 +1782,36 @@ class ReportRenderer:
         tech_assumptions = getattr(technical, "assumptions", [])
         assumptions.extend(tech_assumptions)
 
-        return ReportSection(step_number=step.step_number, title=step.title,
-            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), len(visuals)
+        return ReportSection(
+            step_number=step.step_number,
+            title=step.title,
+            content="\n".join(parts),
+            visuals=visuals,
+            assumptions=assumptions,
+            data_gaps=gaps,
+        ), len(visuals)
 
-    def _render_tactical_step3(self, step, ctx):
+    def _render_tactical_step3(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 3: Macro & Sector Context."""
         macro = ctx.get("macro")
-        parts = []
-        visuals = []
-        assumptions = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        assumptions: list[Assumption] = []
+        gaps: list[str] = []
 
         if not macro:
             parts.append("**Data Gap:** Macro analysis not available.")
             gaps.append("Macro data unavailable.")
-            return ReportSection(step_number=step.step_number, title=step.title,
-                content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), 0
+            return ReportSection(
+                step_number=step.step_number,
+                title=step.title,
+                content="\n".join(parts),
+                visuals=visuals,
+                assumptions=assumptions,
+                data_gaps=gaps,
+            ), 0
 
         favorability = getattr(macro, "macro_favorability", "neutral")
         score = getattr(macro, "macro_score", 50.0)
@@ -1688,24 +1847,38 @@ class ReportRenderer:
         macro_gaps = getattr(macro, "data_gaps", [])
         gaps.extend(macro_gaps)
 
-        return ReportSection(step_number=step.step_number, title=step.title,
-            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), len(visuals)
+        return ReportSection(
+            step_number=step.step_number,
+            title=step.title,
+            content="\n".join(parts),
+            visuals=visuals,
+            assumptions=assumptions,
+            data_gaps=gaps,
+        ), len(visuals)
 
-    def _render_tactical_step4(self, step, ctx):
+    def _render_tactical_step4(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 4: Near-Term Fundamental Catalysts."""
         fundamental = ctx.get("fundamental")
         financials = ctx["financials"]
         profile = ctx["profile"]
-        parts = []
-        visuals = []
-        assumptions = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        assumptions: list[Assumption] = []
+        gaps: list[str] = []
 
         if not financials:
             gaps.append("Financial data unavailable.")
             parts.append("**Data Gap:** No financial data available.")
-            return ReportSection(step_number=step.step_number, title=step.title,
-                content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), 0
+            return ReportSection(
+                step_number=step.step_number,
+                title=step.title,
+                content="\n".join(parts),
+                visuals=visuals,
+                assumptions=assumptions,
+                data_gaps=gaps,
+            ), 0
 
         if fundamental:
             parts.append("### Earnings Trajectory")
@@ -1744,29 +1917,45 @@ class ReportRenderer:
         assumptions.extend(d_assumptions)
         gaps.extend(d_gaps)
 
-        return ReportSection(step_number=step.step_number, title=step.title,
-            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), len(visuals)
+        return ReportSection(
+            step_number=step.step_number,
+            title=step.title,
+            content="\n".join(parts),
+            visuals=visuals,
+            assumptions=assumptions,
+            data_gaps=gaps,
+        ), len(visuals)
 
-    def _render_tactical_step5(self, step, ctx):
+    def _render_tactical_step5(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 5: Near-Term Risk Map."""
         risk_matrix = ctx.get("risk_matrix")
-        parts = []
-        visuals = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        gaps: list[str] = []
 
         if not risk_matrix or not risk_matrix.risks:
             gaps.append("Risk matrix not available.")
             parts.append("**Data Gap:** Risk assessment not available.")
-            return ReportSection(step_number=step.step_number, title=step.title,
-                content="\n".join(parts), visuals=visuals, data_gaps=gaps), 0
+            return ReportSection(
+                step_number=step.step_number,
+                title=step.title,
+                content="\n".join(parts),
+                visuals=visuals,
+                data_gaps=gaps,
+            ), 0
 
-        parts.append(f"**Overall Risk Score:** {self._fmt_risk_score(risk_matrix.overall_risk_score)}")
+        parts.append(
+            f"**Overall Risk Score:** {self._fmt_risk_score(risk_matrix.overall_risk_score)}"
+        )
         parts.append(f"**Key Risks:** {risk_matrix.key_risk_summary}")
         parts.append("")
         parts.extend(self._risk_derivation_block(risk_matrix))
 
         # Filter near-term risks
         from ..enums import RiskDuration
+
         near_term = [r for r in risk_matrix.risks if r.timing == RiskDuration.NEAR_TERM]
         other = [r for r in risk_matrix.risks if r.timing != RiskDuration.NEAR_TERM]
 
@@ -1782,7 +1971,10 @@ class ReportRenderer:
         if other:
             parts.append("### Medium/Long-Term Risks")
             for r in other[:3]:
-                parts.append(f"- **{r.title}:** {r.probability} probability, {r.impact} impact. {r.nature.value.title()}.")
+                parts.append(
+                    f"- **{r.title}:** {r.probability} probability, {r.impact} impact. "
+                    f"{r.nature.value.title()}."
+                )
 
         risk_table = VisualEngine.table_risk_matrix(risk_matrix.risks)
         visuals.append(risk_table)
@@ -1791,38 +1983,61 @@ class ReportRenderer:
         if risk_heatmap:
             visuals.append(risk_heatmap)
 
-        return ReportSection(step_number=step.step_number, title=step.title,
-            content="\n".join(parts), visuals=visuals, data_gaps=gaps), len(visuals)
+        return ReportSection(
+            step_number=step.step_number,
+            title=step.title,
+            content="\n".join(parts),
+            visuals=visuals,
+            data_gaps=gaps,
+        ), len(visuals)
 
-    def _render_tactical_step6(self, step, ctx):
+    def _render_tactical_step6(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 6: Scenario-Based Valuation Range."""
         valuation = ctx.get("valuation")
-        parts = []
-        visuals = []
-        assumptions = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        assumptions: list[Assumption] = []
+        gaps: list[str] = []
 
         if not valuation or not valuation.scenarios:
             gaps.append("Valuation not available.")
             parts.append("**Data Gap:** Valuation range not available.")
-            return ReportSection(step_number=step.step_number, title=step.title,
-                content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), 0
+            return ReportSection(
+                step_number=step.step_number,
+                title=step.title,
+                content="\n".join(parts),
+                visuals=visuals,
+                assumptions=assumptions,
+                data_gaps=gaps,
+            ), 0
 
-        parts.append(f"**Current Price:** {money(valuation.current_price, ctx['profile'].currency)}")
+        parts.append(
+            f"**Current Price:** {money(valuation.current_price, ctx['profile'].currency)}"
+        )
         parts.append(f"**Methodology:** {valuation.primary_methodology}")
         parts.append("")
 
-        ascii_chart = VisualEngine.ascii_scenario_chart(valuation, currency=ctx['profile'].currency)
+        ascii_chart = VisualEngine.ascii_scenario_chart(valuation, currency=ctx["profile"].currency)
         visuals.append(ascii_chart)
 
-        plotly_chart = VisualEngine.svg_scenario_valuation(valuation, currency=ctx['profile'].currency)
+        plotly_chart = VisualEngine.svg_scenario_valuation(
+            valuation, currency=ctx["profile"].currency
+        )
         if plotly_chart:
             visuals.append(plotly_chart)
 
         for s in valuation.scenarios:
-            parts.append(f"\n**{s.label}:** {money(s.implied_price_low, ctx['profile'].currency, 0)} - {money(s.implied_price_high, ctx['profile'].currency, 0)}")
+            parts.append(
+                f"\n**{s.label}:** {money(s.implied_price_low, ctx['profile'].currency, 0)} "
+                "- "
+                f"{money(s.implied_price_high, ctx['profile'].currency, 0)}"
+            )
             if s.implied_upside_low is not None and s.implied_upside_high is not None:
-                parts.append(f"  Implied move: {s.implied_upside_low:.1%} to {s.implied_upside_high:.1%}")
+                parts.append(
+                    f"  Implied move: {s.implied_upside_low:.1%} to {s.implied_upside_high:.1%}"
+                )
             parts.append(f"  {s.narrative}")
             for a in s.assumptions:
                 assumptions.append(a)
@@ -1834,10 +2049,18 @@ class ReportRenderer:
             parts.append(f"- **Variant View:** {vp.variant_view}")
             parts.append(f"- **Why It Matters:** {vp.why_it_matters}")
 
-        return ReportSection(step_number=step.step_number, title=step.title,
-            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), len(visuals)
+        return ReportSection(
+            step_number=step.step_number,
+            title=step.title,
+            content="\n".join(parts),
+            visuals=visuals,
+            assumptions=assumptions,
+            data_gaps=gaps,
+        ), len(visuals)
 
-    def _render_tactical_step7(self, step, ctx):
+    def _render_tactical_step7(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 7: Tactical Assessment & Positioning Context."""
         profile = ctx["profile"]
         technical = ctx.get("technical")
@@ -1845,9 +2068,9 @@ class ReportRenderer:
         fundamental = ctx.get("fundamental")
         valuation = ctx.get("valuation")
         risk_matrix = ctx.get("risk_matrix")
-        parts = []
-        visuals = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        gaps: list[str] = []
 
         favors = []
         disfavors = []
@@ -1891,8 +2114,15 @@ class ReportRenderer:
         # Valuation
         if valuation and valuation.scenarios:
             from ..enums import ScenarioType
-            base = next((s for s in valuation.scenarios if s.scenario_type == ScenarioType.BASE), None)
-            if base and base.implied_upside_low is not None and base.implied_upside_high is not None:
+
+            base = next(
+                (s for s in valuation.scenarios if s.scenario_type == ScenarioType.BASE), None
+            )
+            if (
+                base
+                and base.implied_upside_low is not None
+                and base.implied_upside_high is not None
+            ):
                 avg = (base.implied_upside_low + base.implied_upside_high) / 2
                 if avg > 0.10:
                     favors.append(f"Base case implies {avg:.1%} upside.")
@@ -1900,12 +2130,12 @@ class ReportRenderer:
                     disfavors.append(f"Base case implies {abs(avg):.1%} downside.")
 
         parts.append("### Factors That Favor Near-Term Positioning")
-        for f in (favors or ["No strong favorable signals identified."]):
+        for f in favors or ["No strong favorable signals identified."]:
             parts.append(f"- {f}")
         parts.append("")
 
         parts.append("### Factors That Disfavor Near-Term Positioning")
-        for d in (disfavors or ["No strong unfavorable signals identified."]):
+        for d in disfavors or ["No strong unfavorable signals identified."]:
             parts.append(f"- {d}")
         parts.append("")
 
@@ -1914,8 +2144,10 @@ class ReportRenderer:
 
         # Risk context
         if risk_matrix:
-            parts.append(f"### Risk Context")
-            parts.append(f"Overall risk score: **{self._fmt_risk_score(risk_matrix.overall_risk_score)}**")
+            parts.append("### Risk Context")
+            parts.append(
+                f"Overall risk score: **{self._fmt_risk_score(risk_matrix.overall_risk_score)}**"
+            )
             parts.append(f"{risk_matrix.key_risk_summary}")
             parts.append("")
 
@@ -1926,11 +2158,12 @@ class ReportRenderer:
         parts.append("- Volume confirmation of price moves")
 
         # Decision framework: description + additional graphics beyond the graph
-        _tactical_catalysts = [
-            "Earnings report", "Technical breakout/breakdown", "Macro shift"
-        ]
+        _tactical_catalysts = ["Earnings report", "Technical breakout/breakdown", "Macro shift"]
         df_parts, df_visuals = self._decision_framework_extras(
-            profile.ticker, favors, disfavors, _tactical_catalysts,
+            profile.ticker,
+            favors,
+            disfavors,
+            _tactical_catalysts,
             frame="positioning",
         )
         parts.extend(df_parts)
@@ -1941,20 +2174,27 @@ class ReportRenderer:
         visuals.append(mermaid)
         visuals.extend(df_visuals)
 
-        return ReportSection(step_number=step.step_number, title=step.title,
-            content="\n".join(parts), visuals=visuals, data_gaps=gaps), len(visuals)
+        return ReportSection(
+            step_number=step.step_number,
+            title=step.title,
+            content="\n".join(parts),
+            visuals=visuals,
+            data_gaps=gaps,
+        ), len(visuals)
 
     # ==================================================================
     # LONG-TERM report step renderers
     # ==================================================================
 
-    def _render_long_term_step1(self, step, ctx):
+    def _render_long_term_step1(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 1: Business Overview & Structural Position."""
         profile = ctx["profile"]
-        parts = []
-        visuals = []
-        assumptions = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        assumptions: list[Assumption] = []
+        gaps: list[str] = []
 
         if profile.description:
             parts.append(profile.description[:500])
@@ -1972,7 +2212,9 @@ class ReportRenderer:
         parts.append(f"**Sector:** {profile.sector}")
         parts.append(f"**Industry:** {profile.industry}")
         if profile.market_cap:
-            parts.append(f"**Market Cap:** {money(float(profile.market_cap) / 1e9, profile.currency, 1)}B")
+            parts.append(
+                f"**Market Cap:** {money(float(profile.market_cap) / 1e9, profile.currency, 1)}B"
+            )
         if profile.employees:
             parts.append(f"**Employees:** {profile.employees:,}")
         parts.append("")
@@ -1987,42 +2229,67 @@ class ReportRenderer:
         biz_model = VisualEngine.d2_business_model(profile)
         visuals.append(biz_model)
 
-        return ReportSection(step_number=step.step_number, title=step.title,
-            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), len(visuals)
+        return ReportSection(
+            step_number=step.step_number,
+            title=step.title,
+            content="\n".join(parts),
+            visuals=visuals,
+            assumptions=assumptions,
+            data_gaps=gaps,
+        ), len(visuals)
 
-    def _render_long_term_step2(self, step, ctx):
+    def _render_long_term_step2(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 2: Financial Analysis & Quality of Earnings."""
         financials = ctx["financials"]
         fundamental = ctx.get("fundamental")
         profile = ctx["profile"]
-        parts = []
-        visuals = []
-        assumptions = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        assumptions: list[Assumption] = []
+        gaps: list[str] = []
 
         if not financials:
             gaps.append("No financial statements available.")
             parts.append("**Data Gap:** No financial data available.")
-            return ReportSection(step_number=step.step_number, title=step.title,
-                content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), 0
+            return ReportSection(
+                step_number=step.step_number,
+                title=step.title,
+                content="\n".join(parts),
+                visuals=visuals,
+                assumptions=assumptions,
+                data_gaps=gaps,
+            ), 0
 
         fin_table = VisualEngine.table_financial_summary(financials, currency=profile.currency)
         visuals.append(fin_table)
 
-        plotly_chart = VisualEngine.svg_financial_trends(financials, profile.ticker, currency=profile.currency)
+        plotly_chart = VisualEngine.svg_financial_trends(
+            financials, profile.ticker, currency=profile.currency
+        )
         if plotly_chart:
             visuals.append(plotly_chart)
 
         if fundamental:
             parts.append("### Growth")
-            for attr, label in [("revenue_growth_yoy", "Revenue Growth (YoY)"), ("revenue_cagr_3y", "Revenue CAGR (3Y)"), ("revenue_cagr_5y", "Revenue CAGR (5Y)")]:
+            for attr, label in [
+                ("revenue_growth_yoy", "Revenue Growth (YoY)"),
+                ("revenue_cagr_3y", "Revenue CAGR (3Y)"),
+                ("revenue_cagr_5y", "Revenue CAGR (5Y)"),
+            ]:
                 val = getattr(fundamental, attr, None)
                 if val is not None:
                     parts.append(f"- {label}: **{val:.1%}**")
             parts.append("")
 
             parts.append("### Profitability")
-            for attr, label in [("gross_margin_latest", "Gross Margin"), ("operating_margin_latest", "Operating Margin"), ("net_margin_latest", "Net Margin"), ("fcf_margin_latest", "FCF Margin")]:
+            for attr, label in [
+                ("gross_margin_latest", "Gross Margin"),
+                ("operating_margin_latest", "Operating Margin"),
+                ("net_margin_latest", "Net Margin"),
+                ("fcf_margin_latest", "FCF Margin"),
+            ]:
                 val = getattr(fundamental, attr, None)
                 if val is not None:
                     trend = getattr(fundamental, attr.replace("_latest", "_trend"), "")
@@ -2047,23 +2314,37 @@ class ReportRenderer:
             fund_assumptions = getattr(fundamental, "assumptions", [])
             assumptions.extend(fund_assumptions)
 
-        return ReportSection(step_number=step.step_number, title=step.title,
-            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), len(visuals)
+        return ReportSection(
+            step_number=step.step_number,
+            title=step.title,
+            content="\n".join(parts),
+            visuals=visuals,
+            assumptions=assumptions,
+            data_gaps=gaps,
+        ), len(visuals)
 
-    def _render_long_term_step3(self, step, ctx):
+    def _render_long_term_step3(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 3: Competitive Landscape & Moat Assessment."""
         competitive = ctx.get("competitive")
         profile = ctx["profile"]
-        parts = []
-        visuals = []
-        assumptions = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        assumptions: list[Assumption] = []
+        gaps: list[str] = []
 
         if not competitive:
             gaps.append("Competitive analysis not available.")
             parts.append("**Data Gap:** No peer data available.")
-            return ReportSection(step_number=step.step_number, title=step.title,
-                content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), 0
+            return ReportSection(
+                step_number=step.step_number,
+                title=step.title,
+                content="\n".join(parts),
+                visuals=visuals,
+                assumptions=assumptions,
+                data_gaps=gaps,
+            ), 0
 
         landscape = getattr(competitive, "landscape", None)
         peers = landscape.peers if landscape else []
@@ -2076,7 +2357,9 @@ class ReportRenderer:
             parts.append("")
 
         if peers:
-            peer_table = VisualEngine.table_peer_comparison(profile.ticker, peers, currency=profile.currency)
+            peer_table = VisualEngine.table_peer_comparison(
+                profile.ticker, peers, currency=profile.currency
+            )
             visuals.append(peer_table)
 
         summary = getattr(competitive, "positioning_summary", "")
@@ -2107,24 +2390,39 @@ class ReportRenderer:
         comp_assumptions = getattr(competitive, "assumptions", [])
         assumptions.extend(comp_assumptions)
 
-        return ReportSection(step_number=step.step_number, title=step.title,
-            content="\n".join(parts), visuals=visuals, assumptions=assumptions, data_gaps=gaps), len(visuals)
+        return ReportSection(
+            step_number=step.step_number,
+            title=step.title,
+            content="\n".join(parts),
+            visuals=visuals,
+            assumptions=assumptions,
+            data_gaps=gaps,
+        ), len(visuals)
 
-    def _render_long_term_step4(self, step, ctx):
+    def _render_long_term_step4(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 4: Capital Allocation & Shareholder Returns."""
         fundamental = ctx.get("fundamental")
         profile = ctx["profile"]
-        parts = []
-        visuals = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        gaps: list[str] = []
 
         cap = getattr(fundamental, "capital_allocation", None) if fundamental else None
 
         if not cap:
             gaps.append("Capital allocation data insufficient.")
-            parts.append("**Data Gap:** Capital allocation analysis requires more complete financial data.")
-            return ReportSection(step_number=step.step_number, title=step.title,
-                content="\n".join(parts), visuals=visuals, data_gaps=gaps), 0
+            parts.append(
+                "**Data Gap:** Capital allocation analysis requires more complete financial data."
+            )
+            return ReportSection(
+                step_number=step.step_number,
+                title=step.title,
+                content="\n".join(parts),
+                visuals=visuals,
+                data_gaps=gaps,
+            ), 0
 
         roic = getattr(cap, "roic", None)
         wacc = getattr(cap, "wacc", None)
@@ -2166,7 +2464,10 @@ class ReportRenderer:
             parts.append("")
 
         mermaid = VisualEngine.d2_capital_allocation(
-            profile.ticker, capex_pct, buyback_pct, div_pct,
+            profile.ticker,
+            capex_pct,
+            buyback_pct,
+            div_pct,
             capex_abs=self._abs_or_none(cap.capex),
             buyback_abs=self._abs_or_none(cap.share_buybacks),
             dividend_abs=self._abs_or_none(cap.dividends),
@@ -2182,23 +2483,38 @@ class ReportRenderer:
         visuals.extend(d_visuals)
         gaps.extend(d_gaps)
 
-        return ReportSection(step_number=step.step_number, title=step.title,
-            content="\n".join(parts), visuals=visuals, assumptions=d_assumptions, data_gaps=gaps), len(visuals)
+        return ReportSection(
+            step_number=step.step_number,
+            title=step.title,
+            content="\n".join(parts),
+            visuals=visuals,
+            assumptions=d_assumptions,
+            data_gaps=gaps,
+        ), len(visuals)
 
-    def _render_long_term_step5(self, step, ctx):
+    def _render_long_term_step5(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 5: Risk Assessment."""
         risk_matrix = ctx.get("risk_matrix")
-        parts = []
-        visuals = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        gaps: list[str] = []
 
         if not risk_matrix or not risk_matrix.risks:
             gaps.append("Risk matrix not available.")
             parts.append("**Data Gap:** Risk assessment not available.")
-            return ReportSection(step_number=step.step_number, title=step.title,
-                content="\n".join(parts), visuals=visuals, data_gaps=gaps), 0
+            return ReportSection(
+                step_number=step.step_number,
+                title=step.title,
+                content="\n".join(parts),
+                visuals=visuals,
+                data_gaps=gaps,
+            ), 0
 
-        parts.append(f"**Overall Risk Score:** {self._fmt_risk_score(risk_matrix.overall_risk_score)}")
+        parts.append(
+            f"**Overall Risk Score:** {self._fmt_risk_score(risk_matrix.overall_risk_score)}"
+        )
         parts.append(f"**Summary:** {risk_matrix.key_risk_summary}")
         parts.append("")
         parts.extend(self._risk_derivation_block(risk_matrix))
@@ -2213,32 +2529,44 @@ class ReportRenderer:
         # Detail top risks with second-order effects
         for r in risk_matrix.risks[:4]:
             parts.append(f"\n**{r.title}** ({r.category.value.title()})")
-            parts.append(f"- Probability: {r.probability} | Impact: {r.impact} | Timing: {r.timing.value.replace('_', ' ').title()} | Nature: {r.nature.value.title()}")
+            parts.append(
+                f"- Probability: {r.probability} | Impact: {r.impact} | Timing: "
+                f"{r.timing.value.replace('_', ' ').title()} | Nature: "
+                f"{r.nature.value.title()}"
+            )
             parts.append(f"- {r.description}")
             if r.second_order_effects:
                 parts.append(f"- Second-order: {'; '.join(r.second_order_effects[:2])}")
             if r.mitigants:
                 parts.append(f"- Mitigants: {'; '.join(r.mitigants[:2])}")
 
-        return ReportSection(step_number=step.step_number, title=step.title,
-            content="\n".join(parts), visuals=visuals, data_gaps=gaps), len(visuals)
+        return ReportSection(
+            step_number=step.step_number,
+            title=step.title,
+            content="\n".join(parts),
+            visuals=visuals,
+            data_gaps=gaps,
+        ), len(visuals)
 
-    def _render_long_term_step6(self, step, ctx):
+    def _render_long_term_step6(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 6: Scenario-Based Valuation Range."""
         # Identical logic to tactical step 6 - both need valuation
         return self._render_tactical_step6(step, ctx)
 
-    def _render_long_term_step7(self, step, ctx):
+    def _render_long_term_step7(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 7: Long-Term Thesis & Decision Framework."""
         profile = ctx["profile"]
         fundamental = ctx.get("fundamental")
         competitive = ctx.get("competitive")
         macro = ctx.get("macro")
-        valuation = ctx.get("valuation")
         risk_matrix = ctx.get("risk_matrix")
-        parts = []
-        visuals = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        gaps: list[str] = []
 
         favors = []
         disfavors = []
@@ -2288,12 +2616,12 @@ class ReportRenderer:
         catalysts.append("Competitive dynamics shift (M&A, market share).")
 
         parts.append("### Factors That Favor the Long-Term Thesis")
-        for f in (favors or ["No strong favorable factors identified."]):
+        for f in favors or ["No strong favorable factors identified."]:
             parts.append(f"- {f}")
         parts.append("")
 
         parts.append("### Factors That Disfavor the Long-Term Thesis")
-        for d in (disfavors or ["No strong unfavorable factors identified."]):
+        for d in disfavors or ["No strong unfavorable factors identified."]:
             parts.append(f"- {d}")
         parts.append("")
 
@@ -2307,8 +2635,10 @@ class ReportRenderer:
         parts.append("")
 
         if risk_matrix:
-            parts.append(f"### Risk-Adjusted View")
-            parts.append(f"Overall risk score: **{self._fmt_risk_score(risk_matrix.overall_risk_score)}**")
+            parts.append("### Risk-Adjusted View")
+            parts.append(
+                f"Overall risk score: **{self._fmt_risk_score(risk_matrix.overall_risk_score)}**"
+            )
             parts.append(f"{risk_matrix.key_risk_summary}")
             parts.append("")
 
@@ -2333,9 +2663,13 @@ class ReportRenderer:
         visuals.append(mermaid)
         visuals.extend(df_visuals)
 
-        return ReportSection(step_number=step.step_number, title=step.title,
-            content="\n".join(parts), visuals=visuals, data_gaps=gaps), len(visuals)
-
+        return ReportSection(
+            step_number=step.step_number,
+            title=step.title,
+            content="\n".join(parts),
+            visuals=visuals,
+            data_gaps=gaps,
+        ), len(visuals)
 
     # ------------------------------------------------------------------
     # Generic fallback renderer (used for long_term and tactical steps

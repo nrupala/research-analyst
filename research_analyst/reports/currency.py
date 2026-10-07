@@ -27,6 +27,8 @@ hardcoded US dollar sign. USD resolves to "$", keeping US reports byte-identical
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 # ISO 4217 currency code -> display symbol used in rendered reports.
 # Codes absent from this map fall back to the upper-cased code plus a space
 # (e.g. "SEK 12.30"), so an unknown currency is still unambiguous.
@@ -61,7 +63,7 @@ def currency_symbol(code: str | None) -> str:
     return _CURRENCY_SYMBOLS.get(key, f"{key} ")
 
 
-def money(value: float, code: str | None = "USD", decimals: int = 2) -> str:
+def money(value: float | Decimal, code: str | None = "USD", decimals: int = 2) -> str:
     """Format ``value`` as money in the currency named by ``code``.
 
     Equivalent to ``f"{currency_symbol(code)}{value:.{decimals}f}"``. With the

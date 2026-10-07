@@ -22,9 +22,9 @@
 
 from decimal import Decimal
 
+from research_analyst.engines.etf import ETFEngine
 from research_analyst.enums import SecurityType
 from research_analyst.models import CompanyProfile
-from research_analyst.engines.etf import ETFEngine
 from research_analyst.reports.renderer import ReportRenderer
 
 

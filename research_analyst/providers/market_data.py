@@ -33,12 +33,13 @@ Design:
 from __future__ import annotations
 
 import asyncio
+import functools
 import hashlib
 import json
 import logging
 import re
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -124,14 +125,97 @@ def _safe_int(val: Any) -> int | None:
 # yfinance funds_data.top_holdings lookup (empty from datacenter IPs). yfinance
 # is still used to ENRICH per-peer metrics, but discovery no longer depends on it.
 _SECTOR_PEERS: dict[str, list[str]] = {
-    "Technology": ["AAPL", "MSFT", "NVDA", "AVGO", "ORCL", "CRM", "ADBE", "AMD", "CSCO", "ACN", "INTC", "QCOM", "TXN", "IBM", "NOW", "INTU", "AMAT", "LRCX", "MU", "ADI"],
-    "Communication Services": ["GOOGL", "META", "NFLX", "DIS", "CMCSA", "T", "VZ", "TMUS", "CHTR", "EA"],
-    "Consumer Cyclical": ["AMZN", "TSLA", "HD", "MCD", "NKE", "LOW", "SBUX", "BKNG", "TJX", "GM", "F"],
+    "Technology": [
+        "AAPL",
+        "MSFT",
+        "NVDA",
+        "AVGO",
+        "ORCL",
+        "CRM",
+        "ADBE",
+        "AMD",
+        "CSCO",
+        "ACN",
+        "INTC",
+        "QCOM",
+        "TXN",
+        "IBM",
+        "NOW",
+        "INTU",
+        "AMAT",
+        "LRCX",
+        "MU",
+        "ADI",
+    ],
+    "Communication Services": [
+        "GOOGL",
+        "META",
+        "NFLX",
+        "DIS",
+        "CMCSA",
+        "T",
+        "VZ",
+        "TMUS",
+        "CHTR",
+        "EA",
+    ],
+    "Consumer Cyclical": [
+        "AMZN",
+        "TSLA",
+        "HD",
+        "MCD",
+        "NKE",
+        "LOW",
+        "SBUX",
+        "BKNG",
+        "TJX",
+        "GM",
+        "F",
+    ],
     "Consumer Defensive": ["WMT", "PG", "KO", "PEP", "COST", "MDLZ", "CL", "MO", "PM", "TGT"],
-    "Financial Services": ["JPM", "BAC", "WFC", "GS", "MS", "C", "BLK", "SCHW", "AXP", "SPGI", "V", "MA"],
+    "Financial Services": [
+        "JPM",
+        "BAC",
+        "WFC",
+        "GS",
+        "MS",
+        "C",
+        "BLK",
+        "SCHW",
+        "AXP",
+        "SPGI",
+        "V",
+        "MA",
+    ],
     "Financials": ["JPM", "BAC", "WFC", "GS", "MS", "C", "BLK", "SCHW", "AXP", "SPGI"],
-    "Healthcare": ["UNH", "JNJ", "LLY", "PFE", "MRK", "ABBV", "TMO", "ABT", "DHR", "BMY", "AMGN", "GILD"],
-    "Industrials": ["CAT", "BA", "HON", "UPS", "GE", "RTX", "UNP", "DE", "LMT", "MMM", "EMR", "ETN"],
+    "Healthcare": [
+        "UNH",
+        "JNJ",
+        "LLY",
+        "PFE",
+        "MRK",
+        "ABBV",
+        "TMO",
+        "ABT",
+        "DHR",
+        "BMY",
+        "AMGN",
+        "GILD",
+    ],
+    "Industrials": [
+        "CAT",
+        "BA",
+        "HON",
+        "UPS",
+        "GE",
+        "RTX",
+        "UNP",
+        "DE",
+        "LMT",
+        "MMM",
+        "EMR",
+        "ETN",
+    ],
     "Energy": ["XOM", "CVX", "COP", "SLB", "EOG", "MPC", "PSX", "VLO", "OXY", "WMB"],
     "Utilities": ["NEE", "DUK", "SO", "D", "AEP", "EXC", "SRE", "XEL", "ED", "PEG"],
     "Real Estate": ["PLD", "AMT", "EQIX", "CCI", "PSA", "O", "SPG", "WELL", "DLR", "VICI"],
@@ -161,7 +245,9 @@ def peer_map_hash() -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
-def _fred_observations(series_id: str, api_key: str, base_url: str, limit: int = 14) -> list[tuple[str, float]]:
+def _fred_observations(
+    series_id: str, api_key: str, base_url: str, limit: int = 14
+) -> list[tuple[str, float]]:
     """Fetch recent FRED observations as (date, value), newest first. Stdlib only.
 
     Missing values (a literal dot) are skipped. Raises on transport/HTTP
@@ -171,13 +257,15 @@ def _fred_observations(series_id: str, api_key: str, base_url: str, limit: int =
     import urllib.parse
     import urllib.request
 
-    params = urllib.parse.urlencode({
-        "series_id": series_id,
-        "api_key": api_key,
-        "file_type": "json",
-        "sort_order": "desc",
-        "limit": limit,
-    })
+    params = urllib.parse.urlencode(
+        {
+            "series_id": series_id,
+            "api_key": api_key,
+            "file_type": "json",
+            "sort_order": "desc",
+            "limit": limit,
+        }
+    )
     url = f"{base_url.rstrip('/')}/series/observations?{params}"
     with urllib.request.urlopen(url, timeout=15) as resp:
         payload = json.loads(resp.read().decode())
@@ -236,6 +324,7 @@ class _DiskCache:
 # Provider
 # ---------------------------------------------------------------------------
 
+
 class MarketDataProvider:
     """Async market data provider backed by yfinance.
 
@@ -264,27 +353,28 @@ class MarketDataProvider:
         blocking the event loop.
         """
         import yfinance as yf
+
         return await asyncio.to_thread(lambda: yf.Ticker(ticker))
 
     @staticmethod
-    async def _yf_download(
-        ticker: str, period: str = "1y", interval: str = "1d"
-    ) -> pd.DataFrame:
+    async def _yf_download(ticker: str, period: str = "1y", interval: str = "1d") -> pd.DataFrame:
         """Download OHLCV data via yfinance in thread pool."""
         import yfinance as yf
 
         def _dl() -> pd.DataFrame:
             df = yf.download(
-                ticker, period=period, interval=interval,
-                auto_adjust=False, progress=False, threads=False,
+                ticker,
+                period=period,
+                interval=interval,
+                auto_adjust=False,
+                progress=False,
+                threads=False,
             )
             return df
 
         return await asyncio.to_thread(_dl)
 
-    async def fetch_etf_metadata(
-        self, ticker: str, yf_ticker: Any = None
-    ) -> ETFMetadata:
+    async def fetch_etf_metadata(self, ticker: str, yf_ticker: Any = None) -> ETFMetadata:
         """Fetch ETF-specific metadata from yfinance (.info + .funds_data).
 
         Populates each field where the source supplies it and records an
@@ -408,15 +498,17 @@ class MarketDataProvider:
             v = _safe_int(row.get("Volume"))
 
             if c is not None:
-                data_points.append(PriceData(
-                    date=dt,
-                    open=o or c,
-                    high=h or c,
-                    low=l_ or c,
-                    close=c,
-                    adj_close=ac or c,
-                    volume=v or 0,
-                ))
+                data_points.append(
+                    PriceData(
+                        date=dt,
+                        open=o or c,
+                        high=h or c,
+                        low=l_ or c,
+                        close=c,
+                        adj_close=ac or c,
+                        volume=v or 0,
+                    )
+                )
 
         if not data_points:
             return PriceSeries(
@@ -431,8 +523,12 @@ class MarketDataProvider:
         low_52w = min(p.low for p in data_points[-252:]) if len(data_points) >= 1 else current
 
         # Average volumes
-        avg_vol_30 = float(np.mean(volumes[-30:])) if len(volumes) >= 30 else float(np.mean(volumes))
-        avg_vol_90 = float(np.mean(volumes[-90:])) if len(volumes) >= 90 else float(np.mean(volumes))
+        avg_vol_30 = (
+            float(np.mean(volumes[-30:])) if len(volumes) >= 30 else float(np.mean(volumes))
+        )
+        avg_vol_90 = (
+            float(np.mean(volumes[-90:])) if len(volumes) >= 90 else float(np.mean(volumes))
+        )
 
         # YTD return
         year_start = date(data_points[-1].date.year, 1, 1)
@@ -497,12 +593,16 @@ class MarketDataProvider:
         # a name or a market price, so require one before proceeding.
         _name = info.get("longName") or info.get("shortName")
         _price_fields = (
-            "regularMarketPrice", "currentPrice", "previousClose",
-            "regularMarketPreviousClose", "open", "navPrice", "bid", "ask",
+            "regularMarketPrice",
+            "currentPrice",
+            "previousClose",
+            "regularMarketPreviousClose",
+            "open",
+            "navPrice",
+            "bid",
+            "ask",
         )
-        _has_price = any(
-            _safe_float(info.get(f)) not in (None, 0) for f in _price_fields
-        )
+        _has_price = any(_safe_float(info.get(f)) not in (None, 0) for f in _price_fields)
         if not _name and not _has_price:
             raise ValueError(
                 f"Could not resolve ticker '{ticker}' to a listed security "
@@ -549,8 +649,9 @@ class MarketDataProvider:
         if not q:
             return []
 
-        def _search() -> list[dict]:
+        def _search() -> list[dict[str, Any]]:
             import yfinance as yf
+
             try:
                 s = yf.Search(q, max_results=max_results, enable_fuzzy_query=True)
             except TypeError:
@@ -569,17 +670,22 @@ class MarketDataProvider:
             if not sym:
                 continue
             mkt = markets.resolve(sym)
-            out.append(SymbolMatch(
-                symbol=sym,
-                name=r.get("longname") or r.get("shortname")
-                     or r.get("longName") or r.get("shortName") or "",
-                exchange=r.get("exchDisp") or r.get("exchange") or "",
-                quote_type=str(r.get("quoteType") or r.get("typeDisp") or "").upper(),
-                market=mkt.code,
-                market_name=mkt.name,
-                currency=mkt.currency,
-                score=float(r.get("score") or 0.0),
-            ))
+            out.append(
+                SymbolMatch(
+                    symbol=sym,
+                    name=r.get("longname")
+                    or r.get("shortname")
+                    or r.get("longName")
+                    or r.get("shortName")
+                    or "",
+                    exchange=r.get("exchDisp") or r.get("exchange") or "",
+                    quote_type=str(r.get("quoteType") or r.get("typeDisp") or "").upper(),
+                    market=mkt.code,
+                    market_name=mkt.name,
+                    currency=mkt.currency,
+                    score=float(r.get("score") or 0.0),
+                )
+            )
         return out
 
     # ------------------------------------------------------------------
@@ -639,17 +745,17 @@ class MarketDataProvider:
 
         holders: list[InstitutionalHolder] = []
         for _, row in holders_df.iterrows():
-            holders.append(InstitutionalHolder(
-                holder_name=str(row.get("Holder", "")),
-                shares=_safe_int(row.get("Shares")) or 0,
-                value=_safe_decimal(row.get("Value")),
-                pct_held=_safe_float(row.get("% Out")),
-                date_reported=(
-                    row["Date Reported"].date()
-                    if pd.notna(row.get("Date Reported"))
-                    else None
-                ),
-            ))
+            holders.append(
+                InstitutionalHolder(
+                    holder_name=str(row.get("Holder", "")),
+                    shares=_safe_int(row.get("Shares")) or 0,
+                    value=_safe_decimal(row.get("Value")),
+                    pct_held=_safe_float(row.get("% Out")),
+                    date_reported=(
+                        row["Date Reported"].date() if pd.notna(row.get("Date Reported")) else None
+                    ),
+                )
+            )
 
         data = [h.model_dump(mode="json") for h in holders]
         self._cache.put(cache_key, data)
@@ -711,9 +817,10 @@ class MarketDataProvider:
                 ebitda = _safe_decimal(_row(income, "EBITDA"))
                 net_income = _safe_decimal(_row(income, "Net Income"))
                 eps = _safe_float(_row(income, "Diluted EPS"))
-                ebit = _safe_decimal(
-                    _first(income, "EBIT", "Earnings Before Interest and Taxes")
-                ) or op_income
+                ebit = (
+                    _safe_decimal(_first(income, "EBIT", "Earnings Before Interest and Taxes"))
+                    or op_income
+                )
 
                 # Expense lines are stored as positive magnitudes on the model
                 # (mirroring the engine's StatementSeries contract); yfinance
@@ -723,7 +830,12 @@ class MarketDataProvider:
 
                 interest_expense = _magnitude(
                     _safe_decimal(
-                        _first(income, "Interest Expense", "Total Interest Expense", "Interest Expense Net")
+                        _first(
+                            income,
+                            "Interest Expense",
+                            "Total Interest Expense",
+                            "Interest Expense Net",
+                        )
                     )
                 )
                 tax_expense = _magnitude(
@@ -761,7 +873,9 @@ class MarketDataProvider:
                 )
 
                 total_assets = _safe_decimal(_row(balance, "Total Assets"))
-                total_liabilities = _safe_decimal(_row(balance, "Total Liabilities Net Minority Interest"))
+                total_liabilities = _safe_decimal(
+                    _row(balance, "Total Liabilities Net Minority Interest")
+                )
                 total_equity = _safe_decimal(_row(balance, "Stockholders Equity"))
                 cash = _safe_decimal(_row(balance, "Cash And Cash Equivalents"))
                 total_debt = _safe_decimal(_row(balance, "Total Debt"))
@@ -791,59 +905,81 @@ class MarketDataProvider:
                 buybacks = _safe_decimal(_row(cashflow, "Repurchase Of Capital Stock"))
 
                 # Margins
-                gm = float(gross_profit / revenue) if gross_profit and revenue and revenue != 0 else None
+                gm = (
+                    float(gross_profit / revenue)
+                    if gross_profit and revenue and revenue != 0
+                    else None
+                )
                 om = float(op_income / revenue) if op_income and revenue and revenue != 0 else None
-                nm = float(net_income / revenue) if net_income and revenue and revenue != 0 else None
+                nm = (
+                    float(net_income / revenue) if net_income and revenue and revenue != 0 else None
+                )
                 em = float(ebitda / revenue) if ebitda and revenue and revenue != 0 else None
 
                 # Ratios
-                roe = float(net_income / total_equity) if net_income and total_equity and total_equity != 0 else None
-                roa = float(net_income / total_assets) if net_income and total_assets and total_assets != 0 else None
-                d_e = float(total_debt / total_equity) if total_debt and total_equity and total_equity != 0 else None
+                roe = (
+                    float(net_income / total_equity)
+                    if net_income and total_equity and total_equity != 0
+                    else None
+                )
+                roa = (
+                    float(net_income / total_assets)
+                    if net_income and total_assets and total_assets != 0
+                    else None
+                )
+                d_e = (
+                    float(total_debt / total_equity)
+                    if total_debt and total_equity and total_equity != 0
+                    else None
+                )
 
-                net_debt = total_debt - cash if total_debt is not None and cash is not None else None
+                net_debt = (
+                    total_debt - cash if total_debt is not None and cash is not None else None
+                )
 
-                statements.append(FinancialStatement(
-                    period=fy_label,
-                    period_end_date=period_date,
-                    is_annual=True,
-                    revenue=revenue,
-                    gross_profit=gross_profit,
-                    operating_income=op_income,
-                    ebitda=ebitda,
-                    ebit=ebit,
-                    net_income=net_income,
-                    eps_diluted=eps,
-                    shares_outstanding=shares_basic,
-                    shares_diluted=shares_dil,
-                    interest_expense=interest_expense,
-                    tax_expense=tax_expense,
-                    sga_expense=sga,
-                    depreciation_amortization=dep_amort,
-                    gross_margin=gm,
-                    operating_margin=om,
-                    net_margin=nm,
-                    ebitda_margin=em,
-                    total_assets=total_assets,
-                    total_liabilities=total_liabilities,
-                    total_equity=total_equity,
-                    cash_and_equivalents=cash,
-                    total_debt=total_debt,
-                    net_debt=net_debt,
-                    current_assets=current_assets,
-                    current_liabilities=current_liabilities,
-                    retained_earnings=retained_earnings,
-                    ppe_net=ppe_net,
-                    receivables=receivables,
-                    operating_cash_flow=op_cf,
-                    capex=capex,
-                    free_cash_flow=fcf,
-                    dividends_paid=divs,
-                    share_buybacks=buybacks,
-                    roe=roe,
-                    roa=roa,
-                    debt_to_equity=d_e,
-                ))
+                statements.append(
+                    FinancialStatement(
+                        period=fy_label,
+                        period_end_date=period_date,
+                        is_annual=True,
+                        revenue=revenue,
+                        gross_profit=gross_profit,
+                        operating_income=op_income,
+                        ebitda=ebitda,
+                        ebit=ebit,
+                        net_income=net_income,
+                        eps_diluted=eps,
+                        shares_outstanding=shares_basic,
+                        shares_diluted=shares_dil,
+                        interest_expense=interest_expense,
+                        tax_expense=tax_expense,
+                        sga_expense=sga,
+                        depreciation_amortization=dep_amort,
+                        gross_margin=gm,
+                        operating_margin=om,
+                        net_margin=nm,
+                        ebitda_margin=em,
+                        total_assets=total_assets,
+                        total_liabilities=total_liabilities,
+                        total_equity=total_equity,
+                        cash_and_equivalents=cash,
+                        total_debt=total_debt,
+                        net_debt=net_debt,
+                        current_assets=current_assets,
+                        current_liabilities=current_liabilities,
+                        retained_earnings=retained_earnings,
+                        ppe_net=ppe_net,
+                        receivables=receivables,
+                        operating_cash_flow=op_cf,
+                        capex=capex,
+                        free_cash_flow=fcf,
+                        dividends_paid=divs,
+                        share_buybacks=buybacks,
+                        roe=roe,
+                        roa=roa,
+                        debt_to_equity=d_e,
+                    )
+                )
 
         data = [s.model_dump(mode="json") for s in statements]
         self._cache.put(cache_key, data)
@@ -958,19 +1094,14 @@ class MarketDataProvider:
         profile = await self.get_company_profile(ticker)
         if not profile.sector:
             logger.warning("No sector data for %s; cannot discover peers.", ticker)
-            return [], PeerSetProvenance(
-                map_version=PEER_MAP_VERSION, map_hash=peer_map_hash()
-            )
+            return [], PeerSetProvenance(map_version=PEER_MAP_VERSION, map_hash=peer_map_hash())
 
         peer_tickers = [
-            t for t in _sector_peer_candidates(profile.sector, profile.industry)
-            if t != ticker
+            t for t in _sector_peer_candidates(profile.sector, profile.industry) if t != ticker
         ]
         if not peer_tickers:
             logger.info("No curated peer set for sector '%s'", profile.sector)
-            return [], PeerSetProvenance(
-                map_version=PEER_MAP_VERSION, map_hash=peer_map_hash()
-            )
+            return [], PeerSetProvenance(map_version=PEER_MAP_VERSION, map_hash=peer_map_hash())
 
         attempted = peer_tickers[: max_peers * 2]
         peers: list[Competitor] = []
@@ -1038,8 +1169,11 @@ class MarketDataProvider:
         if missing:
             logger.warning(
                 "Peer universe v%s (%s): %d of %d expected peers failed enrichment: %s",
-                PEER_MAP_VERSION, provenance.map_hash,
-                len(resolved), len(attempted), ", ".join(missing),
+                PEER_MAP_VERSION,
+                provenance.map_hash,
+                len(resolved),
+                len(attempted),
+                ", ".join(missing),
             )
         return peers, provenance
 
@@ -1102,9 +1236,7 @@ class MarketDataProvider:
 
         if snapshot.gdp_growth_latest is not None:
             g = snapshot.gdp_growth_latest
-            inverted = (
-                snapshot.yield_curve_spread is not None and snapshot.yield_curve_spread < 0
-            )
+            inverted = snapshot.yield_curve_spread is not None and snapshot.yield_curve_spread < 0
             if g <= 0:
                 snapshot.cycle_phase = "contraction"
             elif inverted:
@@ -1140,8 +1272,8 @@ class MarketDataProvider:
 
             for symbol, field in macro_tickers.items():
                 try:
-                    tk = await asyncio.to_thread(lambda s=symbol: yf.Ticker(s))
-                    hist = await asyncio.to_thread(lambda t=tk: t.history(period="5d"))
+                    tk = await asyncio.to_thread(functools.partial(yf.Ticker, symbol))
+                    hist = await asyncio.to_thread(tk.history, period="5d")
                     if hist is not None and not hist.empty:
                         val = _safe_float(hist["Close"].iloc[-1])
                         if field == "us_10y_yield" and val is not None:

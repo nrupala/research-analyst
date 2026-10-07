@@ -34,7 +34,6 @@ for the report renderer.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable
 
 from ..enums import ReportType
 

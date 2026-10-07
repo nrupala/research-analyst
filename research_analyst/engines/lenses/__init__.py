@@ -26,10 +26,12 @@ LensResults. Adding a lens = drop a module in this package + register it here.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from . import buffett, dalio, damodaran, graham, greenblatt, lynch, marks
 from .base import ATTRIBUTION, LensInput, LensResult, LensSignal
 
-LENSES: dict[str, object] = {
+LENSES: dict[str, Callable[[LensInput], LensResult]] = {
     "graham": graham.run,
     "greenblatt": greenblatt.run,
     "lynch": lynch.run,
