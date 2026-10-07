@@ -30,7 +30,7 @@ Guards the "institutional, client-ready polish" so it doesn't rot:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 
 from research_analyst.enums import ReportType, SecurityType
 from research_analyst.models import (
@@ -249,7 +249,7 @@ def test_svg_emission_embedded_in_report_markdown():
     report = ReportOutput(
         report_type=ReportType.COMPREHENSIVE,
         ticker="AAPL", title="AAPL — Comprehensive",
-        generated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 1, 1, tzinfo=UTC),
         sections=[section],
     )
     md = report.to_markdown()

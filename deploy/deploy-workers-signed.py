@@ -26,6 +26,7 @@ Notes:
   go-ahead.
 """
 from __future__ import annotations
+
 import subprocess
 import sys
 
@@ -44,7 +45,7 @@ def main() -> None:
             "usage: deploy-workers-signed.py <{}> [--note TEXT]".format("|".join(WORKERS)))
     name = args[0]
     module = WORKERS[name]
-    note = "{} deploy via signed wrapper".format(name)
+    note = f"{name} deploy via signed wrapper"
     i = 1
     while i < len(args):
         if args[i] == "--note" and i + 1 < len(args):
@@ -57,8 +58,8 @@ def main() -> None:
         [sys.executable, DEPLOY_SIGNED, name, module,
          "--main-module", "index.js", "--note", note])
     if r.returncode != 0:
-        raise SystemExit("signed deploy failed (exit {})".format(r.returncode))
-    print("{} SIGNED DEPLOY OK".format(name))
+        raise SystemExit(f"signed deploy failed (exit {r.returncode})")
+    print(f"{name} SIGNED DEPLOY OK")
 
 
 if __name__ == "__main__":

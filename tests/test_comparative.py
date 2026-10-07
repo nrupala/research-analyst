@@ -28,7 +28,7 @@ the comparative renderer end to end.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -76,6 +76,7 @@ requires_fastapi = pytest.mark.skipif(
 # ---------------------------------------------------------------------------
 # Synthetic per-ticker response builder
 # ---------------------------------------------------------------------------
+
 
 def make_response(
     ticker: str,
@@ -141,7 +142,7 @@ def make_response(
         report_type=ReportType.COMPREHENSIVE,
         ticker=ticker,
         title=f"{ticker} — Comprehensive 7-Step Research Report",
-        generated_at=datetime(2026, 7, 18, 12, 0, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 7, 18, 12, 0, tzinfo=UTC),
         sections=[],
         valuation=valuation,
         risk_matrix=RiskMatrix(ticker=ticker, overall_risk_score=risk_score),
@@ -152,10 +153,11 @@ def make_response(
         ticker=ticker,
         security_type=SecurityType.EQUITY,
         company_name=company or f"{ticker} Inc.",
-        generated_at=datetime(2026, 7, 18, 12, 0, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 7, 18, 12, 0, tzinfo=UTC),
         reports=[report],
         metadata=ResearchMetadata(
-            data_sources=sources or ["yfinance (company profile)", "yfinance (financial statements)"],
+            data_sources=sources
+            or ["yfinance (company profile)", "yfinance (financial statements)"],
         ),
     )
 
@@ -174,7 +176,9 @@ class FakeOrchestrator:
         return self._responses[ticker]
 
 
-def build_client(responses: dict[str, ResearchResponse], invalid: set[str] | None = None) -> TestClient:
+def build_client(
+    responses: dict[str, ResearchResponse], invalid: set[str] | None = None
+) -> TestClient:
     """FastAPI TestClient with the comparative orchestrator overridden by a fake."""
     fake = FakeOrchestrator(responses, invalid=invalid)
     comparative = ComparativeOrchestrator(orchestrator=fake)
@@ -198,6 +202,7 @@ def _assert_no_advice(text: str) -> None:
 # ---------------------------------------------------------------------------
 # rank_metric — the pure ranking primitive
 # ---------------------------------------------------------------------------
+
 
 class TestRankMetric:
     def test_higher_is_better_ordering(self) -> None:
@@ -259,6 +264,7 @@ class TestRankMetric:
 # build_comparative_report — the pure alignment + scorecard layer
 # ---------------------------------------------------------------------------
 
+
 class TestBuildComparativeReport:
     def test_alignment_and_winners(self) -> None:
         responses = [
@@ -274,7 +280,9 @@ class TestBuildComparativeReport:
         assert "Dividend & Income" in by_name
         assert "Risk" in by_name
 
-        roic = next(m for m in by_name["Profitability & Capital Quality"].metrics if m.key == "roic")
+        roic = next(
+            m for m in by_name["Profitability & Capital Quality"].metrics if m.key == "roic"
+        )
         assert roic.winners == ["AAA"]  # 0.20 > 0.10
         assert roic.ranks["AAA"] == 1 and roic.ranks["BBB"] == 2
 
@@ -303,6 +311,7 @@ class TestBuildComparativeReport:
 # ---------------------------------------------------------------------------
 # /api/compare endpoint
 # ---------------------------------------------------------------------------
+
 
 @requires_fastapi
 class TestCompareEndpoint:
@@ -344,10 +353,12 @@ class TestCompareEndpoint:
         assert len(data["report"]["scorecard"]) == 2
 
     def test_non_dividend_name_in_set(self) -> None:
-        client = build_client({
-            "KO": make_response("KO", pays_dividend=True, div_yield=0.03),
-            "GOOGL": make_response("GOOGL", pays_dividend=False),
-        })
+        client = build_client(
+            {
+                "KO": make_response("KO", pays_dividend=True, div_yield=0.03),
+                "GOOGL": make_response("GOOGL", pays_dividend=False),
+            }
+        )
         resp = client.post("/api/compare", json={"tickers": ["KO", "GOOGL"]})
         assert resp.status_code == 200, resp.text
         data = resp.json()
@@ -390,12 +401,15 @@ class TestCompareEndpoint:
 # Renderer — Markdown + self-contained HTML
 # ---------------------------------------------------------------------------
 
+
 class TestComparativeRenderer:
     def _report(self):
-        return build_comparative_report([
-            make_response("KO", roic=0.18, div_yield=0.03, risk_score=3.0),
-            make_response("PEP", roic=0.12, div_yield=0.028, risk_score=4.0),
-        ])
+        return build_comparative_report(
+            [
+                make_response("KO", roic=0.18, div_yield=0.03, risk_score=3.0),
+                make_response("PEP", roic=0.12, div_yield=0.028, risk_score=4.0),
+            ]
+        )
 
     def test_markdown_has_core_sections(self) -> None:
         md = render_markdown(self._report())
@@ -421,10 +435,12 @@ class TestComparativeRenderer:
         _assert_no_advice(html_doc)
 
     def test_html_escapes_content(self) -> None:
-        report = build_comparative_report([
-            make_response("KO", company="Coca-Cola <script>"),
-            make_response("PEP"),
-        ])
+        report = build_comparative_report(
+            [
+                make_response("KO", company="Coca-Cola <script>"),
+                make_response("PEP"),
+            ]
+        )
         html_doc = render_html(report)
         assert "<script>" not in html_doc
         assert "&lt;script&gt;" in html_doc
@@ -433,10 +449,16 @@ class TestComparativeRenderer:
         # Issue #74: every named source appears in the comparative report with
         # its reference link — not just a bare label list.
         from research_analyst.models import SourceRecord
+
         ko = make_response("KO")
         ko.metadata.source_records = [
-            SourceRecord(name="yfinance (company profile)", url="https://finance.yahoo.com/quote/KO"),
-            SourceRecord(name="SEC EDGAR (10-K filings)", url="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=KO&type=10-K"),
+            SourceRecord(
+                name="yfinance (company profile)", url="https://finance.yahoo.com/quote/KO"
+            ),
+            SourceRecord(
+                name="SEC EDGAR (10-K filings)",
+                url="https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=KO&type=10-K",
+            ),
         ]
         report = build_comparative_report([ko, make_response("PEP")])
         assert report.source_records["KO"][0].url == "https://finance.yahoo.com/quote/KO"

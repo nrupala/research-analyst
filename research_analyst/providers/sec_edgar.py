@@ -46,7 +46,6 @@ import httpx
 
 from ..config import settings
 from ..models import (
-    AnalystEstimates,
     CompanyProfile,
     FinancialStatement,
     InsiderTransaction,
@@ -72,9 +71,7 @@ def _sanitize_ticker(ticker: str) -> str:
     """
     cleaned = ticker.strip().upper()
     if not _TICKER_RE.match(cleaned):
-        raise ValueError(
-            f"Invalid ticker '{html.escape(ticker)}': must be 1-5 uppercase letters."
-        )
+        raise ValueError(f"Invalid ticker '{html.escape(ticker)}': must be 1-5 uppercase letters.")
     return cleaned
 
 
@@ -189,7 +186,7 @@ class SECEdgarProvider:
         self._cik_cache = _LRUCache(maxsize=512)
         self._semaphore = asyncio.Semaphore(5)  # Max 5 concurrent requests
 
-    async def __aenter__(self) -> "SECEdgarProvider":
+    async def __aenter__(self) -> SECEdgarProvider:
         self._client = httpx.AsyncClient(
             headers={"User-Agent": self._cfg.user_agent, "Accept": "application/json"},
             timeout=httpx.Timeout(self._cfg.request_timeout),
@@ -225,7 +222,7 @@ class SECEdgarProvider:
 
                     if resp.status_code == 429:
                         # Rate limited — back off and retry
-                        wait = _BACKOFF_BASE * (2 ** attempt)
+                        wait = _BACKOFF_BASE * (2**attempt)
                         logger.warning("SEC rate limited (429). Retrying in %.1fs...", wait)
                         await asyncio.sleep(wait)
                         continue
@@ -239,19 +236,25 @@ class SECEdgarProvider:
                         logger.error("SEC request failed: %s %s", e.response.status_code, url)
                         raise
                     last_exc = e
-                    wait = _BACKOFF_BASE * (2 ** attempt)
+                    wait = _BACKOFF_BASE * (2**attempt)
                     logger.warning(
                         "SEC server error %s. Retry %d/%d in %.1fs",
-                        e.response.status_code, attempt + 1, _MAX_RETRIES, wait,
+                        e.response.status_code,
+                        attempt + 1,
+                        _MAX_RETRIES,
+                        wait,
                     )
                     await asyncio.sleep(wait)
 
                 except (httpx.ConnectError, httpx.ReadTimeout) as e:
                     last_exc = e
-                    wait = _BACKOFF_BASE * (2 ** attempt)
+                    wait = _BACKOFF_BASE * (2**attempt)
                     logger.warning(
                         "SEC connection error: %s. Retry %d/%d in %.1fs",
-                        type(e).__name__, attempt + 1, _MAX_RETRIES, wait,
+                        type(e).__name__,
+                        attempt + 1,
+                        _MAX_RETRIES,
+                        wait,
                     )
                     await asyncio.sleep(wait)
 
@@ -275,9 +278,6 @@ class SECEdgarProvider:
         if cached:
             return cached
 
-        url = f"{self._cfg.company_url}/CIK{ticker.upper()}.json"
-        # SEC redirect pattern: tickers.json has all mappings,
-        # but per-company endpoint is more reliable
         try:
             # Try direct company lookup first
             data = await self._get(f"https://data.sec.gov/submissions/CIK{ticker}.json")
@@ -285,9 +285,7 @@ class SECEdgarProvider:
         except (httpx.HTTPStatusError, ConnectionError):
             # Fallback: search the company tickers JSON
             try:
-                tickers_data = await self._get(
-                    "https://www.sec.gov/files/company_tickers.json"
-                )
+                tickers_data = await self._get("https://www.sec.gov/files/company_tickers.json")
                 for _key, entry in tickers_data.items():
                     if entry.get("ticker", "").upper() == ticker:
                         cik = _sanitize_cik(str(entry["cik_str"]))
@@ -295,9 +293,7 @@ class SECEdgarProvider:
                 else:
                     raise ValueError(f"Ticker '{ticker}' not found in SEC database.")
             except (httpx.HTTPStatusError, ConnectionError) as e:
-                raise ValueError(
-                    f"Could not resolve CIK for '{ticker}': SEC unreachable."
-                ) from e
+                raise ValueError(f"Could not resolve CIK for '{ticker}': SEC unreachable.") from e
 
         self._cik_cache.put(ticker, cik)
         return cik
@@ -431,11 +427,15 @@ class SECEdgarProvider:
                         period_data[end_date][field_name] = val
 
             except (httpx.HTTPStatusError, ConnectionError, KeyError) as e:
-                logger.debug("XBRL concept '%s/%s' unavailable for %s: %s", taxonomy, concept, ticker, e)
+                logger.debug(
+                    "XBRL concept '%s/%s' unavailable for %s: %s", taxonomy, concept, ticker, e
+                )
                 continue
             except Exception as e:
                 # Catch-all: log and continue, never crash the pipeline
-                logger.warning("Unexpected error fetching XBRL '%s' for %s: %s", field_name, ticker, e)
+                logger.warning(
+                    "Unexpected error fetching XBRL '%s' for %s: %s", field_name, ticker, e
+                )
                 continue
 
         if not period_data:
@@ -463,16 +463,15 @@ class SECEdgarProvider:
 
             # Compute margins where numerator and denominator exist
             gross_margin = (
-                float(gross_profit / revenue) if gross_profit and revenue and revenue != 0
-                else None
+                float(gross_profit / revenue) if gross_profit and revenue and revenue != 0 else None
             )
             op_margin = (
-                float(operating_income / revenue) if operating_income and revenue and revenue != 0
+                float(operating_income / revenue)
+                if operating_income and revenue and revenue != 0
                 else None
             )
             net_margin = (
-                float(net_income / revenue) if net_income and revenue and revenue != 0
-                else None
+                float(net_income / revenue) if net_income and revenue and revenue != 0 else None
             )
 
             total_assets = _safe_decimal(d.get("total_assets"))
@@ -490,75 +489,78 @@ class SECEdgarProvider:
 
             # Free cash flow = operating CF - capex (capex is reported as positive payment)
             fcf = (
-                operating_cf - capex_val if operating_cf is not None and capex_val is not None
+                operating_cf - capex_val
+                if operating_cf is not None and capex_val is not None
                 else None
             )
 
             # Net debt = total debt - cash
-            net_debt = (
-                total_debt - cash if total_debt is not None and cash is not None
-                else None
-            )
+            net_debt = total_debt - cash if total_debt is not None and cash is not None else None
 
             # ROE = net income / equity
             roe = (
-                float(net_income / total_equity) if net_income and total_equity and total_equity != 0
+                float(net_income / total_equity)
+                if net_income and total_equity and total_equity != 0
                 else None
             )
             # ROA = net income / total assets
             roa = (
-                float(net_income / total_assets) if net_income and total_assets and total_assets != 0
+                float(net_income / total_assets)
+                if net_income and total_assets and total_assets != 0
                 else None
             )
             # Debt/Equity
             d_e = (
-                float(total_debt / total_equity) if total_debt and total_equity and total_equity != 0
+                float(total_debt / total_equity)
+                if total_debt and total_equity and total_equity != 0
                 else None
             )
 
             fy_label = f"FY{end_date.year}" if end_date else end_str
 
-            statements.append(FinancialStatement(
-                period=fy_label,
-                period_end_date=end_date,
-                is_annual=True,
-                revenue=revenue,
-                cost_of_revenue=_safe_decimal(d.get("cost_of_revenue")),
-                gross_profit=gross_profit,
-                operating_income=operating_income,
-                ebitda=_safe_decimal(d.get("ebitda")),
-                ebit=ebit,
-                net_income=net_income,
-                eps_diluted=_safe_float(d.get("eps_diluted")),
-                shares_diluted=_safe_int(d.get("shares_diluted")),
-                shares_outstanding=_safe_int(d.get("shares_outstanding")),
-                interest_expense=_safe_decimal(d.get("interest_expense")),
-                tax_expense=_safe_decimal(d.get("tax_expense")),
-                sga_expense=_safe_decimal(d.get("sga_expense")),
-                depreciation_amortization=_safe_decimal(d.get("dep_amort")),
-                gross_margin=gross_margin,
-                operating_margin=op_margin,
-                net_margin=net_margin,
-                total_assets=total_assets,
-                total_liabilities=total_liabilities,
-                total_equity=total_equity,
-                cash_and_equivalents=cash,
-                total_debt=total_debt,
-                net_debt=net_debt,
-                current_assets=current_assets,
-                current_liabilities=current_liabilities,
-                retained_earnings=retained_earnings,
-                ppe_net=ppe_net,
-                receivables=receivables,
-                operating_cash_flow=operating_cf,
-                capex=capex_val,
-                free_cash_flow=fcf,
-                dividends_paid=_safe_decimal(d.get("dividends")),
-                share_buybacks=_safe_decimal(d.get("buybacks")),
-                roe=roe,
-                roa=roa,
-                debt_to_equity=d_e,
-            ))
+            statements.append(
+                FinancialStatement(
+                    period=fy_label,
+                    period_end_date=end_date,
+                    is_annual=True,
+                    revenue=revenue,
+                    cost_of_revenue=_safe_decimal(d.get("cost_of_revenue")),
+                    gross_profit=gross_profit,
+                    operating_income=operating_income,
+                    ebitda=_safe_decimal(d.get("ebitda")),
+                    ebit=ebit,
+                    net_income=net_income,
+                    eps_diluted=_safe_float(d.get("eps_diluted")),
+                    shares_diluted=_safe_int(d.get("shares_diluted")),
+                    shares_outstanding=_safe_int(d.get("shares_outstanding")),
+                    interest_expense=_safe_decimal(d.get("interest_expense")),
+                    tax_expense=_safe_decimal(d.get("tax_expense")),
+                    sga_expense=_safe_decimal(d.get("sga_expense")),
+                    depreciation_amortization=_safe_decimal(d.get("dep_amort")),
+                    gross_margin=gross_margin,
+                    operating_margin=op_margin,
+                    net_margin=net_margin,
+                    total_assets=total_assets,
+                    total_liabilities=total_liabilities,
+                    total_equity=total_equity,
+                    cash_and_equivalents=cash,
+                    total_debt=total_debt,
+                    net_debt=net_debt,
+                    current_assets=current_assets,
+                    current_liabilities=current_liabilities,
+                    retained_earnings=retained_earnings,
+                    ppe_net=ppe_net,
+                    receivables=receivables,
+                    operating_cash_flow=operating_cf,
+                    capex=capex_val,
+                    free_cash_flow=fcf,
+                    dividends_paid=_safe_decimal(d.get("dividends")),
+                    share_buybacks=_safe_decimal(d.get("buybacks")),
+                    roe=roe,
+                    roa=roa,
+                    debt_to_equity=d_e,
+                )
+            )
 
         return statements
 
@@ -599,12 +601,14 @@ class SECEdgarProvider:
             # Basic Form 4 entry — full parsing would require fetching the XML
             filer_desc = names[i] if i < len(names) else "Form 4 Filing"
 
-            transactions.append(InsiderTransaction(
-                filer_name=filer_desc,
-                transaction_date=filing_date,
-                transaction_type="Form 4 Filing",
-                shares=0,  # Would require XML parsing for exact details
-            ))
+            transactions.append(
+                InsiderTransaction(
+                    filer_name=filer_desc,
+                    transaction_date=filing_date,
+                    transaction_type="Form 4 Filing",
+                    shares=0,  # Would require XML parsing for exact details
+                )
+            )
 
         return transactions
 
@@ -668,12 +672,19 @@ class SECEdgarProvider:
 
         for hit in hits[:limit]:
             source = hit.get("_source", {})
-            results.append({
-                "filing_date": source.get("file_date", ""),
-                "form_type": source.get("form_type", form_type),
-                "description": source.get("display_names", [""])[0] if source.get("display_names") else "",
-                "url": f"https://www.sec.gov/Archives/edgar/data/{source.get('entity_id', '')}/{source.get('file_num', '')}",
-            })
+            results.append(
+                {
+                    "filing_date": source.get("file_date", ""),
+                    "form_type": source.get("form_type", form_type),
+                    "description": source.get("display_names", [""])[0]
+                    if source.get("display_names")
+                    else "",
+                    "url": (
+                        f"https://www.sec.gov/Archives/edgar/data/{source.get('entity_id', '')}/"
+                        f"{source.get('file_num', '')}"
+                    ),
+                }
+            )
 
         return results
 
@@ -695,11 +706,13 @@ class SECEdgarProvider:
             if form != form_type or len(results) >= limit:
                 continue
             acc = accessions[i].replace("-", "") if i < len(accessions) else ""
-            results.append({
-                "filing_date": dates[i] if i < len(dates) else "",
-                "form_type": form,
-                "description": descriptions[i] if i < len(descriptions) else "",
-                "url": f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc}/",
-            })
+            results.append(
+                {
+                    "filing_date": dates[i] if i < len(dates) else "",
+                    "form_type": form,
+                    "description": descriptions[i] if i < len(descriptions) else "",
+                    "url": f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc}/",
+                }
+            )
 
         return results

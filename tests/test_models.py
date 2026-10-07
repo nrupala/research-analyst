@@ -29,7 +29,7 @@ Every model used in the pipeline must:
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
@@ -45,21 +45,17 @@ from research_analyst.enums import (
 from research_analyst.models import (
     Assumption,
     CompanyProfile,
-    Competitor,
     FinancialStatement,
     PriceData,
     PriceSeries,
     ReportOutput,
     ReportSection,
     ResearchRequest,
-    RiskMatrix,
     StructuredRisk,
     TechnicalIndicators,
     ValuationRange,
     ValuationScenario,
-    VariantPerception,
 )
-
 
 # ---------------------------------------------------------------------------
 # ResearchRequest
@@ -306,7 +302,7 @@ class TestReportOutput:
             report_type=ReportType.COMPREHENSIVE,
             ticker="AAPL",
             title="AAPL - Comprehensive Research Report",
-            generated_at=datetime(2026, 5, 14, 10, 0, tzinfo=timezone.utc),
+            generated_at=datetime(2026, 5, 14, 10, 0, tzinfo=UTC),
             sections=[
                 ReportSection(
                     step_number=1,
@@ -326,7 +322,7 @@ class TestReportOutput:
             report_type=ReportType.TACTICAL,
             ticker="TEST",
             title="Test",
-            generated_at=datetime.now(timezone.utc),
+            generated_at=datetime.now(UTC),
             sections=[],
         )
         md = report.to_markdown()

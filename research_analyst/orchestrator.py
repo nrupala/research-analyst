@@ -45,7 +45,7 @@ import hashlib
 import json
 import logging
 import time
-from datetime import datetime, timezone, UTC
+from datetime import UTC, datetime
 from typing import Any
 
 from .config import settings
@@ -57,7 +57,7 @@ from .engines.macro import MacroEngine
 from .engines.risk import RiskEngine
 from .engines.technical import TechnicalEngine
 from .engines.valuation import ValuationEngine
-from .enums import ReportType, SecurityType
+from .enums import SecurityType
 from .models import (
     AnalystEstimates,
     CompanyProfile,

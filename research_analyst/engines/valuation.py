@@ -119,19 +119,24 @@ class ValuationEngine:
         eps = latest.eps_diluted if latest else None
         revenue = latest.revenue if latest else None
         ebitda = latest.ebitda if latest else None
-        net_income = latest.net_income if latest else None
         shares = latest.shares_diluted if latest else None
         op_margin = latest.operating_margin if latest else None
         rev_growth = None
         if latest and prior and prior.revenue and prior.revenue > 0:
-            rev_growth = float((latest.revenue - prior.revenue) / prior.revenue) if latest.revenue else None
+            rev_growth = (
+                float((latest.revenue - prior.revenue) / prior.revenue) if latest.revenue else None
+            )
 
         # Determine methodology based on data availability
         has_pe = eps is not None and eps > 0
         has_ev_ebitda = ebitda is not None and ebitda > 0 and profile.enterprise_value
-        methodology = "Hybrid (PE + EV/EBITDA)" if has_pe and has_ev_ebitda else (
-            "PE Multiple" if has_pe else (
-                "EV/EBITDA Multiple" if has_ev_ebitda else "Revenue Multiple (fallback)"
+        methodology = (
+            "Hybrid (PE + EV/EBITDA)"
+            if has_pe and has_ev_ebitda
+            else (
+                "PE Multiple"
+                if has_pe
+                else ("EV/EBITDA Multiple" if has_ev_ebitda else "Revenue Multiple (fallback)")
             )
         )
 
@@ -218,30 +223,39 @@ class ValuationEngine:
         scenario_rev_growth = base_rev_growth + rev_growth_adj
 
         if rev_growth is None:
-            assumptions.append(Assumption(
-                label="Revenue Growth",
-                value=f"{scenario_rev_growth:.1%}",
-                source="Data not available; assumption used: 5% base + scenario adjustment",
-                confidence="Low",
-            ))
+            assumptions.append(
+                Assumption(
+                    label="Revenue Growth",
+                    value=f"{scenario_rev_growth:.1%}",
+                    source="Data not available; assumption used: 5% base + scenario adjustment",
+                    confidence="Low",
+                )
+            )
         else:
-            assumptions.append(Assumption(
-                label="Revenue Growth",
-                value=f"{scenario_rev_growth:.1%}",
-                source=f"Historical YoY: {rev_growth:.1%}, adjusted {rev_growth_adj:+.1%} for {label}",
-                confidence="Medium",
-            ))
+            assumptions.append(
+                Assumption(
+                    label="Revenue Growth",
+                    value=f"{scenario_rev_growth:.1%}",
+                    source=(
+                        f"Historical YoY: {rev_growth:.1%}, adjusted {rev_growth_adj:+.1%} for "
+                        f"{label}"
+                    ),
+                    confidence="Medium",
+                )
+            )
 
         # ---- Margin assumption ----
         base_margin = op_margin if op_margin is not None else 0.15
         scenario_margin = base_margin + margin_adj
 
-        assumptions.append(Assumption(
-            label="Operating Margin",
-            value=f"{scenario_margin:.1%}",
-            source=f"Current: {base_margin:.1%}, adjusted {margin_adj:+.1%} for {label}",
-            confidence="Medium" if op_margin is not None else "Low",
-        ))
+        assumptions.append(
+            Assumption(
+                label="Operating Margin",
+                value=f"{scenario_margin:.1%}",
+                source=f"Current: {base_margin:.1%}, adjusted {margin_adj:+.1%} for {label}",
+                confidence="Medium" if op_margin is not None else "Low",
+            )
+        )
 
         # ---- PE-based valuation ----
         if eps is not None and eps > 0:
@@ -257,11 +271,17 @@ class ValuationEngine:
                 if current_pe > pe_comps * 2:
                     # High-premium stock: mostly own PE, slight peer gravity
                     base_pe = current_pe * 0.7 + pe_comps * 0.3
-                    pe_source = f"blended (70% trailing {current_pe:.1f}x + 30% peer median {pe_comps:.1f}x)"
+                    pe_source = (
+                        f"blended (70% trailing {current_pe:.1f}x + 30% peer median "
+                        f"{pe_comps:.1f}x)"
+                    )
                 elif current_pe < pe_comps * 0.5:
                     # Deep discount: mostly peer PE, slight own gravity
                     base_pe = current_pe * 0.3 + pe_comps * 0.7
-                    pe_source = f"blended (30% trailing {current_pe:.1f}x + 70% peer median {pe_comps:.1f}x)"
+                    pe_source = (
+                        f"blended (30% trailing {current_pe:.1f}x + 70% peer median "
+                        f"{pe_comps:.1f}x)"
+                    )
                 else:
                     # Reasonably aligned: use peer median
                     base_pe = pe_comps
@@ -281,30 +301,43 @@ class ValuationEngine:
             if implied_pe_price > 0:
                 price_estimates.append(implied_pe_price)
 
-            assumptions.append(Assumption(
-                label="P/E Multiple",
-                value=f"{scenario_pe:.1f}x",
-                source=f"Base: {base_pe:.1f}x ({pe_source}), adjusted {multiple_adj:.0%} for {label}",
-                confidence="Medium",
-            ))
-            assumptions.append(Assumption(
-                label="Forward EPS Estimate",
-                value=f"${forward_eps:.2f}",
-                source=f"Trailing EPS ${eps:.2f} * (1 + {scenario_rev_growth:.1%} growth) * margin effect",
-                confidence="Medium" if rev_growth is not None else "Low",
-            ))
+            assumptions.append(
+                Assumption(
+                    label="P/E Multiple",
+                    value=f"{scenario_pe:.1f}x",
+                    source=(
+                        f"Base: {base_pe:.1f}x ({pe_source}), adjusted {multiple_adj:.0%} for "
+                        f"{label}"
+                    ),
+                    confidence="Medium",
+                )
+            )
+            assumptions.append(
+                Assumption(
+                    label="Forward EPS Estimate",
+                    value=f"${forward_eps:.2f}",
+                    source=(
+                        f"Trailing EPS ${eps:.2f} * (1 + {scenario_rev_growth:.1%} growth) * "
+                        "margin "
+                        "effect"
+                    ),
+                    confidence="Medium" if rev_growth is not None else "Low",
+                )
+            )
 
         # ---- EV/EBITDA-based valuation ----
         if ebitda and ebitda > 0 and shares and shares > 0:
-            base_ev_ebitda = ev_ebitda_comps if ev_ebitda_comps and ev_ebitda_comps > 0 else (
-                float(enterprise_value / ebitda) if enterprise_value else 12.0
+            base_ev_ebitda = (
+                ev_ebitda_comps
+                if ev_ebitda_comps and ev_ebitda_comps > 0
+                else (float(enterprise_value / ebitda) if enterprise_value else 12.0)
             )
             scenario_ev_ebitda = base_ev_ebitda * multiple_adj
 
             # Forward EBITDA
             forward_ebitda = float(ebitda) * (1 + scenario_rev_growth)
             if op_margin and op_margin > 0:
-                forward_ebitda *= (1 + margin_adj / op_margin)
+                forward_ebitda *= 1 + margin_adj / op_margin
 
             implied_ev = forward_ebitda * scenario_ev_ebitda
 
@@ -314,25 +347,30 @@ class ValuationEngine:
                 equity_ratio = float(market_cap) / float(enterprise_value)
             else:
                 equity_ratio = 0.85  # Default assumption
-                assumptions.append(Assumption(
-                    label="Equity/EV Ratio",
-                    value="85%",
-                    source="Data not available; assumption used: 85% equity-to-EV ratio",
-                    confidence="Low",
-                ))
+                assumptions.append(
+                    Assumption(
+                        label="Equity/EV Ratio",
+                        value="85%",
+                        source="Data not available; assumption used: 85% equity-to-EV ratio",
+                        confidence="Low",
+                    )
+                )
 
             implied_equity = implied_ev * equity_ratio
             implied_ev_price = implied_equity / shares
             if implied_ev_price > 0:
                 price_estimates.append(implied_ev_price)
 
-            assumptions.append(Assumption(
-                label="EV/EBITDA Multiple",
-                value=f"{scenario_ev_ebitda:.1f}x",
-                source=f"Base: {base_ev_ebitda:.1f}x ({'peer median' if ev_ebitda_comps else 'trailing'}), "
-                       f"adjusted {multiple_adj:.0%} for {label}",
-                confidence="Medium",
-            ))
+            assumptions.append(
+                Assumption(
+                    label="EV/EBITDA Multiple",
+                    value=f"{scenario_ev_ebitda:.1f}x",
+                    source=f"Base: {base_ev_ebitda:.1f}x "
+                    f"({'peer median' if ev_ebitda_comps else 'trailing'}), "
+                    f"adjusted {multiple_adj:.0%} for {label}",
+                    confidence="Medium",
+                )
+            )
 
         # ---- Revenue multiple fallback ----
         if not price_estimates and revenue and revenue > 0 and shares and shares > 0:
@@ -345,12 +383,14 @@ class ValuationEngine:
             if implied_ps_price > 0:
                 price_estimates.append(implied_ps_price)
 
-            assumptions.append(Assumption(
-                label="P/S Multiple (Fallback)",
-                value=f"{scenario_ps:.1f}x",
-                source="PE and EV/EBITDA unavailable; using revenue multiple",
-                confidence="Low",
-            ))
+            assumptions.append(
+                Assumption(
+                    label="P/S Multiple (Fallback)",
+                    value=f"{scenario_ps:.1f}x",
+                    source="PE and EV/EBITDA unavailable; using revenue multiple",
+                    confidence="Low",
+                )
+            )
 
         # ---- Aggregate price range ----
         if price_estimates:
@@ -360,12 +400,18 @@ class ValuationEngine:
             # No valuation possible — use current price with wide band
             price_low = current_price * (0.7 if scenario_type == ScenarioType.BEAR else 0.9)
             price_high = current_price * (1.1 if scenario_type == ScenarioType.BEAR else 1.3)
-            assumptions.append(Assumption(
-                label="Price Range",
-                value=f"${price_low:.0f}-${price_high:.0f}",
-                source="Insufficient data for fundamental valuation; band estimated from current price",
-                confidence="Low",
-            ))
+            assumptions.append(
+                Assumption(
+                    label="Price Range",
+                    value=f"${price_low:.0f}-${price_high:.0f}",
+                    source=(
+                        "Insufficient data for fundamental valuation; band estimated from "
+                        "current "
+                        "price"
+                    ),
+                    confidence="Low",
+                )
+            )
 
         upside_low = (price_low - current_price) / current_price
         upside_high = (price_high - current_price) / current_price

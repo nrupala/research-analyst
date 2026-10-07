@@ -18,7 +18,14 @@
 # the AGPL-3.0. See COMMERCIAL-LICENSE.md.
 
 import pytest
-from research_analyst.disclaimer import DISCLAIMER_SHORT, DISCLAIMER_FULL, DISCLAIMER_VERSION, render_footer
+
+from research_analyst.disclaimer import (
+    DISCLAIMER_FULL,
+    DISCLAIMER_SHORT,
+    DISCLAIMER_VERSION,
+    render_footer,
+)
+
 
 def test_disclaimer_constants():
     assert DISCLAIMER_SHORT and isinstance(DISCLAIMER_SHORT, str)

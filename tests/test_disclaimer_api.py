@@ -18,6 +18,7 @@
 # the AGPL-3.0. See COMMERCIAL-LICENSE.md.
 
 from fastapi.testclient import TestClient
+
 from research_analyst.server import app
 
 client = TestClient(app)

@@ -51,46 +51,46 @@ logger = logging.getLogger(__name__)
 # How each sector responds to macro factors.
 # Scale: -2 (strong headwind) to +2 (strong tailwind)
 SECTOR_RATE_SENSITIVITY: dict[str, float] = {
-    "Technology": -1.5,          # Growth stocks hurt by higher rates (higher discount rate)
-    "Healthcare": -0.5,          # Moderate sensitivity
-    "Financial Services": 1.5,   # Banks benefit from higher NIM
+    "Technology": -1.5,  # Growth stocks hurt by higher rates (higher discount rate)
+    "Healthcare": -0.5,  # Moderate sensitivity
+    "Financial Services": 1.5,  # Banks benefit from higher NIM
     "Financials": 1.5,
-    "Consumer Cyclical": -1.0,   # Consumer spending pressured
-    "Consumer Defensive": 0.5,   # Stable, slight benefit from pricing power
+    "Consumer Cyclical": -1.0,  # Consumer spending pressured
+    "Consumer Defensive": 0.5,  # Stable, slight benefit from pricing power
     "Communication Services": -1.0,
-    "Industrials": -0.5,         # Mixed — capex sensitive but economic growth driven
-    "Energy": 0.0,               # Driven by commodity prices, not rates directly
-    "Utilities": -1.5,           # Bond proxies hurt by rate rises
-    "Real Estate": -2.0,         # Most rate-sensitive sector
+    "Industrials": -0.5,  # Mixed — capex sensitive but economic growth driven
+    "Energy": 0.0,  # Driven by commodity prices, not rates directly
+    "Utilities": -1.5,  # Bond proxies hurt by rate rises
+    "Real Estate": -2.0,  # Most rate-sensitive sector
     "Basic Materials": -0.5,
 }
 
 SECTOR_INFLATION_SENSITIVITY: dict[str, float] = {
     "Technology": -1.0,
-    "Healthcare": 0.5,           # Pricing power
+    "Healthcare": 0.5,  # Pricing power
     "Financial Services": 0.5,
     "Financials": 0.5,
-    "Consumer Cyclical": -1.5,   # Margin squeeze
-    "Consumer Defensive": 1.0,   # Can pass through costs
+    "Consumer Cyclical": -1.5,  # Margin squeeze
+    "Consumer Defensive": 1.0,  # Can pass through costs
     "Communication Services": -0.5,
-    "Industrials": -1.0,         # Input cost pressure
-    "Energy": 2.0,               # Direct beneficiary
-    "Utilities": -0.5,           # Regulated pricing lag
-    "Real Estate": 0.5,          # Rent escalators
-    "Basic Materials": 1.5,      # Commodity producers benefit
+    "Industrials": -1.0,  # Input cost pressure
+    "Energy": 2.0,  # Direct beneficiary
+    "Utilities": -0.5,  # Regulated pricing lag
+    "Real Estate": 0.5,  # Rent escalators
+    "Basic Materials": 1.5,  # Commodity producers benefit
 }
 
 SECTOR_RECESSION_SENSITIVITY: dict[str, float] = {
     "Technology": -1.5,
-    "Healthcare": 0.5,           # Defensive
+    "Healthcare": 0.5,  # Defensive
     "Financial Services": -1.5,  # Credit losses
     "Financials": -1.5,
-    "Consumer Cyclical": -2.0,   # Most cyclical
-    "Consumer Defensive": 1.0,   # Counter-cyclical
+    "Consumer Cyclical": -2.0,  # Most cyclical
+    "Consumer Defensive": 1.0,  # Counter-cyclical
     "Communication Services": -1.0,
     "Industrials": -1.5,
     "Energy": -1.0,
-    "Utilities": 1.0,            # Defensive
+    "Utilities": 1.0,  # Defensive
     "Real Estate": -1.5,
     "Basic Materials": -1.5,
 }
@@ -104,8 +104,8 @@ class MacroImplication:
     current_value: str
     regime: str
     sector_sensitivity: float
-    implication: str       # "tailwind" / "headwind" / "neutral"
-    magnitude: str         # "strong" / "moderate" / "mild"
+    implication: str  # "tailwind" / "headwind" / "neutral"
+    magnitude: str  # "strong" / "moderate" / "mild"
     description: str
     second_order_effects: list[str] = field(default_factory=list)
 
@@ -118,15 +118,15 @@ class MacroAnalysis:
     sector: str = ""
 
     # Regime classification
-    rate_regime: str = ""       # "rising" / "falling" / "stable" / "peak" / "trough"
+    rate_regime: str = ""  # "rising" / "falling" / "stable" / "peak" / "trough"
     inflation_regime: str = ""  # "elevated" / "moderating" / "low" / "deflation"
-    growth_regime: str = ""     # "expansion" / "slowdown" / "contraction" / "recovery"
-    credit_regime: str = ""     # "tightening" / "easing" / "neutral"
-    volatility_regime: str = "" # "low" / "moderate" / "elevated" / "crisis"
+    growth_regime: str = ""  # "expansion" / "slowdown" / "contraction" / "recovery"
+    credit_regime: str = ""  # "tightening" / "easing" / "neutral"
+    volatility_regime: str = ""  # "low" / "moderate" / "elevated" / "crisis"
 
     # Overall assessment
     macro_favorability: str = ""  # "favorable" / "neutral" / "unfavorable"
-    macro_score: float = 50.0     # 0=very unfavorable, 100=very favorable
+    macro_score: float = 50.0  # 0=very unfavorable, 100=very favorable
 
     # Individual implications
     implications: list[MacroImplication] = field(default_factory=list)
@@ -230,7 +230,9 @@ class MacroEngine:
             factor="Economic Growth",
             current_value=f"{macro.gdp_growth_latest:.1%}" if macro.gdp_growth_latest else "N/A",
             regime=result.growth_regime,
-            sensitivity=rec_sens if result.growth_regime in ("contraction", "slowdown") else -rec_sens,
+            sensitivity=rec_sens
+            if result.growth_regime in ("contraction", "slowdown")
+            else -rec_sens,
             sector=sector,
         )
         if macro.gdp_growth_latest is None:
@@ -262,7 +264,9 @@ class MacroEngine:
             else:
                 vol_impl.implication = "tailwind"
                 vol_impl.magnitude = "mild"
-                vol_impl.description = f"VIX at {macro.vix:.1f} — calm conditions favor risk assets."
+                vol_impl.description = (
+                    f"VIX at {macro.vix:.1f} — calm conditions favor risk assets."
+                )
         result.implications.append(vol_impl)
 
         # ---- 3. Cycle Positioning ----
@@ -287,7 +291,9 @@ class MacroEngine:
             else:
                 score_components.append(base)
 
-        result.macro_score = sum(score_components) / len(score_components) if score_components else 50.0
+        result.macro_score = (
+            sum(score_components) / len(score_components) if score_components else 50.0
+        )
 
         # ---- 5. Overall Favorability ----
         if result.macro_score >= 60:
@@ -298,19 +304,26 @@ class MacroEngine:
             result.macro_favorability = "unfavorable"
 
         # ---- Assumptions ----
-        result.assumptions.append(Assumption(
-            label="Macro Data Source",
-            value="Market proxies via yfinance (^TNX, ^VIX). Official FRED data preferred when available.",
-            source="MarketDataProvider",
-            confidence="Medium",
-        ))
-        result.assumptions.append(Assumption(
-            label="Sector Sensitivity Model",
-            value=f"Empirical sensitivity mappings for '{sector}'. "
-                  "Based on historical sector-factor relationships; directional, not precise.",
-            source="Engine heuristics",
-            confidence="Medium",
-        ))
+        result.assumptions.append(
+            Assumption(
+                label="Macro Data Source",
+                value=(
+                    "Market proxies via yfinance (^TNX, ^VIX). Official FRED data preferred when "
+                    "available."
+                ),
+                source="MarketDataProvider",
+                confidence="Medium",
+            )
+        )
+        result.assumptions.append(
+            Assumption(
+                label="Sector Sensitivity Model",
+                value=f"Empirical sensitivity mappings for '{sector}'. "
+                "Based on historical sector-factor relationships; directional, not precise.",
+                source="Engine heuristics",
+                confidence="Medium",
+            )
+        )
 
         return result
 
@@ -413,7 +426,9 @@ class MacroEngine:
                 "re-acceleration in demand and easing financial conditions."
             ),
         }
-        return descriptions.get(phase, f"Cycle phase '{phase}' — limited macro data for assessment.")
+        return descriptions.get(
+            phase, f"Cycle phase '{phase}' — limited macro data for assessment."
+        )
 
     @staticmethod
     def _build_implication(

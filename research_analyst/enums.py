@@ -20,10 +20,10 @@
 """Enumerations for report types, risk categories, and analysis domains."""
 # Module: research_analyst/enums.py | Version: 0.1.0 | Updated: 2026-05-15
 
-from enum import Enum
+from enum import StrEnum
 
 
-class ReportType(str, Enum):
+class ReportType(StrEnum):
     """Supported report modes — exactly three, non-negotiable."""
 
     LONG_TERM = "long_term"
@@ -50,7 +50,7 @@ class ReportType(str, Enum):
         return [cls.COMPREHENSIVE]
 
 
-class RiskCategory(str, Enum):
+class RiskCategory(StrEnum):
     """Risk classification axis."""
 
     OPERATIONAL = "operational"
@@ -62,7 +62,7 @@ class RiskCategory(str, Enum):
     GEOPOLITICAL = "geopolitical"
 
 
-class RiskDuration(str, Enum):
+class RiskDuration(StrEnum):
     """Temporal classification of risk."""
 
     NEAR_TERM = "near_term"       # < 6 months
@@ -70,21 +70,21 @@ class RiskDuration(str, Enum):
     LONG_TERM = "long_term"       # > 18 months
 
 
-class RiskNature(str, Enum):
+class RiskNature(StrEnum):
     """Structural vs transitory."""
 
     TRANSITORY = "transitory"
     STRUCTURAL = "structural"
 
 
-class SecurityType(str, Enum):
+class SecurityType(StrEnum):
     """Supported security types."""
 
     EQUITY = "equity"
     ETF = "etf"
 
 
-class AnalysisDomain(str, Enum):
+class AnalysisDomain(StrEnum):
     """Analytical domains covered by the engine."""
 
     FUNDAMENTAL = "fundamental"
@@ -96,7 +96,7 @@ class AnalysisDomain(str, Enum):
     CAPITAL_ALLOCATION = "capital_allocation"
 
 
-class ScenarioType(str, Enum):
+class ScenarioType(StrEnum):
     """Valuation scenario types — mandatory in every report."""
 
     BULL = "bull"
@@ -104,7 +104,7 @@ class ScenarioType(str, Enum):
     BEAR = "bear"
 
 
-class Timeframe(str, Enum):
+class Timeframe(StrEnum):
     """Analysis timeframes."""
 
     ONE_MONTH = "1M"

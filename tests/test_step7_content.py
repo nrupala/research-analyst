@@ -31,7 +31,6 @@ import pytest
 from research_analyst.reports import diagrams, svg_charts
 from research_analyst.reports.renderer import ReportRenderer
 
-
 # ---------------------------------------------------------------------------
 # Thesis tilt
 # ---------------------------------------------------------------------------

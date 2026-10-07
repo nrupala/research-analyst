@@ -44,7 +44,7 @@ import subprocess
 import time
 import uuid
 from collections import OrderedDict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -149,8 +149,7 @@ def negotiate_format(fmt: str | None, accept_header: str) -> str:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"Unsupported format {fmt!r}. "
-                    f"Allowed: {', '.join(sorted(SUPPORTED_FORMATS))}."
+                    f"Unsupported format {fmt!r}. Allowed: {', '.join(sorted(SUPPORTED_FORMATS))}."
                 ),
             )
         return f
@@ -174,9 +173,7 @@ def _render_payload(
     if fmt == "json":
         return JSONResponse(data)
     if fmt == "xml":
-        return Response(
-            content=xml_from_dict(data, root), media_type="application/xml"
-        )
+        return Response(content=xml_from_dict(data, root), media_type="application/xml")
     if fmt == "markdown":
         if markdown is None:
             raise HTTPException(
@@ -195,6 +192,7 @@ def _render_payload(
 # ---------------------------------------------------------------------------
 # Rate limiter (per-IP, simple token bucket)
 # ---------------------------------------------------------------------------
+
 
 class _IPRateLimiter:
     """Per-IP rate limiter using token bucket. O(1) per check."""
@@ -228,9 +226,12 @@ class _IPRateLimiter:
 # ---------------------------------------------------------------------------
 
 __all__ = [
-    "ResearchAPIRequest", "ResearchAPIResponse",
-    "CompareAPIRequest", "CompareAPIResponse",
-    "ResolveAPIRequest", "ResolveAPIResponse",
+    "ResearchAPIRequest",
+    "ResearchAPIResponse",
+    "CompareAPIRequest",
+    "CompareAPIResponse",
+    "ResolveAPIRequest",
+    "ResolveAPIResponse",
 ]
 
 
@@ -251,9 +252,8 @@ def get_comparative_orchestrator() -> ComparativeOrchestrator:
 # App factory
 # ---------------------------------------------------------------------------
 
-def stamp_cache_hit(
-    cached: ResearchAPIResponse, cached_at: datetime
-) -> ResearchAPIResponse:
+
+def stamp_cache_hit(cached: ResearchAPIResponse, cached_at: datetime) -> ResearchAPIResponse:
     """Stamp a cache hit with freshness metadata and re-render markdown (#66).
 
     The markdown is re-rendered so the reader-visible freshness header
@@ -263,7 +263,7 @@ def stamp_cache_hit(
     meta = resp.metadata
     meta.cache_hit = True
     meta.cached_at_utc = cached_at
-    age_days = (datetime.now(timezone.utc) - cached_at).total_seconds() / 86400
+    age_days = (datetime.now(UTC) - cached_at).total_seconds() / 86400
     # EOD data goes stale after ~2 days (weekends/holidays excepted by the
     # TTL refresh); surface it loudly instead of silently.
     if age_days > 2:
@@ -371,7 +371,7 @@ def create_app(
     def _cache_store(ck: str, api_response: ResearchAPIResponse) -> None:
         if len(report_cache) >= cache_max:
             report_cache.popitem(last=False)
-        report_cache[ck] = (api_response, datetime.now(timezone.utc))
+        report_cache[ck] = (api_response, datetime.now(UTC))
 
     # ================================================================
     # API Endpoints
@@ -405,6 +405,7 @@ def create_app(
         if not rate_limiter.allow(client_ip):
             raise HTTPException(status_code=429, detail="Rate limit exceeded.")
         from .resolver import resolve_subject
+
         matches = await market_provider.search_symbols(body.query)
         res = resolve_subject(body.query, matches)
         api_response = ResolveAPIResponse(
@@ -433,7 +434,7 @@ def create_app(
         request_id = str(uuid.uuid4())[:8]
 
         ck = _cache_key(body)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         cached_entry = report_cache.get(ck)
         if cached_entry is not None:
             cached, cached_at = cached_entry
@@ -445,7 +446,9 @@ def create_app(
             else:
                 logger.info(
                     "Cache entry for %s expired (age %.0fs > TTL %ds); regenerating",
-                    body.ticker, age, cache_ttl,
+                    body.ticker,
+                    age,
+                    cache_ttl,
                 )
                 del report_cache[ck]
                 api_response = await _run_research_uncached(body, request_id)
@@ -460,11 +463,7 @@ def create_app(
                 status_code=400,
                 detail="html is not available for /api/research (use markdown).",
             )
-        markdown = (
-            "\n\n---\n\n".join(api_response.reports_markdown)
-            if fmt == "markdown"
-            else None
-        )
+        markdown = "\n\n---\n\n".join(api_response.reports_markdown) if fmt == "markdown" else None
         _meter(request, "research")
         return _render_payload(
             api_response.model_dump(mode="json"), fmt, "research", markdown=markdown
@@ -476,10 +475,14 @@ def create_app(
         report_types = ReportType.from_user_input(body.report_type)
 
         from .enums import Timeframe
+
         timeframe_map = {
-            "1M": Timeframe.ONE_MONTH, "3M": Timeframe.THREE_MONTHS,
-            "6M": Timeframe.SIX_MONTHS, "1Y": Timeframe.ONE_YEAR,
-            "3Y": Timeframe.THREE_YEARS, "5Y": Timeframe.FIVE_YEARS,
+            "1M": Timeframe.ONE_MONTH,
+            "3M": Timeframe.THREE_MONTHS,
+            "6M": Timeframe.SIX_MONTHS,
+            "1Y": Timeframe.ONE_YEAR,
+            "3Y": Timeframe.THREE_YEARS,
+            "5Y": Timeframe.FIVE_YEARS,
             "10Y": Timeframe.TEN_YEARS,
         }
         timeframe = timeframe_map.get(body.timeframe.upper(), Timeframe.ONE_YEAR)
@@ -670,13 +673,9 @@ def create_app(
 
                 raw_scenarios = _json.loads(scenarios)
             except Exception as e:
-                raise HTTPException(
-                    status_code=400, detail=f"Invalid scenarios JSON: {e}"
-                ) from e
+                raise HTTPException(status_code=400, detail=f"Invalid scenarios JSON: {e}") from e
             if not isinstance(raw_scenarios, list):
-                raise HTTPException(
-                    status_code=400, detail="scenarios must be a JSON array."
-                )
+                raise HTTPException(status_code=400, detail="scenarios must be a JSON array.")
             try:
                 parsed = [
                     ScenarioInput(
@@ -687,9 +686,7 @@ def create_app(
                     for i, s in enumerate(raw_scenarios)
                 ]
             except Exception as e:
-                raise HTTPException(
-                    status_code=400, detail=f"Invalid scenario entry: {e}"
-                ) from e
+                raise HTTPException(status_code=400, detail=f"Invalid scenario entry: {e}") from e
             ev_result = expected_value(parsed)
             if isinstance(ev_result, dict):
                 ev_reason = ev_result.get("error", "expected value failed validation")
@@ -707,7 +704,7 @@ def create_app(
             ticker=clean,
             periods=[p.period for p in series.periods],
             currency=series.currency,
-            generated_at=datetime.now(timezone.utc),
+            generated_at=datetime.now(UTC),
             trends=results["trends"],
             dupont=QuantDupontPayload(
                 rows=results["dupont"]["rows"],
@@ -753,7 +750,10 @@ def create_app(
             if not (legacy_ok or entitled):
                 raise HTTPException(
                     status_code=401,
-                    detail="This is a paid feature. Provide a valid X-RA-Key header (or subscribe).",
+                    detail=(
+                        "This is a paid feature. Provide a valid X-RA-Key header (or "
+                        "subscribe)."
+                    ),
                 )
 
         _meter(request, "source_data")

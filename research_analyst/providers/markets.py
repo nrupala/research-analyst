@@ -29,6 +29,7 @@ behavior; the US single-market path is unchanged until consumers opt in.
 Rates/ERPs are indicative 2026 defaults and are meant to be overridable
 (per-request or via RA_MARKET_* env in config). They are NOT investment advice.
 """
+
 # Module: research_analyst/providers/markets.py | Version: 0.3.0 | Slice A
 from __future__ import annotations
 
@@ -37,32 +38,54 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Market:
-    code: str                    # short market code, e.g. "US", "UK", "IN"
-    name: str                    # human-readable market name
-    suffix: str                  # yfinance ticker suffix, e.g. ".L" ("" for US)
-    currency: str                # ISO 4217, e.g. "USD", "GBP"
-    risk_free_rate: float        # indicative local 10Y sovereign yield (decimal)
-    equity_risk_premium: float   # indicative country ERP (decimal)
-    timezone: str                # IANA timezone of the exchange
-    sector_etf: str              # ETF used for peer discovery
-    disclaimer_key: str          # jurisdiction key for the disclaimer system (Slice C)
+    code: str  # short market code, e.g. "US", "UK", "IN"
+    name: str  # human-readable market name
+    suffix: str  # yfinance ticker suffix, e.g. ".L" ("" for US)
+    currency: str  # ISO 4217, e.g. "USD", "GBP"
+    risk_free_rate: float  # indicative local 10Y sovereign yield (decimal)
+    equity_risk_premium: float  # indicative country ERP (decimal)
+    timezone: str  # IANA timezone of the exchange
+    sector_etf: str  # ETF used for peer discovery
+    disclaimer_key: str  # jurisdiction key for the disclaimer system (Slice C)
 
 
 # US carries the empty suffix. Keyed by the lowercased yfinance suffix (incl. dot).
 _BY_SUFFIX: dict[str, Market] = {
-    "":    Market("US", "United States", "", "USD", 0.043, 0.055, "America/New_York", "SPY", "US"),
+    "": Market("US", "United States", "", "USD", 0.043, 0.055, "America/New_York", "SPY", "US"),
     ".to": Market("CA", "Canada (TSX)", ".TO", "CAD", 0.034, 0.055, "America/Toronto", "EWC", "CA"),
-    ".v":  Market("CA", "Canada (TSX-V)", ".V", "CAD", 0.034, 0.060, "America/Toronto", "EWC", "CA"),
-    ".l":  Market("UK", "United Kingdom (LSE)", ".L", "GBP", 0.041, 0.058, "Europe/London", "EWU", "UK"),
-    ".de": Market("DE", "Germany (XETRA)", ".DE", "EUR", 0.026, 0.056, "Europe/Berlin", "EWG", "EU"),
-    ".pa": Market("FR", "France (Euronext Paris)", ".PA", "EUR", 0.031, 0.058, "Europe/Paris", "EWQ", "EU"),
-    ".as": Market("NL", "Netherlands (Euronext Amsterdam)", ".AS", "EUR", 0.028, 0.057, "Europe/Amsterdam", "EWN", "EU"),
-    ".mi": Market("IT", "Italy (Borsa Italiana)", ".MI", "EUR", 0.038, 0.060, "Europe/Rome", "EWI", "EU"),
-    ".t":  Market("JP", "Japan (TSE)", ".T", "JPY", 0.010, 0.060, "Asia/Tokyo", "EWJ", "JP"),
-    ".ax": Market("AU", "Australia (ASX)", ".AX", "AUD", 0.043, 0.060, "Australia/Sydney", "EWA", "AU"),
+    ".v": Market("CA", "Canada (TSX-V)", ".V", "CAD", 0.034, 0.060, "America/Toronto", "EWC", "CA"),
+    ".l": Market(
+        "UK", "United Kingdom (LSE)", ".L", "GBP", 0.041, 0.058, "Europe/London", "EWU", "UK"
+    ),
+    ".de": Market(
+        "DE", "Germany (XETRA)", ".DE", "EUR", 0.026, 0.056, "Europe/Berlin", "EWG", "EU"
+    ),
+    ".pa": Market(
+        "FR", "France (Euronext Paris)", ".PA", "EUR", 0.031, 0.058, "Europe/Paris", "EWQ", "EU"
+    ),
+    ".as": Market(
+        "NL",
+        "Netherlands (Euronext Amsterdam)",
+        ".AS",
+        "EUR",
+        0.028,
+        0.057,
+        "Europe/Amsterdam",
+        "EWN",
+        "EU",
+    ),
+    ".mi": Market(
+        "IT", "Italy (Borsa Italiana)", ".MI", "EUR", 0.038, 0.060, "Europe/Rome", "EWI", "EU"
+    ),
+    ".t": Market("JP", "Japan (TSE)", ".T", "JPY", 0.010, 0.060, "Asia/Tokyo", "EWJ", "JP"),
+    ".ax": Market(
+        "AU", "Australia (ASX)", ".AX", "AUD", 0.043, 0.060, "Australia/Sydney", "EWA", "AU"
+    ),
     ".ns": Market("IN", "India (NSE)", ".NS", "INR", 0.070, 0.075, "Asia/Kolkata", "INDA", "IN"),
     ".bo": Market("IN", "India (BSE)", ".BO", "INR", 0.070, 0.075, "Asia/Kolkata", "INDA", "IN"),
-    ".hk": Market("HK", "Hong Kong (HKEX)", ".HK", "HKD", 0.035, 0.065, "Asia/Hong_Kong", "EWH", "HK"),
+    ".hk": Market(
+        "HK", "Hong Kong (HKEX)", ".HK", "HKD", 0.035, 0.065, "Asia/Hong_Kong", "EWH", "HK"
+    ),
 }
 
 US = _BY_SUFFIX[""]
@@ -99,7 +122,7 @@ def is_us(ticker: str) -> bool:
     return resolve(ticker).code == "US"
 
 
-def fx_pair(currency: str, base: str = "USD") -> "str | None":
+def fx_pair(currency: str, base: str = "USD") -> str | None:
     """yfinance FX symbol to convert `currency` -> `base` (e.g. 'INRUSD=X').
 
     Returns None when currency == base (no conversion needed).
@@ -111,7 +134,7 @@ def fx_pair(currency: str, base: str = "USD") -> "str | None":
     return f"{c}{b}=X"
 
 
-def all_markets() -> "list[Market]":
+def all_markets() -> list[Market]:
     """All distinct markets in the registry (deduplicated by market code)."""
     seen: dict[str, Market] = {}
     for m in _BY_SUFFIX.values():

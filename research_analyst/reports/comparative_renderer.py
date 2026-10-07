@@ -65,6 +65,7 @@ _HOW_TO_READ = (
 # Value formatting
 # ---------------------------------------------------------------------------
 
+
 def _fmt_value(value: float | None, unit: str, currency: str | None = None) -> str:
     """Format a raw metric value for display, given its unit.
 
@@ -101,6 +102,7 @@ def _rankable_metrics(report: ComparativeReport) -> list[MetricComparison]:
 # Markdown
 # ---------------------------------------------------------------------------
 
+
 def render_markdown(report: ComparativeReport) -> str:
     """Render the comparative report as Markdown."""
     tickers = report.tickers
@@ -129,7 +131,9 @@ def render_markdown(report: ComparativeReport) -> str:
         out.append("|------|--------|---------|-----------------|-------------|")
         for i, row in enumerate(report.scorecard, 1):
             score = f"{row.overall_score:.1f}" if row.overall_score is not None else "N/A"
-            out.append(f"| {i} | **{row.ticker}** | {row.company_name[:24]} | {score} | {row.wins} |")
+            out.append(
+                f"| {i} | **{row.ticker}** | {row.company_name[:24]} | {score} | {row.wins} |"
+            )
         out.append("")
         out.append(
             "*Overall = equal-weighted mean of each ticker's normalized score "
@@ -139,7 +143,9 @@ def render_markdown(report: ComparativeReport) -> str:
 
         rankable = _rankable_metrics(report)
         if rankable:
-            out.append("### Normalized scorecard by metric (0–100, higher = better; ★ = best in set)\n")
+            out.append(
+                "### Normalized scorecard by metric (0–100, higher = better; ★ = best in set)\n"
+            )
             out.append("| Metric | " + " | ".join(tickers) + " |")
             out.append("|--------|" + "|".join(["------"] * len(tickers)) + "|")
             for metric in rankable:
@@ -214,8 +220,10 @@ def render_markdown(report: ComparativeReport) -> str:
     out.append("")
     out.append(f"**Compliance:** {report.compliance_note}")
     out.append("")
-    out.append(f"*Report prepared on {_PREPARED_ON_URL} — {report.generated_at.strftime('%Y-%m-%d')}. "
-               f"Support: {_BMAC_URL}*")
+    out.append(
+        f"*Report prepared on {_PREPARED_ON_URL} — {report.generated_at.strftime('%Y-%m-%d')}. "
+        f"Support: {_BMAC_URL}*"
+    )
     return "\n".join(out)
 
 
@@ -223,41 +231,80 @@ def render_markdown(report: ComparativeReport) -> str:
 # Self-contained HTML
 # ---------------------------------------------------------------------------
 
-_HTML_STYLE = """
-:root { color-scheme: light; }
-* { box-sizing: border-box; }
-body { font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-  margin: 0; padding: 2rem; color: #1f2937; background: #ffffff; line-height: 1.5; }
-.wrap { max-width: 1040px; margin: 0 auto; }
-h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
-h2 { font-size: 1.2rem; margin: 1.8rem 0 .6rem; border-bottom: 2px solid #e5e7eb; padding-bottom: .25rem; }
-h3 { font-size: 1.02rem; margin: 1.2rem 0 .5rem; color: #374151; }
-.meta { color: #4b5563; font-size: .9rem; margin: .1rem 0; }
-.howto { background: #f8fafc; border-left: 3px solid #2563eb; padding: .6rem .9rem; margin: 1rem 0;
-  font-size: .9rem; color: #334155; border-radius: 4px; }
-table { border-collapse: collapse; width: 100%; margin: .5rem 0 1rem; font-size: .9rem; }
-th, td { border: 1px solid #e5e7eb; padding: .45rem .6rem; text-align: left; }
-th { background: #f1f5f9; font-weight: 600; }
-tbody tr:nth-child(even) { background: #fafafa; }
-.table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 4px; }
-.table-scroll table { min-width: 100%; }
-@media (max-width: 640px) {
-  body { padding: 1rem; }
-  .table-scroll { margin-left: -1rem; margin-right: -1rem; padding-left: 1rem; padding-right: 1rem; width: auto; }
-  th, td { padding: .35rem .45rem; font-size: .8rem; }
-  h1 { font-size: 1.3rem; }
-}
-.win { color: #15803d; font-weight: 700; }
-.na { color: #9ca3af; }
-ul { margin: .3rem 0 1rem 1.2rem; padding: 0; }
-li { margin: .15rem 0; font-size: .9rem; }
-.disclaimer { background: #fffbeb; border: 1px solid #fde68a; padding: .8rem 1rem; border-radius: 6px;
-  font-size: .85rem; color: #78350f; margin-top: 1.2rem; }
-.compliance { font-size: .85rem; color: #4b5563; margin-top: .8rem; }
-footer { margin-top: 1.6rem; padding-top: .8rem; border-top: 1px solid #e5e7eb;
-  font-size: .8rem; color: #6b7280; }
-footer a { color: #2563eb; }
-""".strip()
+_HTML_STYLE = (
+    "\n"
+    ":root { color-scheme: light; "
+    "}\n"
+    "* { box-sizing: border-box; "
+    "}\n"
+    "body { font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, "
+    "sans-serif;\n"
+    "  margin: 0; padding: 2rem; color: #1f2937; background: #ffffff; line-height: 1.5; "
+    "}\n"
+    ".wrap { max-width: 1040px; margin: 0 auto; "
+    "}\n"
+    "h1 { font-size: 1.6rem; margin: 0 0 .25rem; "
+    "}\n"
+    "h2 { font-size: 1.2rem; margin: 1.8rem 0 .6rem; border-bottom: 2px solid #e5e7eb; "
+    "padding-bottom: .25rem; "
+    "}\n"
+    "h3 { font-size: 1.02rem; margin: 1.2rem 0 .5rem; color: #374151; "
+    "}\n"
+    ".meta { color: #4b5563; font-size: .9rem; margin: .1rem 0; "
+    "}\n"
+    ".howto { background: #f8fafc; border-left: 3px solid #2563eb; padding: .6rem .9rem; "
+    "margin: 1rem "
+    "0;\n"
+    "  font-size: .9rem; color: #334155; border-radius: 4px; "
+    "}\n"
+    "table { border-collapse: collapse; width: 100%; margin: .5rem 0 1rem; font-size: .9rem; "
+    "}\n"
+    "th, td { border: 1px solid #e5e7eb; padding: .45rem .6rem; text-align: left; "
+    "}\n"
+    "th { background: #f1f5f9; font-weight: 600; "
+    "}\n"
+    "tbody tr:nth-child(even) { background: #fafafa; "
+    "}\n"
+    ".table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; "
+    "border-radius: 4px; "
+    "}\n"
+    ".table-scroll table { min-width: 100%; "
+    "}\n"
+    "@media (max-width: 640px) "
+    "{\n"
+    "  body { padding: 1rem; "
+    "}\n"
+    "  .table-scroll { margin-left: -1rem; margin-right: -1rem; padding-left: 1rem; "
+    "padding-right: 1rem; width: auto; "
+    "}\n"
+    "  th, td { padding: .35rem .45rem; font-size: .8rem; "
+    "}\n"
+    "  h1 { font-size: 1.3rem; "
+    "}\n"
+    "}\n"
+    ".win { color: #15803d; font-weight: 700; "
+    "}\n"
+    ".na { color: #9ca3af; "
+    "}\n"
+    "ul { margin: .3rem 0 1rem 1.2rem; padding: 0; "
+    "}\n"
+    "li { margin: .15rem 0; font-size: .9rem; "
+    "}\n"
+    ".disclaimer { background: #fffbeb; border: 1px solid #fde68a; padding: .8rem 1rem; "
+    "border-radius: "
+    "6px;\n"
+    "  font-size: .85rem; color: #78350f; margin-top: 1.2rem; "
+    "}\n"
+    ".compliance { font-size: .85rem; color: #4b5563; margin-top: .8rem; "
+    "}\n"
+    "footer { margin-top: 1.6rem; padding-top: .8rem; border-top: 1px solid "
+    "#e5e7eb;\n"
+    "  font-size: .8rem; color: #6b7280; "
+    "}\n"
+    "footer a { color: #2563eb; "
+    "}\n"
+    ""
+).strip()
 
 
 def _esc(text: object) -> str:
@@ -294,19 +341,27 @@ def render_html(report: ComparativeReport, white_label: WhiteLabelProfile | None
     body: list[str] = []
 
     body.append(f"<h1>Comparative Research Report — {_esc(heading)}</h1>")
-    body.append(f'<p class="meta"><strong>Generated:</strong> '
-                f"{_esc(report.generated_at.strftime('%Y-%m-%d %H:%M UTC'))}</p>")
-    body.append(f'<p class="meta"><strong>Tickers analyzed:</strong> '
-                f"{_esc(', '.join(tickers) if tickers else 'none')}</p>")
+    body.append(
+        f'<p class="meta"><strong>Generated:</strong> '
+        f"{_esc(report.generated_at.strftime('%Y-%m-%d %H:%M UTC'))}</p>"
+    )
+    body.append(
+        f'<p class="meta"><strong>Tickers analyzed:</strong> '
+        f"{_esc(', '.join(tickers) if tickers else 'none')}</p>"
+    )
     if list(report.requested_tickers) != tickers:
-        body.append(f'<p class="meta"><strong>Requested:</strong> '
-                    f"{_esc(', '.join(report.requested_tickers))}</p>")
+        body.append(
+            f'<p class="meta"><strong>Requested:</strong> '
+            f"{_esc(', '.join(report.requested_tickers))}</p>"
+        )
     body.append(f'<div class="howto">{_esc(_HOW_TO_READ)}</div>')
 
     if report.errors:
         body.append("<h2>Excluded Tickers</h2><ul>")
         for err in report.errors:
-            body.append(f"<li><strong>{_esc(err.ticker)}</strong> — skipped: {_esc(err.error)}</li>")
+            body.append(
+                f"<li><strong>{_esc(err.ticker)}</strong> — skipped: {_esc(err.error)}</li>"
+            )
         body.append("</ul>")
 
     # --- Scorecard ---
@@ -316,18 +371,29 @@ def render_html(report: ComparativeReport, white_label: WhiteLabelProfile | None
         rows = []
         for i, row in enumerate(report.scorecard, 1):
             score = f"{row.overall_score:.1f}" if row.overall_score is not None else "N/A"
-            rows.append([
-                _esc(i), f"<strong>{_esc(row.ticker)}</strong>", _esc(row.company_name[:24]),
-                _esc(score), _esc(row.wins),
-            ])
-        body.append(_html_table(["Rank", "Ticker", "Company", "Overall (0–100)", "Metric wins"], rows))
-        body.append('<p class="meta">Overall = equal-weighted mean of each ticker\'s normalized score '
-                    "(0–100, higher = better) across every ranked metric it has data for. "
-                    "Descriptive ranking only, not a recommendation.</p>")
+            rows.append(
+                [
+                    _esc(i),
+                    f"<strong>{_esc(row.ticker)}</strong>",
+                    _esc(row.company_name[:24]),
+                    _esc(score),
+                    _esc(row.wins),
+                ]
+            )
+        body.append(
+            _html_table(["Rank", "Ticker", "Company", "Overall (0–100)", "Metric wins"], rows)
+        )
+        body.append(
+            '<p class="meta">Overall = equal-weighted mean of each ticker\'s normalized score '
+            "(0–100, higher = better) across every ranked metric it has data for. "
+            "Descriptive ranking only, not a recommendation.</p>"
+        )
 
         rankable = _rankable_metrics(report)
         if rankable:
-            body.append("<h3>Normalized scorecard by metric (0–100, higher = better; ★ = best in set)</h3>")
+            body.append(
+                "<h3>Normalized scorecard by metric (0–100, higher = better; ★ = best in set)</h3>"
+            )
             rows = []
             for metric in rankable:
                 cells = [_esc(_metric_label(metric))]
@@ -340,7 +406,9 @@ def render_html(report: ComparativeReport, white_label: WhiteLabelProfile | None
                 rows.append(cells)
             body.append(_html_table(["Metric", *tickers], rows))
     else:
-        body.append('<p class="na">No rankable metrics were available across the selected tickers.</p>')
+        body.append(
+            '<p class="na">No rankable metrics were available across the selected tickers.</p>'
+        )
 
     # --- Dimensions ---
     for dim in report.dimensions:
@@ -363,13 +431,18 @@ def render_html(report: ComparativeReport, white_label: WhiteLabelProfile | None
 
     # --- Provenance ---
     body.append("<h2>Provenance &amp; Data Sources</h2>")
-    body.append("<p class=\"meta\">Every number above is carried, unchanged, from a per-ticker report field:</p><ul>")
+    body.append(
+        '<p class="meta">Every number above is carried, unchanged, from a per-ticker report '
+        'field:</p><ul>'
+    )
     seen: set[str] = set()
     for dim in report.dimensions:
         for metric in dim.metrics:
             if metric.label not in seen:
                 seen.add(metric.label)
-                body.append(f"<li><strong>{_esc(metric.label)}</strong> — {_esc(metric.source)}</li>")
+                body.append(
+                    f"<li><strong>{_esc(metric.label)}</strong> — {_esc(metric.source)}</li>"
+                )
     for t in tickers:
         # Issue #74: enumerate every source with its reference link when known.
         recs = (report.source_records or {}).get(t, [])
@@ -378,12 +451,13 @@ def render_html(report: ComparativeReport, white_label: WhiteLabelProfile | None
             for rec in recs:
                 label = _esc(rec.name)
                 items.append(f'<a href="{_esc(rec.url)}">{label}</a>' if rec.url else label)
-            body.append(f"<li><strong>{_esc(t)} data sources:</strong> "
-                        f"{'; '.join(items)}</li>")
+            body.append(f"<li><strong>{_esc(t)} data sources:</strong> {'; '.join(items)}</li>")
         else:
             srcs = report.data_sources.get(t, [])
-            body.append(f"<li><strong>{_esc(t)} data sources:</strong> "
-                        f"{_esc(', '.join(srcs) if srcs else 'not reported')}</li>")
+            body.append(
+                f"<li><strong>{_esc(t)} data sources:</strong> "
+                f"{_esc(', '.join(srcs) if srcs else 'not reported')}</li>"
+            )
     body.append("</ul>")
 
     if report.deferred_dimensions:
@@ -393,11 +467,16 @@ def render_html(report: ComparativeReport, white_label: WhiteLabelProfile | None
             "but are not yet surfaced as structured, cross-ticker metrics (they appear as "
             "narrative in the per-ticker reports): "
             + _esc(", ".join(report.deferred_dimensions))
-            + ". They are deferred to a later increment so the single-ticker path stays untouched.</p>"
+            + (
+                ". They are deferred to a later increment so the single-ticker path stays "
+                "untouched.</p>"
+            )
         )
 
     body.append(f'<div class="disclaimer">{_esc(report.disclaimer)}</div>')
-    body.append(f'<p class="compliance"><strong>Compliance:</strong> {_esc(report.compliance_note)}</p>')
+    body.append(
+        f'<p class="compliance"><strong>Compliance:</strong> {_esc(report.compliance_note)}</p>'
+    )
     body.append(_render_footer(report, white_label))
 
     title = _esc(f"Comparative Report — {heading}")
@@ -410,9 +489,7 @@ def render_html(report: ComparativeReport, white_label: WhiteLabelProfile | None
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         f"<title>{title}</title>"
         f"<style>{style}</style>"
-        "</head><body><div class=\"wrap\">"
-        + "".join(body)
-        + "</div></body></html>"
+        '</head><body><div class="wrap">' + "".join(body) + "</div></body></html>"
     )
 
 
@@ -425,9 +502,12 @@ def _render_footer(report: ComparativeReport, white_label: WhiteLabelProfile | N
             brand = f"Report prepared by {_esc(white_label.org_name)} — {date}."
         else:
             brand = (
-                f'Report prepared on <a href="{_esc(prepared_on)}">{_esc(prepared_on)}</a> — {date}.'
+                f'Report prepared on <a href="{_esc(prepared_on)}">{_esc(prepared_on)}</a> — '
+                f'{date}.'
             )
-        support = f' <a href="{_BMAC_URL}">Buy Me a Coffee</a>' if white_label.show_support_link else ""
+        support = (
+            f' <a href="{_BMAC_URL}">Buy Me a Coffee</a>' if white_label.show_support_link else ""
+        )
         note = f" {_esc(white_label.footer_note)}" if white_label.footer_note else ""
         return f"<footer>{brand}{support}{note}</footer>"
     return (

@@ -46,7 +46,6 @@ from collections import defaultdict
 from datetime import date
 from typing import Any
 
-from ..quant import fmt_bps
 from ..models import (
     Assumption,
     Competitor,
@@ -56,6 +55,7 @@ from ..models import (
     FinancialStatement,
     MacroSnapshot,
 )
+from ..quant import fmt_bps
 
 logger = logging.getLogger(__name__)
 
@@ -139,11 +139,13 @@ class DividendEngine:
         if not result.pays_dividend:
             result.no_dividend_context = self._no_dividend_context(financials, fundamental)
             result.attractiveness_rating = "No Income"
-            result.assumptions.append(Assumption(
-                label="Dividend Policy",
-                value="No dividend currently paid",
-                source="yfinance dividend history / info",
-            ))
+            result.assumptions.append(
+                Assumption(
+                    label="Dividend Policy",
+                    value="No dividend currently paid",
+                    source="yfinance dividend history / info",
+                )
+            )
             return result
 
         self._compute_growth(annual, result)
@@ -227,7 +229,9 @@ class DividendEngine:
         """
         stmts = self._recent_dividend_statements(financials, max_years=3)
         if not stmts:
-            result.data_gaps.append("No financials with dividends paid; payout/coverage unavailable.")
+            result.data_gaps.append(
+                "No financials with dividends paid; payout/coverage unavailable."
+            )
             return
 
         div_e = ni_sum = 0.0
@@ -252,16 +256,22 @@ class DividendEngine:
             result.payout_ratio_eps = div_e / ni_sum
             result.eps_coverage = ni_sum / div_e
         elif n_e and ni_sum <= 0:
-            result.data_gaps.append("Net income non-positive over window; EPS payout not meaningful.")
+            result.data_gaps.append(
+                "Net income non-positive over window; EPS payout not meaningful."
+            )
 
         if n_f and fcf_sum > 0:
             result.payout_ratio_fcf = div_f / fcf_sum
             result.fcf_coverage = fcf_sum / div_f
         elif n_f and fcf_sum <= 0:
-            result.data_gaps.append("Free cash flow non-positive over window; FCF payout/coverage not meaningful.")
+            result.data_gaps.append(
+                "Free cash flow non-positive over window; FCF payout/coverage not meaningful."
+            )
 
         if not n_e and not n_f:
-            result.data_gaps.append("Dividends paid present but no matching earnings/FCF; payout/coverage unavailable.")
+            result.data_gaps.append(
+                "Dividends paid present but no matching earnings/FCF; payout/coverage unavailable."
+            )
 
     @staticmethod
     def _recent_dividend_statements(
@@ -269,9 +279,7 @@ class DividendEngine:
     ) -> list[FinancialStatement]:
         if not financials:
             return []
-        ordered = sorted(
-            financials, key=lambda f: f.period_end_date or date.min, reverse=True
-        )
+        ordered = sorted(financials, key=lambda f: f.period_end_date or date.min, reverse=True)
         paying = [f for f in ordered if f.dividends_paid]
         return paying[:max_years] if paying else ordered[:1]
 
@@ -376,7 +384,11 @@ class DividendEngine:
         # Hard overrides — coverage/cut realities cap the grade
         if result.fcf_coverage is not None and result.fcf_coverage < 1:
             grade_label = self._cap_grade(grade_label, "At Risk")
-        if result.payout_ratio_eps is not None and result.payout_ratio_eps > 1 and not result.is_etf:
+        if (
+            result.payout_ratio_eps is not None
+            and result.payout_ratio_eps > 1
+            and not result.is_etf
+        ):
             grade_label = self._cap_grade(grade_label, "At Risk")
         if result.had_cut and result.years_since_cut is not None and result.years_since_cut <= 1:
             grade_label = self._cap_grade(grade_label, "Borderline")
@@ -418,13 +430,16 @@ class DividendEngine:
 
         if peers:
             peer_yields = sorted(
-                p.dividend_yield for p in peers
+                p.dividend_yield
+                for p in peers
                 if p.dividend_yield is not None and p.dividend_yield > 0
             )
             if peer_yields:
                 n = len(peer_yields)
                 mid = n // 2
-                median = peer_yields[mid] if n % 2 else (peer_yields[mid - 1] + peer_yields[mid]) / 2
+                median = (
+                    peer_yields[mid] if n % 2 else (peer_yields[mid - 1] + peer_yields[mid]) / 2
+                )
                 result.peer_median_yield = median
                 if result.current_yield is not None:
                     diff = result.current_yield - median
@@ -456,7 +471,8 @@ class DividendEngine:
             result.attractiveness_rating = "Yield-Trap Risk"
             avg_txt = (
                 f" (vs 5Y avg {result.five_year_avg_yield:.2%})"
-                if result.five_year_avg_yield is not None else ""
+                if result.five_year_avg_yield is not None
+                else ""
             )
             result.attractiveness_rationale = (
                 f"Yield of {cy:.2%} screens high{avg_txt} but dividend safety is "
@@ -497,17 +513,13 @@ class DividendEngine:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _no_dividend_context(
-        financials: list[FinancialStatement], fundamental: Any
-    ) -> str:
+    def _no_dividend_context(financials: list[FinancialStatement], fundamental: Any) -> str:
         latest = None
         if financials:
-            latest = sorted(
-                financials, key=lambda f: f.period_end_date or date.min, reverse=True
-            )[0]
-        buybacks = bool(
-            latest and latest.share_buybacks and abs(float(latest.share_buybacks)) > 0
-        )
+            latest = sorted(financials, key=lambda f: f.period_end_date or date.min, reverse=True)[
+                0
+            ]
+        buybacks = bool(latest and latest.share_buybacks and abs(float(latest.share_buybacks)) > 0)
         rev_growth = getattr(fundamental, "revenue_growth_yoy", None) if fundamental else None
 
         if buybacks:
@@ -534,29 +546,40 @@ class DividendEngine:
     ) -> None:
         if result.current_yield is not None and price:
             basis = "forward dividend rate / price" if dd.dividend_rate else "trailing rate / price"
-            result.assumptions.append(Assumption(
-                label="Dividend Yield",
-                value=f"{result.current_yield:.2%}",
-                source=f"Computed: {basis} (price ${price:.2f})",
-                confidence="High",
-            ))
+            result.assumptions.append(
+                Assumption(
+                    label="Dividend Yield",
+                    value=f"{result.current_yield:.2%}",
+                    source=f"Computed: {basis} (price ${price:.2f})",
+                    confidence="High",
+                )
+            )
         if result.payout_ratio_fcf is not None:
-            result.assumptions.append(Assumption(
-                label="FCF Payout Ratio",
-                value=f"{result.payout_ratio_fcf:.0%}",
-                source="Dividends paid / free cash flow, trailing up to 3 fiscal years",
-            ))
+            result.assumptions.append(
+                Assumption(
+                    label="FCF Payout Ratio",
+                    value=f"{result.payout_ratio_fcf:.0%}",
+                    source="Dividends paid / free cash flow, trailing up to 3 fiscal years",
+                )
+            )
         if result.safety_score is not None:
-            result.assumptions.append(Assumption(
-                label="Dividend Safety Score",
-                value=f"{result.safety_score:.0f}/100 ({result.safety_grade})",
-                source="Blend of FCF coverage, EPS payout, increase streak, balance-sheet grade",
-                note="Heuristic, scaled to available inputs.",
-            ))
+            result.assumptions.append(
+                Assumption(
+                    label="Dividend Safety Score",
+                    value=f"{result.safety_score:.0f}/100 ({result.safety_grade})",
+                    source=(
+                        "Blend of FCF coverage, EPS payout, increase streak, balance-sheet "
+                        "grade"
+                    ),
+                    note="Heuristic, scaled to available inputs.",
+                )
+            )
         if dd.history:
-            result.assumptions.append(Assumption(
-                label="Dividend History",
-                value=f"{len(dd.history)} payments across {result.paying_years} years",
-                source="yfinance dividend history",
-                note="Special/one-time dividends may distort single-year growth.",
-            ))
+            result.assumptions.append(
+                Assumption(
+                    label="Dividend History",
+                    value=f"{len(dd.history)} payments across {result.paying_years} years",
+                    source="yfinance dividend history",
+                    note="Special/one-time dividends may distort single-year growth.",
+                )
+            )

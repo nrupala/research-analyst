@@ -25,6 +25,7 @@ fully-correct report on the WRONG listing is the worst outcome for a research
 tool. The lookup itself lives in MarketDataProvider.search_symbols; this module
 is pure (no I/O) so the disambiguation policy is deterministic and testable.
 """
+
 # Module: research_analyst/resolver.py | Version: 0.3.0 | Slice A.4
 from __future__ import annotations
 
@@ -68,8 +69,11 @@ def resolve_subject(query: str, matches: list[SymbolMatch]) -> SubjectResolution
     if alias:
         m = markets.resolve(alias)
         return SubjectResolution(
-            query=query, status="resolved",
-            resolved=SymbolMatch(symbol=alias, market=m.code, market_name=m.name, currency=m.currency),
+            query=query,
+            status="resolved",
+            resolved=SymbolMatch(
+                symbol=alias, market=m.code, market_name=m.name, currency=m.currency
+            ),
             note=f"India alias: {q} -> {alias}",
         )
 
@@ -77,7 +81,8 @@ def resolve_subject(query: str, matches: list[SymbolMatch]) -> SubjectResolution
     if markets.suffix_of(q):
         m = markets.resolve(q)
         return SubjectResolution(
-            query=query, status="resolved",
+            query=query,
+            status="resolved",
             resolved=SymbolMatch(symbol=q, market=m.code, market_name=m.name, currency=m.currency),
             note="explicit exchange suffix",
         )
@@ -91,39 +96,51 @@ def resolve_subject(query: str, matches: list[SymbolMatch]) -> SubjectResolution
             ns = f"{q}.NS"
             m = markets.resolve(ns)
             return SubjectResolution(
-                query=query, status="ambiguous",
-                candidates=[SymbolMatch(symbol=ns, market=m.code, market_name=m.name, currency=m.currency)],
+                query=query,
+                status="ambiguous",
+                candidates=[
+                    SymbolMatch(symbol=ns, market=m.code, market_name=m.name, currency=m.currency)
+                ],
                 note=f"did you mean {ns}? (Indian NSE listing)",
             )
-        return SubjectResolution(query=query, status="not_found",
-                                 note="no equity or ETF listing matched")
+        return SubjectResolution(
+            query=query, status="not_found", note="no equity or ETF listing matched"
+        )
 
     # 2) Exact symbol hit (user typed a bare symbol, e.g. AAPL).
     exact_sym = [m for m in eligible if m.symbol.upper() == q]
     if exact_sym:
-        return SubjectResolution(query=query, status="resolved", resolved=exact_sym[0],
-                                 note="exact symbol match")
+        return SubjectResolution(
+            query=query, status="resolved", resolved=exact_sym[0], note="exact symbol match"
+        )
 
     ranked = sorted(eligible, key=lambda m: m.score, reverse=True)
 
     # 3) Exact full-name hit.
     exact_name = [m for m in ranked if m.name.strip().lower() == query.strip().lower()]
     if len(exact_name) == 1:
-        return SubjectResolution(query=query, status="resolved", resolved=exact_name[0],
-                                 note="exact name match")
+        return SubjectResolution(
+            query=query, status="resolved", resolved=exact_name[0], note="exact name match"
+        )
 
     # 4) Sole eligible match.
     if len(ranked) == 1:
-        return SubjectResolution(query=query, status="resolved", resolved=ranked[0],
-                                 note="sole match")
+        return SubjectResolution(
+            query=query, status="resolved", resolved=ranked[0], note="sole match"
+        )
 
     top, second = ranked[0], ranked[1]
     dominant_score = top.score > 0 and top.score >= 2 * max(second.score, 1e-9)
     dominant_name = _name_has_all(top.name, query) and not _name_has_all(second.name, query)
     if dominant_score and dominant_name:
-        return SubjectResolution(query=query, status="resolved", resolved=top,
-                                 note="dominant match")
+        return SubjectResolution(
+            query=query, status="resolved", resolved=top, note="dominant match"
+        )
 
     # 5) Ambiguous -- never guess. Return top candidates for the user to pick.
-    return SubjectResolution(query=query, status="ambiguous", candidates=ranked[:5],
-                             note="multiple listings match; select one")
+    return SubjectResolution(
+        query=query,
+        status="ambiguous",
+        candidates=ranked[:5],
+        note="multiple listings match; select one",
+    )

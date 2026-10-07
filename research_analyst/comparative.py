@@ -49,14 +49,19 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
+from .disclaimer import DISCLAIMER_SHORT
 from .enums import ReportType, ScenarioType, Timeframe
 from .models import ReportOutput, ResearchRequest, ResearchResponse, SourceRecord
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from .orchestrator import ResearchOrchestrator
 
 MIN_TICKERS = 2
 MAX_TICKERS = 5
@@ -77,7 +82,6 @@ DIMENSION_ORDER = [DIM_VALUATION, DIM_GROWTH, DIM_QUALITY, DIM_DIVIDEND, DIM_RIS
 # single-ticker path untouched). Documented, never silently faked.
 DEFERRED_DIMENSIONS = ["Technical / Momentum", "Macro / Sector"]
 
-from .disclaimer import DISCLAIMER_SHORT
 _DISCLAIMER = DISCLAIMER_SHORT
 _COMPLIANCE_NOTE = (
     "This tool ranks and compares numbers; you decide. It makes no buy, sell, or "
@@ -90,6 +94,7 @@ _COMPLIANCE_NOTE = (
 # ---------------------------------------------------------------------------
 # Metric registry — declarative extraction from a per-ticker ReportOutput
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class MetricSpec:
@@ -104,10 +109,10 @@ class MetricSpec:
     label: str
     dimension: str
     higher_is_better: bool
-    unit: str                       # "pct" | "ratio" | "score" | "price" | "num"
-    source: str                     # provenance: the report field it came from
+    unit: str  # "pct" | "ratio" | "score" | "price" | "num"
+    source: str  # provenance: the report field it came from
     extract: Callable[[ReportOutput], float | None]
-    rankable: bool = True           # informational-only metrics are not ranked
+    rankable: bool = True  # informational-only metrics are not ranked
 
 
 def _base_scenario(report: ReportOutput):
@@ -129,7 +134,9 @@ def _val_base_upside(r: ReportOutput) -> float | None:
     scenario = _base_scenario(r)
     if scenario is None:
         return None
-    parts = [v for v in (scenario.implied_upside_low, scenario.implied_upside_high) if v is not None]
+    parts = [
+        v for v in (scenario.implied_upside_low, scenario.implied_upside_high) if v is not None
+    ]
     return sum(parts) / len(parts) if parts else None
 
 
@@ -179,31 +186,115 @@ def _risk_score(r: ReportOutput) -> float | None:
 # always None on the model (the multiple is only recorded in assumption text),
 # so it is not a structured, provenance-safe field to rank on.
 METRIC_REGISTRY: list[MetricSpec] = [
-    MetricSpec("current_price", "Current price", DIM_VALUATION, True, "price",
-               "per-ticker report -> valuation.current_price", _val_current_price, rankable=False),
-    MetricSpec("upside_base", "Base-case implied upside", DIM_VALUATION, True, "pct",
-               "per-ticker report -> valuation base scenario implied_upside_low/high (midpoint)",
-               _val_base_upside),
-    MetricSpec("rev_growth_base", "Revenue growth (base case)", DIM_GROWTH, True, "pct",
-               "per-ticker report -> valuation base scenario revenue_growth", _fun_base_rev_growth),
-    MetricSpec("op_margin_base", "Operating margin (base case)", DIM_GROWTH, True, "pct",
-               "per-ticker report -> valuation base scenario operating_margin", _fun_base_op_margin),
-    MetricSpec("roic", "ROIC", DIM_QUALITY, True, "pct",
-               "per-ticker report -> capital_allocation.roic", _cap_roic),
-    MetricSpec("roic_minus_wacc", "ROIC − WACC spread", DIM_QUALITY, True, "pct",
-               "per-ticker report -> capital_allocation.roic_minus_wacc", _cap_roic_minus_wacc),
-    MetricSpec("shareholder_yield", "Shareholder yield", DIM_QUALITY, True, "pct",
-               "per-ticker report -> capital_allocation.shareholder_yield", _cap_shareholder_yield),
-    MetricSpec("div_yield", "Forward dividend yield", DIM_DIVIDEND, True, "pct",
-               "per-ticker report -> dividend.current_yield", _div_current_yield),
-    MetricSpec("payout_fcf", "Payout ratio (FCF)", DIM_DIVIDEND, False, "pct",
-               "per-ticker report -> dividend.payout_ratio_fcf", _div_payout_fcf),
-    MetricSpec("div_safety", "Dividend safety score", DIM_DIVIDEND, True, "score",
-               "per-ticker report -> dividend.safety_score", _div_safety),
-    MetricSpec("div_growth_5y", "Dividend growth (5Y CAGR)", DIM_DIVIDEND, True, "pct",
-               "per-ticker report -> dividend.dividend_growth_5y_cagr", _div_growth_5y),
-    MetricSpec("risk_score", "Overall risk score (1-10)", DIM_RISK, False, "num",
-               "per-ticker report -> risk_matrix.overall_risk_score", _risk_score),
+    MetricSpec(
+        "current_price",
+        "Current price",
+        DIM_VALUATION,
+        True,
+        "price",
+        "per-ticker report -> valuation.current_price",
+        _val_current_price,
+        rankable=False,
+    ),
+    MetricSpec(
+        "upside_base",
+        "Base-case implied upside",
+        DIM_VALUATION,
+        True,
+        "pct",
+        "per-ticker report -> valuation base scenario implied_upside_low/high (midpoint)",
+        _val_base_upside,
+    ),
+    MetricSpec(
+        "rev_growth_base",
+        "Revenue growth (base case)",
+        DIM_GROWTH,
+        True,
+        "pct",
+        "per-ticker report -> valuation base scenario revenue_growth",
+        _fun_base_rev_growth,
+    ),
+    MetricSpec(
+        "op_margin_base",
+        "Operating margin (base case)",
+        DIM_GROWTH,
+        True,
+        "pct",
+        "per-ticker report -> valuation base scenario operating_margin",
+        _fun_base_op_margin,
+    ),
+    MetricSpec(
+        "roic",
+        "ROIC",
+        DIM_QUALITY,
+        True,
+        "pct",
+        "per-ticker report -> capital_allocation.roic",
+        _cap_roic,
+    ),
+    MetricSpec(
+        "roic_minus_wacc",
+        "ROIC − WACC spread",
+        DIM_QUALITY,
+        True,
+        "pct",
+        "per-ticker report -> capital_allocation.roic_minus_wacc",
+        _cap_roic_minus_wacc,
+    ),
+    MetricSpec(
+        "shareholder_yield",
+        "Shareholder yield",
+        DIM_QUALITY,
+        True,
+        "pct",
+        "per-ticker report -> capital_allocation.shareholder_yield",
+        _cap_shareholder_yield,
+    ),
+    MetricSpec(
+        "div_yield",
+        "Forward dividend yield",
+        DIM_DIVIDEND,
+        True,
+        "pct",
+        "per-ticker report -> dividend.current_yield",
+        _div_current_yield,
+    ),
+    MetricSpec(
+        "payout_fcf",
+        "Payout ratio (FCF)",
+        DIM_DIVIDEND,
+        False,
+        "pct",
+        "per-ticker report -> dividend.payout_ratio_fcf",
+        _div_payout_fcf,
+    ),
+    MetricSpec(
+        "div_safety",
+        "Dividend safety score",
+        DIM_DIVIDEND,
+        True,
+        "score",
+        "per-ticker report -> dividend.safety_score",
+        _div_safety,
+    ),
+    MetricSpec(
+        "div_growth_5y",
+        "Dividend growth (5Y CAGR)",
+        DIM_DIVIDEND,
+        True,
+        "pct",
+        "per-ticker report -> dividend.dividend_growth_5y_cagr",
+        _div_growth_5y,
+    ),
+    MetricSpec(
+        "risk_score",
+        "Overall risk score (1-10)",
+        DIM_RISK,
+        False,
+        "num",
+        "per-ticker report -> risk_matrix.overall_risk_score",
+        _risk_score,
+    ),
 ]
 
 
@@ -211,15 +302,16 @@ METRIC_REGISTRY: list[MetricSpec] = [
 # Ranking / normalization primitive (pure, deterministic)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class RankResult:
     """Per-ticker ranking outcome for one metric."""
 
     value: float | None
-    percentile: float | None      # 0-100, higher = better
-    normalized: float | None      # 0-100 min-max, higher = better
-    rank: int | None              # 1 = best; dense ranking (ties share a rank)
-    is_winner: bool               # best value in the set (ties -> multiple winners)
+    percentile: float | None  # 0-100, higher = better
+    normalized: float | None  # 0-100 min-max, higher = better
+    rank: int | None  # 1 = best; dense ranking (ties share a rank)
+    is_winner: bool  # best value in the set (ties -> multiple winners)
 
 
 def rank_metric(
@@ -286,6 +378,7 @@ def rank_metric(
 # Comparative report models
 # ---------------------------------------------------------------------------
 
+
 class MetricComparison(BaseModel):
     """One metric aligned across every ticker in the set."""
 
@@ -316,7 +409,7 @@ class ScorecardRow(BaseModel):
 
     ticker: str
     company_name: str = ""
-    overall_score: float | None = None   # equal-weighted mean of normalized scores
+    overall_score: float | None = None  # equal-weighted mean of normalized scores
     wins: int = 0
     metrics_scored: int = 0
 
@@ -332,7 +425,7 @@ class ComparativeReport(BaseModel):
     """Full comparative result: the per-ticker report models + comparison layer."""
 
     requested_tickers: list[str]
-    tickers: list[str] = Field(default_factory=list)   # successfully analyzed, in order
+    tickers: list[str] = Field(default_factory=list)  # successfully analyzed, in order
     company_names: dict[str, str] = Field(default_factory=dict)
     currencies: dict[str, str] = Field(default_factory=dict)
     generated_at: datetime
@@ -352,6 +445,7 @@ class ComparativeReport(BaseModel):
 # ---------------------------------------------------------------------------
 # Pure builder: per-ticker responses -> comparison layer
 # ---------------------------------------------------------------------------
+
 
 def _comprehensive_report(resp: ResearchResponse) -> ReportOutput | None:
     """Pick the comprehensive report from a response, falling back to the first."""
@@ -374,9 +468,7 @@ def build_comparative_report(
     currencies = {resp.ticker: getattr(resp, "currency", "USD") for resp in responses}
     data_sources = {resp.ticker: list(resp.metadata.data_sources) for resp in responses}
     # Issue #74: carry each ticker's linked source records into the comparison.
-    source_records = {
-        resp.ticker: list(resp.metadata.source_records) for resp in responses
-    }
+    source_records = {resp.ticker: list(resp.metadata.source_records) for resp in responses}
 
     reports_by_ticker: dict[str, ReportOutput] = {}
     for resp in responses:
@@ -396,13 +488,21 @@ def build_comparative_report(
                     raw = spec.extract(rep)
                 except Exception:  # defensive: a bad field never breaks the set
                     raw = None
-            values[t] = float(raw) if isinstance(raw, (int, float)) and not isinstance(raw, bool) else None
+            values[t] = (
+                float(raw) if isinstance(raw, (int, float)) and not isinstance(raw, bool) else None
+            )
 
         available = any(v is not None for v in values.values())
         mc = MetricComparison(
-            key=spec.key, label=spec.label, dimension=spec.dimension, unit=spec.unit,
-            higher_is_better=spec.higher_is_better, rankable=spec.rankable,
-            source=spec.source, available=available, values=values,
+            key=spec.key,
+            label=spec.label,
+            dimension=spec.dimension,
+            unit=spec.unit,
+            higher_is_better=spec.higher_is_better,
+            rankable=spec.rankable,
+            source=spec.source,
+            available=available,
+            values=values,
         )
         if spec.rankable and available:
             ranked = rank_metric(values, spec.higher_is_better)
@@ -437,18 +537,25 @@ def build_comparative_report(
             if t in mc.winners:
                 wins += 1
         overall = round(sum(norms) / len(norms), 1) if norms else None
-        scorecard.append(ScorecardRow(
-            ticker=t, company_name=company_names.get(t, ""),
-            overall_score=overall, wins=wins, metrics_scored=len(norms),
-        ))
-    scorecard.sort(key=lambda r: (r.overall_score is not None, r.overall_score or 0.0), reverse=True)
+        scorecard.append(
+            ScorecardRow(
+                ticker=t,
+                company_name=company_names.get(t, ""),
+                overall_score=overall,
+                wins=wins,
+                metrics_scored=len(norms),
+            )
+        )
+    scorecard.sort(
+        key=lambda r: (r.overall_score is not None, r.overall_score or 0.0), reverse=True
+    )
 
     return ComparativeReport(
         requested_tickers=requested_list,
         tickers=tickers,
         company_names=company_names,
         currencies=currencies,
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
         scorecard=scorecard,
         dimensions=dimensions,
         errors=error_list,
@@ -466,9 +573,12 @@ def build_comparative_report(
 SingleRunFn = Callable[[ResearchRequest], Awaitable[ResearchResponse]]
 
 _TIMEFRAME_MAP = {
-    "1M": Timeframe.ONE_MONTH, "3M": Timeframe.THREE_MONTHS,
-    "6M": Timeframe.SIX_MONTHS, "1Y": Timeframe.ONE_YEAR,
-    "3Y": Timeframe.THREE_YEARS, "5Y": Timeframe.FIVE_YEARS,
+    "1M": Timeframe.ONE_MONTH,
+    "3M": Timeframe.THREE_MONTHS,
+    "6M": Timeframe.SIX_MONTHS,
+    "1Y": Timeframe.ONE_YEAR,
+    "3Y": Timeframe.THREE_YEARS,
+    "5Y": Timeframe.FIVE_YEARS,
     "10Y": Timeframe.TEN_YEARS,
 }
 
@@ -495,6 +605,7 @@ class ComparativeOrchestrator:
                 # Lazy import: keeps the pure comparison layer (models, ranking,
                 # renderer) importable without pulling the heavy provider tree.
                 from .orchestrator import ResearchOrchestrator
+
                 orchestrator = ResearchOrchestrator()
             self._orchestrator = orchestrator
             self._run_single = self._orchestrator.run

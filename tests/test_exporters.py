@@ -99,7 +99,10 @@ def test_ts_definitions_core_shapes():
     assert "Auto-generated" in ts
     assert f'export const RA_SCHEMA_VERSION = "{SCHEMA_VERSION}";' in ts
     for interface in (
-        "ResearchAPIResponse", "CompareAPIResponse", "ResolveAPIResponse", "SymbolMatch",
+        "ResearchAPIResponse",
+        "CompareAPIResponse",
+        "ResolveAPIResponse",
+        "SymbolMatch",
     ):
         assert f"export interface {interface} {{" in ts, interface
 
@@ -133,7 +136,13 @@ def test_ts_definitions_emit_file(tmp_path):
 
     _cmd_schema_export(_Args())  # type: ignore[arg-type]
     files = sorted(p.name for p in tmp_path.iterdir())
-    expected = ["compare.schema.json", "quant.schema.json", "research.schema.json", "resolve.schema.json", "types.d.ts"]
+    expected = [
+        "compare.schema.json",
+        "quant.schema.json",
+        "research.schema.json",
+        "resolve.schema.json",
+        "types.d.ts",
+    ]
     assert files == expected
     assert (tmp_path / "types.d.ts").read_text().startswith("// Auto-generated")
 

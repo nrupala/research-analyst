@@ -109,29 +109,37 @@ def compute_quant_results(
     dupont_rows = dupont.dupont_series(series)
     latest_dupont = dupont_rows[-1] if dupont_rows else None
     dupont_latest: dict[str, Any] = {
-        "period": None, "roe": None, "net_margin": None,
-        "asset_turnover": None, "leverage": None,
+        "period": None,
+        "roe": None,
+        "net_margin": None,
+        "asset_turnover": None,
+        "leverage": None,
     }
     dupont_all: list[dict[str, Any]] = []
     attribution: dict[str, Any] = {
-        "roe_change_pp": None, "margin_contribution_pp": None,
-        "turnover_contribution_pp": None, "leverage_contribution_pp": None,
+        "roe_change_pp": None,
+        "margin_contribution_pp": None,
+        "turnover_contribution_pp": None,
+        "leverage_contribution_pp": None,
     }
     if latest_dupont is not None and latest_dupont.roe is not None:
         dupont_latest = {
-            "period": latest_dupont.period, "roe": latest_dupont.roe,
+            "period": latest_dupont.period,
+            "roe": latest_dupont.roe,
             "net_margin": latest_dupont.net_margin,
             "asset_turnover": latest_dupont.asset_turnover,
             "leverage": latest_dupont.leverage,
         }
         for row in dupont_rows:
-            dupont_all.append({
-                "period": row.period,
-                "roe": row.roe,
-                "net_margin": row.net_margin,
-                "asset_turnover": row.asset_turnover,
-                "leverage": row.leverage,
-            })
+            dupont_all.append(
+                {
+                    "period": row.period,
+                    "roe": row.roe,
+                    "net_margin": row.net_margin,
+                    "asset_turnover": row.asset_turnover,
+                    "leverage": row.leverage,
+                }
+            )
         first_row = dupont_rows[0]
         if len(dupont_rows) > 1 and first_row.roe is not None:
             attr = dupont.roe_attribution(first_row, latest_dupont)
@@ -159,7 +167,6 @@ def compute_quant_results(
         missing.extend(f"beneish_m: {m}" for m in bm.missing)
 
     # ---- Valuation ----
-    price = market.get("price")
     ev = market.get("enterprise_value")
     fcf_last = guards.last_value(series.free_cash_flow)
     discount_rate = market.get("discount_rate")
@@ -193,7 +200,8 @@ def compute_quant_results(
         perpetual_g = valuation.implied_perpetual_growth(ev, fcf_last, discount_rate)
         if explicit_g is None:
             missing.append(
-                "implied_explicit_stage_growth (needs enterprise_value, free_cash_flow, discount_rate)"
+                "implied_explicit_stage_growth (needs enterprise_value, free_cash_flow, "
+                "discount_rate)"
             )
         if perpetual_g is None:
             missing.append(
@@ -322,23 +330,33 @@ def render_quant_section(
     lines.append("| Metric | Value | Formula | Periods |")
     lines.append("|---|---|---|---|")
     lines.append(
-        f"| Revenue CAGR | {_fmt(t['revenue_cagr'], pct=True)} | (last/first)^(1/periods) − 1 | {period_range} |"
+        f"| Revenue CAGR | {_fmt(t['revenue_cagr'], pct=True)} | (last/first)^(1/periods) − "
+        f"1 | {period_range} "
+        "|"
     )
     lines.append(
-        f"| Diluted EPS CAGR | {_fmt(t['eps_cagr'], pct=True)} | (last/first)^(1/periods) − 1 | {period_range} |"
+        f"| Diluted EPS CAGR | {_fmt(t['eps_cagr'], pct=True)} | (last/first)^(1/periods) − "
+        f"1 | {period_range} "
+        "|"
     )
     lines.append(
-        f"| Free cash flow CAGR | {_fmt(t['fcf_cagr'], pct=True)} | (last/first)^(1/periods) − 1 | {period_range} |"
+        f"| Free cash flow CAGR | {_fmt(t['fcf_cagr'], pct=True)} | (last/first)^(1/periods) "
+        f"− 1 | {period_range} "
+        "|"
     )
     lines.append(
         f"| Latest YoY revenue growth | {_fmt(t['yoy_revenue_growth_latest'], pct=True)} "
         "| rev_t / rev_t−1 − 1 | latest |"
     )
     lines.append(
-        f"| Latest gross margin | {_fmt(t['gross_margin_latest'], pct=True)} | gross_profit / revenue | latest |"
+        f"| Latest gross margin | {_fmt(t['gross_margin_latest'], pct=True)} | gross_profit "
+        "/ revenue | latest "
+        "|"
     )
     lines.append(
-        f"| Latest net margin | {_fmt(t['net_margin_latest'], pct=True)} | net_income / revenue | latest |"
+        f"| Latest net margin | {_fmt(t['net_margin_latest'], pct=True)} | net_income / "
+        "revenue | latest "
+        "|"
     )
     lines.append("")
 
@@ -351,7 +369,9 @@ def render_quant_section(
         lines.append("| Component | Value | Formula |")
         lines.append("|---|---|---|")
         lines.append(f"| Net margin | {_fmt(dl['net_margin'], pct=True)} | net_income / revenue |")
-        lines.append(f"| Asset turnover | {_fmt(dl['asset_turnover'])} | revenue / avg total_assets |")
+        lines.append(
+            f"| Asset turnover | {_fmt(dl['asset_turnover'])} | revenue / avg total_assets |"
+        )
         lines.append(f"| Leverage | {_fmt(dl['leverage'])} | avg total_assets / avg total_equity |")
         attr = d["attribution"]
         first_period = d["rows"][0]["period"] if d["rows"] else "?"
@@ -365,7 +385,9 @@ def render_quant_section(
                 f"leverage {_fmt(attr['leverage_contribution_pp'], digits=1)}pp."
             )
     else:
-        lines.append("DuPont decomposition unavailable — required inputs missing (see Missing inputs).")
+        lines.append(
+            "DuPont decomposition unavailable — required inputs missing (see Missing inputs)."
+        )
     lines.append("")
 
     lines.append("### Forensic Screens")
@@ -384,7 +406,9 @@ def render_quant_section(
         lines.append("- **Altman Z-score:** n/a")
     if f["beneish_m"] is not None:
         flag_txt = "FLAGGED (M > −1.78)" if f["beneish_flag"] else "not flagged"
-        lines.append(f"- **Beneish M-score:** {_fmt(f['beneish_m'])} — {flag_txt}. Screen, not a verdict.")
+        lines.append(
+            f"- **Beneish M-score:** {_fmt(f['beneish_m'])} — {flag_txt}. Screen, not a verdict."
+        )
     else:
         lines.append("- **Beneish M-score:** n/a")
     lines.append(
@@ -401,13 +425,19 @@ def render_quant_section(
     lines.append("")
     lines.append("| Metric | Value | Formula |")
     lines.append("|---|---|---|")
-    lines.append(f"| Graham number | {_fmt(v['graham_number'])} {currency} | √(22.5 × EPS × BVPS) |")
     lines.append(
-        f"| Lynch fair value (PEG = 1) | {_fmt(v['lynch_fair_value'])} {currency} | EPS × EPS-growth-% |"
+        f"| Graham number | {_fmt(v['graham_number'])} {currency} | √(22.5 × EPS × BVPS) |"
+    )
+    lines.append(
+        f"| Lynch fair value (PEG = 1) | {_fmt(v['lynch_fair_value'])} {currency} | EPS × "
+        "EPS-growth-% "
+        "|"
     )
     lines.append(
         f"| Implied explicit-stage growth | {_fmt(v['implied_explicit_stage_growth'], pct=True)} | "
-        "reverse DCF bisection: constant g over 5 explicit years + Gordon terminal, solved for current EV |"
+        "reverse DCF bisection: constant g over 5 explicit years + Gordon terminal, solved "
+        "for current EV "
+        "|"
     )
     lines.append(
         f"| Implied perpetual growth | {_fmt(v['implied_perpetual_growth'], pct=True)} | "
@@ -418,13 +448,17 @@ def render_quant_section(
     lines.append("### Capital Allocation")
     lines.append("")
     if a["incremental_roic_average"] is not None:
-        lines.append(f"- **Average incremental ROIC:** {_fmt(a['incremental_roic_average'], pct=True)}")
+        lines.append(
+            f"- **Average incremental ROIC:** {_fmt(a['incremental_roic_average'], pct=True)}"
+        )
         lines.append(
             f"  - Operating tax rate (latest): {_fmt(a['operating_tax_rate_latest'], pct=True)} — "
             "t = tax_expense / (ebit − interest_expense), spec amendment A1"
         )
     else:
-        lines.append("- **Incremental ROIC:** n/a — unavailable when tax/interest inputs are missing.")
+        lines.append(
+            "- **Incremental ROIC:** n/a — unavailable when tax/interest inputs are missing."
+        )
     lines.append(
         f"- **Dividend:** payout on earnings {_fmt(a['dividend_payout_on_earnings'], pct=True)}, "
         f"payout on FCF {_fmt(a['dividend_payout_on_fcf'], pct=True)}, "

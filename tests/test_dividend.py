@@ -69,11 +69,13 @@ def test_payer_full_analysis():
         history=_history(PAYER_HISTORY),
         ex_dividend_date=date(2026, 6, 14),
     )
-    fin = [_stmt(
-        net_income=Decimal("10000000000"),
-        free_cash_flow=Decimal("12000000000"),
-        dividends_paid=Decimal("-3000000000"),
-    )]
+    fin = [
+        _stmt(
+            net_income=Decimal("10000000000"),
+            free_cash_flow=Decimal("12000000000"),
+            dividends_paid=Decimal("-3000000000"),
+        )
+    ]
     macro = MacroSnapshot(as_of_date=date(2026, 6, 1), us_10y_yield=0.043)
     peers = [
         Competitor(ticker="PEP", name="PepsiCo", dividend_yield=0.025),
@@ -82,7 +84,9 @@ def test_payer_full_analysis():
     ]
     fundamental = SimpleNamespace(balance_sheet_grade="Strong", revenue_growth_yoy=0.05)
 
-    r = engine.analyze(dd, fin, macro=macro, peers=peers, fundamental=fundamental, current_price=28.0)
+    r = engine.analyze(
+        dd, fin, macro=macro, peers=peers, fundamental=fundamental, current_price=28.0
+    )
 
     assert r.pays_dividend is True
     assert r.income_label == "Dividend"
@@ -119,12 +123,19 @@ def test_payer_full_analysis():
 def test_low_yield_below_treasury_is_unattractive():
     engine = DividendEngine()
     dd = DividendData(
-        ticker="LOWY", current_price=100.0, dividend_rate=2.00,
-        trailing_dividend_rate=2.00, history=_history(PAYER_HISTORY),
+        ticker="LOWY",
+        current_price=100.0,
+        dividend_rate=2.00,
+        trailing_dividend_rate=2.00,
+        history=_history(PAYER_HISTORY),
     )
-    fin = [_stmt(net_income=Decimal("5000000000"),
-                 free_cash_flow=Decimal("6000000000"),
-                 dividends_paid=Decimal("-1000000000"))]
+    fin = [
+        _stmt(
+            net_income=Decimal("5000000000"),
+            free_cash_flow=Decimal("6000000000"),
+            dividends_paid=Decimal("-1000000000"),
+        )
+    ]
     macro = MacroSnapshot(as_of_date=date(2026, 6, 1), us_10y_yield=0.043)
     r = engine.analyze(dd, fin, macro=macro, current_price=100.0)
     # 2.0% yield vs 4.3% risk-free
@@ -138,12 +149,20 @@ def test_yield_trap_screen():
     # High yield but thin coverage + recent cut → should screen as a trap
     hist = {2021: 2.0, 2022: 2.0, 2023: 2.0, 2024: 1.2, 2025: 1.2}  # cut in 2024
     dd = DividendData(
-        ticker="TRAP", current_price=15.0, dividend_rate=1.20,
-        trailing_dividend_rate=1.20, five_year_avg_yield=4.0, history=_history(hist),
+        ticker="TRAP",
+        current_price=15.0,
+        dividend_rate=1.20,
+        trailing_dividend_rate=1.20,
+        five_year_avg_yield=4.0,
+        history=_history(hist),
     )
-    fin = [_stmt(net_income=Decimal("500000000"),
-                 free_cash_flow=Decimal("900000000"),
-                 dividends_paid=Decimal("-1000000000"))]  # FCF coverage 0.9x
+    fin = [
+        _stmt(
+            net_income=Decimal("500000000"),
+            free_cash_flow=Decimal("900000000"),
+            dividends_paid=Decimal("-1000000000"),
+        )
+    ]  # FCF coverage 0.9x
     macro = MacroSnapshot(as_of_date=date(2026, 6, 1), us_10y_yield=0.043)
     fundamental = SimpleNamespace(balance_sheet_grade="Weak", revenue_growth_yoy=-0.05)
     r = engine.analyze(dd, fin, macro=macro, fundamental=fundamental, current_price=15.0)
@@ -157,9 +176,13 @@ def test_yield_trap_screen():
 def test_non_payer_buyback_focused():
     engine = DividendEngine()
     dd = DividendData(ticker="GOOGL", current_price=170.0)
-    fin = [_stmt(net_income=Decimal("80000000000"),
-                 free_cash_flow=Decimal("60000000000"),
-                 share_buybacks=Decimal("-50000000000"))]
+    fin = [
+        _stmt(
+            net_income=Decimal("80000000000"),
+            free_cash_flow=Decimal("60000000000"),
+            share_buybacks=Decimal("-50000000000"),
+        )
+    ]
     fundamental = SimpleNamespace(balance_sheet_grade="Strong", revenue_growth_yoy=0.15)
     r = engine.analyze(dd, fin, fundamental=fundamental, current_price=170.0)
     assert r.pays_dividend is False
@@ -186,7 +209,8 @@ def test_info_yield_normalization():
     assert engine._normalize_info_yield(0.025) == pytest.approx(0.025)
     # Fallback path: percent-form info yield, no rate, no price
     dd = DividendData(
-        ticker="XYZ", info_dividend_yield=3.0,
+        ticker="XYZ",
+        info_dividend_yield=3.0,
         history=_history({2023: 1.0, 2024: 1.0, 2025: 1.0}),
     )
     r = engine.analyze(dd, [], current_price=None)
@@ -196,12 +220,19 @@ def test_info_yield_normalization():
 def test_coverage_edge_cases_no_crash():
     engine = DividendEngine()
     dd = DividendData(
-        ticker="ZZZ", current_price=10.0, dividend_rate=0.40,
-        trailing_dividend_rate=0.40, history=_history({2024: 0.40, 2025: 0.40}),
+        ticker="ZZZ",
+        current_price=10.0,
+        dividend_rate=0.40,
+        trailing_dividend_rate=0.40,
+        history=_history({2024: 0.40, 2025: 0.40}),
     )
-    fin = [_stmt(net_income=Decimal("-1000000000"),  # negative earnings
-                 free_cash_flow=Decimal("0"),         # zero FCF
-                 dividends_paid=Decimal("-2000000000"))]
+    fin = [
+        _stmt(
+            net_income=Decimal("-1000000000"),  # negative earnings
+            free_cash_flow=Decimal("0"),  # zero FCF
+            dividends_paid=Decimal("-2000000000"),
+        )
+    ]
     r = engine.analyze(dd, fin, current_price=10.0)
     assert r.pays_dividend is True
     assert r.payout_ratio_eps is None
@@ -212,7 +243,9 @@ def test_coverage_edge_cases_no_crash():
 
 def test_dividend_models_serialize():
     dd = DividendData(
-        ticker="KO", current_price=60.0, dividend_rate=1.80,
+        ticker="KO",
+        current_price=60.0,
+        dividend_rate=1.80,
         history=[DividendPayment(ex_date=date(2025, 6, 15), amount=0.45)],
     )
     blob = dd.model_dump(mode="json")
