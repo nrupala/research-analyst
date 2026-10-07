@@ -368,7 +368,7 @@ def _find_support_resistance(
         # Return cluster centers, sorted by cluster size (most tested first)
         centers = [(np.mean(c), len(c)) for c in clusters]
         centers.sort(key=lambda x: x[1], reverse=True)
-        return [c[0] for c in centers[:num_levels]]
+        return [float(c[0]) for c in centers[:num_levels]]
 
     support = _cluster(support_candidates)
     resistance = _cluster(resistance_candidates)

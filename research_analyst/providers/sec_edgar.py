@@ -228,7 +228,8 @@ class SECEdgarProvider:
                         continue
 
                     resp.raise_for_status()
-                    return resp.json()
+                    payload: dict[str, Any] = resp.json()
+                    return payload
 
                 except httpx.HTTPStatusError as e:
                     if e.response.status_code < 500:
@@ -276,7 +277,7 @@ class SECEdgarProvider:
         ticker = _sanitize_ticker(ticker)
         cached = self._cik_cache.get(ticker)
         if cached:
-            return cached
+            return str(cached)
 
         try:
             # Try direct company lookup first

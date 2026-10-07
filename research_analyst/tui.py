@@ -141,7 +141,7 @@ def add_tui_parser(subparsers: Any) -> None:
         "--timeframe", default="1Y",
         help="Timeframe for headless mode (e.g. 1Y, 3Y).",
     )
-    return parser
+    return
 
 
 def run_tui_command(args: argparse.Namespace) -> None:

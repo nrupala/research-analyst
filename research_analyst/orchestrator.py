@@ -61,9 +61,12 @@ from .enums import SecurityType
 from .models import (
     AnalystEstimates,
     CompanyProfile,
+    Competitor,
     DividendData,
+    FinancialStatement,
     FundamentalData,
     InputSnapshot,
+    InstitutionalHolder,
     PeerSetProvenance,
     PriceSeries,
     ReportOutput,
@@ -449,9 +452,9 @@ class ResearchOrchestrator:
         request: ResearchRequest,
         profile: CompanyProfile,
         prices: PriceSeries,
-        financials: list,
+        financials: list[FinancialStatement],
         macro_snapshot: Any,
-        peers: list,
+        peers: list[Competitor],
         peer_provenance: PeerSetProvenance | None,
     ) -> InputSnapshot:
         """Capture the single snapshotted input set for this run (#69).
@@ -525,10 +528,10 @@ class ResearchOrchestrator:
         period = period_map.get(request.timeframe.value, "1y")
         return await self._market.get_price_series(ticker, period=period)
 
-    async def _fetch_yf_financials(self, ticker: str) -> list:
+    async def _fetch_yf_financials(self, ticker: str) -> list[FinancialStatement]:
         return await self._market.get_financials(ticker)
 
-    async def _fetch_sec_financials(self, ticker: str) -> list:
+    async def _fetch_sec_financials(self, ticker: str) -> list[FinancialStatement]:
         try:
             async with SECEdgarProvider() as sec:
                 return await sec.get_financials(ticker)
@@ -542,7 +545,7 @@ class ResearchOrchestrator:
         except Exception:
             return None
 
-    async def _fetch_peers(self, ticker: str) -> tuple[list, PeerSetProvenance | None]:
+    async def _fetch_peers(self, ticker: str) -> tuple[list[Competitor], PeerSetProvenance | None]:
         try:
             peers, provenance = await self._market.get_sector_peers_with_provenance(
                 ticker, max_peers=settings.analysis.max_competitors
@@ -559,7 +562,7 @@ class ResearchOrchestrator:
             logger.debug("Macro snapshot failed: %s", e)
             return None
 
-    async def _fetch_holders(self, ticker: str) -> list:
+    async def _fetch_holders(self, ticker: str) -> list[InstitutionalHolder]:
         try:
             return await self._market.get_institutional_holders(ticker)
         except Exception:

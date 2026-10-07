@@ -46,7 +46,7 @@ import uuid
 from collections import OrderedDict
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -71,6 +71,7 @@ from .config import settings
 from .disclaimer import DISCLAIMER_FULL, DISCLAIMER_SHORT, DISCLAIMER_VERSION
 from .entitlements import (
     SOURCE_DATA,
+    APIKeyRecord,
     KeyStore,
     MeteringRecorder,
     WhiteLabelProfile,
@@ -339,7 +340,7 @@ def create_app(
         accent_color=settings.billing.white_label_accent_color,
     )
 
-    def _key_record(request: Request):
+    def _key_record(request: Request) -> APIKeyRecord | None:
         """Verify X-RA-Key against the key store. Returns record or None.
 
         The raw key is never logged or persisted.
@@ -347,7 +348,8 @@ def create_app(
         store = request.app.state.key_store
         if store is None:
             return None
-        return store.verify(request.headers.get("x-ra-key", ""))
+        record: APIKeyRecord | None = store.verify(request.headers.get("x-ra-key", ""))
+        return record
 
     def _meter(request: Request, endpoint: str) -> None:
         record = _key_record(request)
@@ -692,10 +694,7 @@ def create_app(
                 ev_reason = ev_result.get("error", "expected value failed validation")
             else:
                 ev_expected = ev_result.expected
-                # Engine annotates list[dict[str, float]] but emits str labels
-                # at runtime ({"label": ..., "contribution": ...}); cast to the
-                # API model's wider type. Engine file itself stays untouched.
-                ev_contribs = cast("list[dict[str, float | str]]", ev_result.contributions)
+                ev_contribs = ev_result.contributions
         else:
             ev_reason = "no scenarios provided"
 

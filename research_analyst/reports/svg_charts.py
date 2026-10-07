@@ -44,6 +44,7 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
+from matplotlib.ticker import FuncFormatter  # noqa: E402
 
 from ..models import ReportVisual  # noqa: E402
 from .currency import currency_symbol  # noqa: E402
@@ -79,7 +80,7 @@ def _new_ax(fig: Any) -> Any:
     ax.grid(True, axis="y", color=C["grid"], linewidth=0.8)
     ax.set_axisbelow(True)
     ax.tick_params(colors=C["muted"], labelsize=10)
-    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _p: _int(v)))
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _p: _int(v)))
     return ax
 
 

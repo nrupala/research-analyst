@@ -38,6 +38,7 @@ Design:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -291,7 +292,10 @@ class ReportRenderer:
         renderer = getattr(self, renderer_key, None)
 
         if renderer is not None:
-            return renderer(step, ctx)
+            typed_renderer: Callable[[StepTemplate, dict[str, Any]], tuple[ReportSection, int]] = (
+                renderer
+            )
+            return typed_renderer(step, ctx)
 
         # Fallback: generic step renderer
         return self._render_generic_step(step, ctx)
@@ -1416,11 +1420,14 @@ class ReportRenderer:
 
             # Scenario details
             for s in valuation.scenarios:
-                parts.append(
-                    f"\n**{s.label}:** "
-                    f"{money(s.implied_price_low, ctx['profile'].currency, 0)} - "
-                    f"{money(s.implied_price_high, ctx['profile'].currency, 0)}"
-                )
+                if s.implied_price_low is not None and s.implied_price_high is not None:
+                    parts.append(
+                        f"\n**{s.label}:** "
+                        f"{money(s.implied_price_low, ctx['profile'].currency, 0)} - "
+                        f"{money(s.implied_price_high, ctx['profile'].currency, 0)}"
+                    )
+                else:
+                    parts.append(f"\n**{s.label}:** price range unavailable")
                 if s.implied_upside_low is not None and s.implied_upside_high is not None:
                     parts.append(
                         f"  Implied move: {s.implied_upside_low:.1%} to {s.implied_upside_high:.1%}"
@@ -1641,15 +1648,17 @@ class ReportRenderer:
     # TACTICAL report step renderers
     # ==================================================================
 
-    def _render_tactical_step1(self, step, ctx):
+    def _render_tactical_step1(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 1: Current Setup & Near-Term Context."""
         profile = ctx["profile"]
         technical = ctx.get("technical")
         prices = ctx["prices"]
-        parts = []
-        visuals = []
-        assumptions = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        assumptions: list[Assumption] = []
+        gaps: list[str] = []
 
         if profile.description:
             parts.append(profile.description[:300])
@@ -1703,14 +1712,16 @@ class ReportRenderer:
             data_gaps=gaps,
         ), len(visuals)
 
-    def _render_tactical_step2(self, step, ctx):
+    def _render_tactical_step2(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 2: Technical Analysis & Price Structure."""
         technical = ctx.get("technical")
         indicators = ctx.get("technical_indicators")
-        parts = []
-        visuals = []
-        assumptions = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        assumptions: list[Assumption] = []
+        gaps: list[str] = []
 
         if not technical or not indicators:
             parts.append("**Data Gap:** Technical analysis not available.")
@@ -1780,13 +1791,15 @@ class ReportRenderer:
             data_gaps=gaps,
         ), len(visuals)
 
-    def _render_tactical_step3(self, step, ctx):
+    def _render_tactical_step3(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 3: Macro & Sector Context."""
         macro = ctx.get("macro")
-        parts = []
-        visuals = []
-        assumptions = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        assumptions: list[Assumption] = []
+        gaps: list[str] = []
 
         if not macro:
             parts.append("**Data Gap:** Macro analysis not available.")
@@ -1843,15 +1856,17 @@ class ReportRenderer:
             data_gaps=gaps,
         ), len(visuals)
 
-    def _render_tactical_step4(self, step, ctx):
+    def _render_tactical_step4(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 4: Near-Term Fundamental Catalysts."""
         fundamental = ctx.get("fundamental")
         financials = ctx["financials"]
         profile = ctx["profile"]
-        parts = []
-        visuals = []
-        assumptions = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        assumptions: list[Assumption] = []
+        gaps: list[str] = []
 
         if not financials:
             gaps.append("Financial data unavailable.")
@@ -1911,12 +1926,14 @@ class ReportRenderer:
             data_gaps=gaps,
         ), len(visuals)
 
-    def _render_tactical_step5(self, step, ctx):
+    def _render_tactical_step5(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 5: Near-Term Risk Map."""
         risk_matrix = ctx.get("risk_matrix")
-        parts = []
-        visuals = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        gaps: list[str] = []
 
         if not risk_matrix or not risk_matrix.risks:
             gaps.append("Risk matrix not available.")
@@ -1974,13 +1991,15 @@ class ReportRenderer:
             data_gaps=gaps,
         ), len(visuals)
 
-    def _render_tactical_step6(self, step, ctx):
+    def _render_tactical_step6(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 6: Scenario-Based Valuation Range."""
         valuation = ctx.get("valuation")
-        parts = []
-        visuals = []
-        assumptions = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        assumptions: list[Assumption] = []
+        gaps: list[str] = []
 
         if not valuation or not valuation.scenarios:
             gaps.append("Valuation not available.")
@@ -2039,7 +2058,9 @@ class ReportRenderer:
             data_gaps=gaps,
         ), len(visuals)
 
-    def _render_tactical_step7(self, step, ctx):
+    def _render_tactical_step7(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 7: Tactical Assessment & Positioning Context."""
         profile = ctx["profile"]
         technical = ctx.get("technical")
@@ -2047,9 +2068,9 @@ class ReportRenderer:
         fundamental = ctx.get("fundamental")
         valuation = ctx.get("valuation")
         risk_matrix = ctx.get("risk_matrix")
-        parts = []
-        visuals = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        gaps: list[str] = []
 
         favors = []
         disfavors = []
@@ -2165,13 +2186,15 @@ class ReportRenderer:
     # LONG-TERM report step renderers
     # ==================================================================
 
-    def _render_long_term_step1(self, step, ctx):
+    def _render_long_term_step1(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 1: Business Overview & Structural Position."""
         profile = ctx["profile"]
-        parts = []
-        visuals = []
-        assumptions = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        assumptions: list[Assumption] = []
+        gaps: list[str] = []
 
         if profile.description:
             parts.append(profile.description[:500])
@@ -2215,15 +2238,17 @@ class ReportRenderer:
             data_gaps=gaps,
         ), len(visuals)
 
-    def _render_long_term_step2(self, step, ctx):
+    def _render_long_term_step2(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 2: Financial Analysis & Quality of Earnings."""
         financials = ctx["financials"]
         fundamental = ctx.get("fundamental")
         profile = ctx["profile"]
-        parts = []
-        visuals = []
-        assumptions = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        assumptions: list[Assumption] = []
+        gaps: list[str] = []
 
         if not financials:
             gaps.append("No financial statements available.")
@@ -2298,14 +2323,16 @@ class ReportRenderer:
             data_gaps=gaps,
         ), len(visuals)
 
-    def _render_long_term_step3(self, step, ctx):
+    def _render_long_term_step3(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 3: Competitive Landscape & Moat Assessment."""
         competitive = ctx.get("competitive")
         profile = ctx["profile"]
-        parts = []
-        visuals = []
-        assumptions = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        assumptions: list[Assumption] = []
+        gaps: list[str] = []
 
         if not competitive:
             gaps.append("Competitive analysis not available.")
@@ -2372,13 +2399,15 @@ class ReportRenderer:
             data_gaps=gaps,
         ), len(visuals)
 
-    def _render_long_term_step4(self, step, ctx):
+    def _render_long_term_step4(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 4: Capital Allocation & Shareholder Returns."""
         fundamental = ctx.get("fundamental")
         profile = ctx["profile"]
-        parts = []
-        visuals = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        gaps: list[str] = []
 
         cap = getattr(fundamental, "capital_allocation", None) if fundamental else None
 
@@ -2463,12 +2492,14 @@ class ReportRenderer:
             data_gaps=gaps,
         ), len(visuals)
 
-    def _render_long_term_step5(self, step, ctx):
+    def _render_long_term_step5(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 5: Risk Assessment."""
         risk_matrix = ctx.get("risk_matrix")
-        parts = []
-        visuals = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        gaps: list[str] = []
 
         if not risk_matrix or not risk_matrix.risks:
             gaps.append("Risk matrix not available.")
@@ -2517,21 +2548,25 @@ class ReportRenderer:
             data_gaps=gaps,
         ), len(visuals)
 
-    def _render_long_term_step6(self, step, ctx):
+    def _render_long_term_step6(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 6: Scenario-Based Valuation Range."""
         # Identical logic to tactical step 6 - both need valuation
         return self._render_tactical_step6(step, ctx)
 
-    def _render_long_term_step7(self, step, ctx):
+    def _render_long_term_step7(
+        self, step: StepTemplate, ctx: dict[str, Any]
+    ) -> tuple[ReportSection, int]:
         """Step 7: Long-Term Thesis & Decision Framework."""
         profile = ctx["profile"]
         fundamental = ctx.get("fundamental")
         competitive = ctx.get("competitive")
         macro = ctx.get("macro")
         risk_matrix = ctx.get("risk_matrix")
-        parts = []
-        visuals = []
-        gaps = []
+        parts: list[str] = []
+        visuals: list[ReportVisual] = []
+        gaps: list[str] = []
 
         favors = []
         disfavors = []

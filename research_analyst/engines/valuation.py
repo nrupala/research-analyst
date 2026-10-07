@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import logging
 from decimal import Decimal
+from typing import Any
 
 from ..models import (
     Assumption,
@@ -74,7 +75,7 @@ class ValuationEngine:
         analyst_target_mean: float | None = None,
         analyst_target_low: float | None = None,
         analyst_target_high: float | None = None,
-        custom_assumptions: dict | None = None,
+        custom_assumptions: dict[str, Any] | None = None,
     ) -> ValuationRange:
         """Build the mandatory 3-scenario valuation range.
 

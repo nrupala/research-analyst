@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..models import Assumption, CompanyProfile, CompetitiveLandscape, Competitor
 
@@ -355,7 +355,7 @@ class CompetitorEngine:
         (RC2). Populating margins, ROE, ROIC, revenue growth, and D/E here is
         what makes the section compute.
         """
-        kwargs: dict = dict(
+        kwargs: dict[str, Any] = dict(
             ticker=profile.ticker,
             name=profile.name,
             market_cap=profile.market_cap,

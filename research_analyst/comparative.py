@@ -56,7 +56,7 @@ from pydantic import BaseModel, Field
 
 from .disclaimer import DISCLAIMER_SHORT
 from .enums import ReportType, ScenarioType, Timeframe
-from .models import ReportOutput, ResearchRequest, ResearchResponse, SourceRecord
+from .models import ReportOutput, ResearchRequest, ResearchResponse, SourceRecord, ValuationScenario
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +115,7 @@ class MetricSpec:
     rankable: bool = True  # informational-only metrics are not ranked
 
 
-def _base_scenario(report: ReportOutput):
+def _base_scenario(report: ReportOutput) -> ValuationScenario | None:
     """Return the BASE valuation scenario if present, else None."""
     val = report.valuation
     if not val or not val.scenarios:

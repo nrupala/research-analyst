@@ -39,6 +39,7 @@ Design:
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from ..models import (
     CompanyProfile,
@@ -552,7 +553,7 @@ class RiskEngine:
         sector = profile.sector or ""
 
         # Sector-specific regulatory exposure
-        sector_reg: dict[str, dict] = {
+        sector_reg: dict[str, dict[str, Any]] = {
             "Technology": {
                 "title": "Technology Regulation Risk",
                 "description": (

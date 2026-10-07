@@ -33,6 +33,7 @@ The browser libraries (Plotly.js, Mermaid.js) handle all rendering.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import date
 from typing import Any
 
@@ -42,6 +43,7 @@ from ..models import (
     DividendAnalysis,
     FinancialStatement,
     ReportVisual,
+    RiskMatrix,
     StructuredRisk,
     TechnicalIndicators,
     ValuationRange,
@@ -94,24 +96,32 @@ class VisualEngine:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def svg_financial_trends(financials, ticker, currency=None):
+    def svg_financial_trends(
+        financials: list[FinancialStatement],
+        ticker: str,
+        currency: str | None = None,
+    ) -> ReportVisual | None:
         """Revenue + margin trend chart as server-rendered SVG."""
         return svg_charts.svg_financial_trends(financials, ticker, currency)
 
     @staticmethod
-    def svg_scenario_valuation(valuation, currency=None):
+    def svg_scenario_valuation(
+        valuation: ValuationRange, currency: str | None = None
+    ) -> ReportVisual | None:
         """Scenario valuation range as server-rendered SVG."""
         if not valuation.scenarios:
             return None
         return svg_charts.svg_scenario_valuation(valuation, currency)
 
     @staticmethod
-    def svg_peer_comparison(target_ticker, peers, currency=None):
+    def svg_peer_comparison(
+        target_ticker: str, peers: list[Competitor], currency: str | None = None
+    ) -> ReportVisual:
         """Peer comparison margins/ROE as server-rendered SVG."""
         return svg_charts.svg_peer_comparison(target_ticker, peers, currency)
 
     @staticmethod
-    def svg_risk_heatmap(risk_matrix):
+    def svg_risk_heatmap(risk_matrix: RiskMatrix | None) -> ReportVisual | None:
         """Risk matrix probability x impact as server-rendered SVG."""
         if not risk_matrix or not risk_matrix.risks:
             return None
@@ -276,7 +286,7 @@ class VisualEngine:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _latest_statement(financials: list) -> Any | None:
+    def _latest_statement(financials: list[FinancialStatement]) -> Any | None:
         """Latest statement by period end date — never assume list order.
 
         Providers are not contractually most-recent-first, so "latest" must be
@@ -286,7 +296,7 @@ class VisualEngine:
             return None
         dated = [f for f in financials if getattr(f, "period_end_date", None)]
         if dated:
-            return max(dated, key=lambda f: f.period_end_date)
+            return max(dated, key=lambda f: f.period_end_date or date.min)
         return financials[0]
 
     @staticmethod
@@ -467,8 +477,8 @@ class VisualEngine:
         header = "| Metric | " + " | ".join(periods) + " |"
         sep = "|:-------|" + "|".join(["-------:"] * len(periods)) + "|"
 
-        def _row(label, getter, fmt="dec"):
-            vals = []
+        def _row(label: str, getter: Callable[[FinancialStatement], Any], fmt: str = "dec") -> str:
+            vals: list[str] = []
             for f in sorted_fin:
                 v = getter(f)
                 if v is None:
@@ -522,7 +532,7 @@ class VisualEngine:
         )
 
     @staticmethod
-    def table_macro_regime(implications: list) -> ReportVisual:
+    def table_macro_regime(implications: list[Any]) -> ReportVisual:
         """Macro regime summary table."""
         header = "| Factor | Current | Regime | Sector Impact | Magnitude |"
         sep = "|:-------|:--------|:------|--------------:|:----------|"
@@ -652,7 +662,9 @@ class VisualEngine:
         )
 
     @staticmethod
-    def svg_dividend_history(div, currency=None):
+    def svg_dividend_history(
+        div: DividendAnalysis, currency: str | None = None
+    ) -> ReportVisual | None:
         """Annual dividend-per-share history as server-rendered SVG."""
         annual = getattr(div, "annual_dividends", {}) or {}
         if len(annual) < 3:

@@ -33,6 +33,7 @@ Design:
 from __future__ import annotations
 
 import asyncio
+import functools
 import hashlib
 import json
 import logging
@@ -648,7 +649,7 @@ class MarketDataProvider:
         if not q:
             return []
 
-        def _search() -> list[dict]:
+        def _search() -> list[dict[str, Any]]:
             import yfinance as yf
 
             try:
@@ -1271,8 +1272,8 @@ class MarketDataProvider:
 
             for symbol, field in macro_tickers.items():
                 try:
-                    tk = await asyncio.to_thread(lambda s=symbol: yf.Ticker(s))
-                    hist = await asyncio.to_thread(lambda t=tk: t.history(period="5d"))
+                    tk = await asyncio.to_thread(functools.partial(yf.Ticker, symbol))
+                    hist = await asyncio.to_thread(tk.history, period="5d")
                     if hist is not None and not hist.empty:
                         val = _safe_float(hist["Close"].iloc[-1])
                         if field == "us_10y_yield" and val is not None:

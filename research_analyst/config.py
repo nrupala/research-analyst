@@ -106,7 +106,8 @@ class AnalysisConfig(BaseSettings):
     def _parse_int_list(cls, v: Any) -> list[int]:
         if isinstance(v, str):
             return [int(x.strip()) for x in v.split(",")]
-        return v
+        parsed: list[int] = [int(x) for x in v]
+        return parsed
 
 
 class ServerConfig(BaseSettings):
