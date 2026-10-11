@@ -364,14 +364,22 @@ research-analyst serve --reload --debug
 
 ## License
 
-AGPL-3.0 — See [LICENSE](LICENSE). A separate commercial license is
-available for uses incompatible with the AGPL-3.0 — see
-[COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
+Mixed licensing — see [LICENSE](LICENSE) for the component mapping.
+The engine, the TUI, and the core — including reports
+(`research_analyst/`, `quant/`, engine tests) — are
+**AGPL-3.0** (full text: `LICENSES/AGPL-3.0.txt`). HTML code and web
+layout are **Apache 2.0**, as is the scaffolding (`deploy/`,
+`scripts/`, CI, docs); every standalone HTML/CSS file lives in the
+web/PWA UI (`ui/`) (full text: `LICENSES/Apache-2.0.txt`). A separate
+commercial license is available for uses of the core incompatible
+with the AGPL-3.0 — see [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
 
 ### Open-Core Model
 
 The engine is **open source (AGPL-3.0)** and free: all research reports, the
-web/PWA app, CLI, TUI, sync, and typed-export layer are open.
+web/PWA app, CLI, TUI, sync, and typed-export layer are open. Under the
+license split, the engine and report pipeline are AGPL-3.0 while the
+web/PWA app itself is Apache 2.0 — see [LICENSE](LICENSE).
 
 **Commercial (paid) surfaces** are separate entitlements, not binaries:
 - **Source-data downloads** — the raw CSV/JSON bundle behind any report

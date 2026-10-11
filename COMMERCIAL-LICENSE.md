@@ -5,8 +5,11 @@ See LICENSE and COMMERCIAL-LICENSE.md for licensing terms (commercial licenses a
 
 # Commercial Licensing
 
-Research Analyst is open source under the **GNU Affero General Public License
-v3.0** (AGPL-3.0) — see [LICENSE](LICENSE). Every source file carries a
+Research Analyst's core engine is open source under the **GNU Affero
+General Public License v3.0** (AGPL-3.0) — see [LICENSE](LICENSE). The
+commercial license offered here covers that AGPL-3.0 core; the
+repository's scaffolding and UI are Apache 2.0 and need no commercial
+license. Every source file carries a
 license header identifying the copyright holder and the license.
 
 If the AGPL-3.0 terms do not fit your use case, a **separate commercial
