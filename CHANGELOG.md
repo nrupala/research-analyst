@@ -10,6 +10,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project use
 Releases are cut by tagging the repo (see `docs/VERSIONING.md`); GitHub auto-generates the per-release notes from merged PRs.
 
 ## [Unreleased]
+### Changed
+- **License split (owner decision, 2026-10-11).** The repo's uniform AGPL-3.0 is restructured into a component split: the core engine (`research_analyst/`, `quant/`, engine tests) stays AGPL-3.0, while scaffolding (`deploy/`, `scripts/`, CI, docs) and the UI (`ui/`) move to Apache 2.0. Root `LICENSE` is now a pointer; the full AGPL text — with the project's no-financial-advice additional notice — is preserved verbatim at `LICENSES/AGPL-3.0.txt`, and the Apache text sits at `LICENSES/Apache-2.0.txt`. Commercial licensing still covers the core (see `COMMERCIAL-LICENSE.md`). Source-file header realignment to the split follows in a separate pass.
+
 ### Added
 - **Portfolio certification rollout (PR-flow + signed deploys + ASF docs + license, 2026-10-05).** `CONTRIBUTING.md` now states the standing PR-flow discipline (no direct pushes to `main`; draft PR → checks green → owner merges; CHANGELOG entry under Unreleased + semver bump per PR; releases tagged `vX.Y.Z`). Version bumped 0.4.0 → 0.4.1 (patch, chore) in `pyproject.toml` and `package.json`. New `NOTICE.md` attribution file. New `deploy/deploy-workers-signed.py` gives the two Cloudflare Workers (`research-analyst-api`, `backup-cron`) a signed manual-deploy path via the site-integrity signed-deploy wrapper — added, not behavior-verified.
 
