@@ -26,7 +26,7 @@ CORE ENGINE — GNU Affero General Public License v3.0 or later
   advice). A separate commercial license for the core is available —
   see COMMERCIAL-LICENSE.md.
 
-SCAFFOLDING AND UI — Apache License 2.0
+HTML, WEB LAYOUT, AND SCAFFOLDING — Apache License 2.0
 
   ui/                  the web / PWA front-end, including ui/tests/
   deploy/              deployment tooling (signed deploys, native and
@@ -40,6 +40,15 @@ SCAFFOLDING AND UI — Apache License 2.0
   BUILD_PLAN.md, DEVELOPMENT_PROGRESS_TRACKER.md
   Root build and packaging files: package.json, capacitor.config.js,
   fly.toml, render.yaml, keystore.properties.template
+
+  HTML code and web layout are Apache 2.0 wherever they live: any
+  standalone HTML, CSS, or web-layout file is Apache 2.0 even outside
+  ui/. A full-tree scan (2026-10-11) confirms every such file is in
+  fact under ui/ today (index.html, help.html, style.css). HTML
+  embedded as strings inside a code file — e.g. the report templates
+  in research_analyst/reports/templates.py — is not standalone HTML:
+  it stays under the license of the code that contains it, AGPL-3.0
+  for the core.
 
   Full text: LICENSES/Apache-2.0.txt.
 

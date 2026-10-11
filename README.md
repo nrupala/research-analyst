@@ -365,10 +365,12 @@ research-analyst serve --reload --debug
 ## License
 
 Mixed licensing — see [LICENSE](LICENSE) for the component mapping.
-The core engine (`research_analyst/`, `quant/`, engine tests) is
-**AGPL-3.0** (full text: `LICENSES/AGPL-3.0.txt`); the scaffolding
-(`deploy/`, `scripts/`, CI, docs) and the web/PWA UI (`ui/`) are
-**Apache 2.0** (full text: `LICENSES/Apache-2.0.txt`). A separate
+The engine, the TUI, and the core — including reports
+(`research_analyst/`, `quant/`, engine tests) — are
+**AGPL-3.0** (full text: `LICENSES/AGPL-3.0.txt`). HTML code and web
+layout are **Apache 2.0**, as is the scaffolding (`deploy/`,
+`scripts/`, CI, docs); every standalone HTML/CSS file lives in the
+web/PWA UI (`ui/`) (full text: `LICENSES/Apache-2.0.txt`). A separate
 commercial license is available for uses of the core incompatible
 with the AGPL-3.0 — see [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
 
