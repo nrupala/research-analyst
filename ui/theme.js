@@ -7,7 +7,7 @@
  * This script loads synchronously in <head>, before the stylesheet, so the
  * data-theme attribute is set before first paint (no theme flash).
  *
- * SPDX-License-Identifier: AGPL-3.0-or-later
+ * SPDX-License-Identifier: Apache-2.0
  */
 (function () {
     'use strict';

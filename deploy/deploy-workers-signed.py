@@ -1,6 +1,6 @@
 # Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
-# SPDX-License-Identifier: AGPL-3.0-or-later
-# See LICENSE and COMMERCIAL-LICENSE.md for licensing terms (commercial licenses available).
+# SPDX-License-Identifier: Apache-2.0
+# See LICENSE and LICENSES/Apache-2.0.txt for licensing terms.
 """Deploy a research-analyst Cloudflare Worker — SIGNED ONLY.
 
 Portfolio Certification Program (2026-10-05): manual deploys of the

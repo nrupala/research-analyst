@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
