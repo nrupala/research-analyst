@@ -115,7 +115,17 @@ class ServerConfig(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8700
     reload: bool = False
-    cors_origins: list[str] = ["http://localhost:8700", "http://127.0.0.1:8700"]
+    # Browser origins allowed by CORS. The production sites are the default;
+    # override with RA_SERVER_CORS_ORIGINS (comma-separated). Never "*": the
+    # API accepts credential headers (X-RA-Key / Authorization).
+    cors_origins: list[str] = [
+        "https://ra.aimlds.org",
+        "https://ra.devinfo.dev",
+        "https://aimlds.org",
+        "https://devinfo.dev",
+        "http://localhost:8700",
+        "http://127.0.0.1:8700",
+    ]
     static_dir: Path = _PROJECT_ROOT / "ui"
     log_level: str = "info"
     # Issue #66: report cache refreshes daily (EOD cadence); entries older
@@ -124,6 +134,13 @@ class ServerConfig(BaseSettings):
     report_cache_max: int = 100
 
     model_config = {"env_prefix": "RA_SERVER_"}
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, v: Any) -> list[str]:
+        if isinstance(v, str):
+            return [o.strip() for o in v.split(",") if o.strip()]
+        return v or []
 
 
 class BillingConfig(BaseSettings):

@@ -70,6 +70,7 @@ from .comparative import MAX_TICKERS, MIN_TICKERS, ComparativeOrchestrator
 from .config import settings
 from .disclaimer import DISCLAIMER_FULL, DISCLAIMER_SHORT, DISCLAIMER_VERSION
 from .entitlements import (
+    RA_PRO,
     SOURCE_DATA,
     APIKeyRecord,
     KeyStore,
@@ -296,7 +297,7 @@ def create_app(
     # --- Middleware ---
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=settings.server.cors_origins,
         allow_credentials=False,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "X-RA-Key"],
@@ -355,6 +356,30 @@ def create_app(
         key_id = record.key_id if record else "anonymous"
         request.app.state.metering.record(key_id, endpoint)
 
+    def _require_api_key(request: Request) -> None:
+        """Gate for the metered data endpoints (research, resolve, compare,
+        quant). Same activation semantics as the /api/research/data paid
+        gate: when any key mechanism is configured (RA_BILLING_PAID_KEYS or
+        a KeyStore file), a valid X-RA-Key is required — a legacy paid key,
+        or a KeyStore key carrying the `ra.pro` entitlement (`twf.pro`
+        unlocks it via the bundle map). When neither is configured
+        (local/demo), the endpoints stay open, as documented in
+        BillingConfig. Raises 401 otherwise.
+        """
+        paid_keys = settings.billing.paid_keys
+        if not paid_keys and request.app.state.key_store is None:
+            return
+        provided = request.headers.get("x-ra-key", "")
+        if paid_keys and provided in paid_keys:
+            return
+        record = _key_record(request)
+        if record is not None and has_entitlement(record, RA_PRO):
+            return
+        raise HTTPException(
+            status_code=401,
+            detail="Provide a valid X-RA-Key header to use this endpoint.",
+        )
+
     # --- Market data (symbol/name resolution) ---
     market_provider = MarketDataProvider()
 
@@ -405,6 +430,7 @@ def create_app(
         client_ip = request.client.host if request.client else "unknown"
         if not rate_limiter.allow(client_ip):
             raise HTTPException(status_code=429, detail="Rate limit exceeded.")
+        _require_api_key(request)
         from .resolver import resolve_subject
 
         matches = await market_provider.search_symbols(body.query)
@@ -431,6 +457,7 @@ def create_app(
         client_ip = request.client.host if request.client else "unknown"
         if not rate_limiter.allow(client_ip):
             raise HTTPException(status_code=429, detail="Rate limit exceeded.")
+        _require_api_key(request)
 
         request_id = str(uuid.uuid4())[:8]
 
@@ -537,6 +564,7 @@ def create_app(
         client_ip = request.client.host if request.client else "unknown"
         if not rate_limiter.allow(client_ip):
             raise HTTPException(status_code=429, detail="Rate limit exceeded.")
+        _require_api_key(request)
 
         request_id = str(uuid.uuid4())[:8]
 
@@ -587,7 +615,8 @@ def create_app(
         discount_rate: float | None = Query(default=None),
         scenarios: str | None = Query(default=None),
     ) -> QuantAPIResponse:
-        """Quant engine results for a ticker (free, no entitlement gate).
+        """Quant engine results for a ticker (metered; X-RA-Key gate applies
+        under the same activation semantics as the other data endpoints).
 
         Runs the ported quant engine (trends, DuPont, forensics, valuation,
         allocation) over the provider financial statements. Optional
@@ -604,6 +633,7 @@ def create_app(
         client_ip = request.client.host if request.client else "unknown"
         if not rate_limiter.allow(client_ip):
             raise HTTPException(status_code=429, detail="Rate limit exceeded.")
+        _require_api_key(request)
 
         clean = ticker.upper().strip()
 

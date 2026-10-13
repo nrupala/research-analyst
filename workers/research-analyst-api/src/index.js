@@ -17,8 +17,24 @@
 // A separate commercial license is available for uses incompatible with
 // the AGPL-3.0. See COMMERCIAL-LICENSE.md.
 
-const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Access-Control-Expose-Headers': 'X-Provider, X-Model' };
-function json(body, status=200, extra={}) { return new Response(JSON.stringify(body), { status, headers: {'Content-Type':'application/json', ...CORS, ...extra} }); }
+// CORS: no wildcard. An Origin is reflected only when it appears in the
+// ALLOWED_ORIGINS worker var (comma-separated); the production sites are
+// the default. The proxy never invents an allow-origin the backend did
+// not grant, and the backend's status (including its 401 auth verdicts)
+// passes through untouched.
+const DEFAULT_ALLOWED_ORIGINS = 'https://ra.aimlds.org,https://ra.devinfo.dev,https://aimlds.org,https://devinfo.dev';
+function allowedOrigin(request, env) {
+    var origin = request.headers.get('Origin') || '';
+    var allowed = ((env && env.ALLOWED_ORIGINS) || DEFAULT_ALLOWED_ORIGINS).split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+    return origin && allowed.indexOf(origin) !== -1 ? origin : null;
+}
+function corsHeaders(request, env) {
+    var h = { 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-RA-Key', 'Access-Control-Expose-Headers': 'X-Provider, X-Model', 'Vary': 'Origin' };
+    var origin = allowedOrigin(request, env);
+    if (origin) h['Access-Control-Allow-Origin'] = origin;
+    return h;
+}
+function json(request, env, body, status=200, extra={}) { return new Response(JSON.stringify(body), { status, headers: {'Content-Type':'application/json', ...corsHeaders(request, env), ...extra} }); }
 
 const SYSTEM_PROMPT = `You are Research Analyst, an institutional-grade equity and ETF research agent.
 
@@ -69,14 +85,11 @@ export default {
         }
 
         if (request.method === "OPTIONS") {
+            var preflight = corsHeaders(request, env);
+            preflight["Access-Control-Max-Age"] = "86400";
             return new Response(null, {
                 status: 204,
-                headers: {
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-                    "Access-Control-Allow-Headers": "Content-Type",
-                    "Access-Control-Max-Age": "86400"
-                }
+                headers: preflight
             });
         }
 
@@ -93,14 +106,24 @@ export default {
                 body: request.method !== "GET" && request.method !== "HEAD" ? request.body : undefined
             });
 
+            // Pass the backend response through untouched — status (a 401
+            // stays a 401), body, and the backend's own CORS headers. Only
+            // reflect an allowlisted Origin if the backend sent none.
             var newResp = new Response(resp.body, resp);
-            newResp.headers.set("Access-Control-Allow-Origin", "*");
+            var origin = allowedOrigin(request, env);
+            if (origin && !newResp.headers.get("Access-Control-Allow-Origin")) {
+                newResp.headers.set("Access-Control-Allow-Origin", origin);
+                newResp.headers.set("Vary", "Origin");
+            }
             return newResp;
 
         } catch (err) {
+            var errHeaders = { "Content-Type": "application/json" };
+            var errOrigin = allowedOrigin(request, env);
+            if (errOrigin) errHeaders["Access-Control-Allow-Origin"] = errOrigin;
             return new Response(
                 JSON.stringify({ error: "backend_unreachable", detail: err.message }),
-                { status: 502, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
+                { status: 502, headers: errHeaders }
             );
         }
     }
