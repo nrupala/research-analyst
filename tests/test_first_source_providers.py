@@ -185,6 +185,29 @@ class _FakeBocProvider:
         return self._result
 
 
+class _FakeSdmxProvider:
+    """Step-2 SDMX/Eurostat providers, neutralised for step-1 tests."""
+
+    async def get_latest_macro(self):
+        return None
+
+
+class _FakeBojProvider:
+    """Step-2 BoJ provider, neutralised for step-1 tests."""
+
+    async def get_latest_rates(self):
+        return None
+
+
+def _no_step2_providers():
+    return (
+        patch.object(market_data_module, "EcbProvider", lambda: _FakeSdmxProvider()),
+        patch.object(market_data_module, "BundesbankProvider", lambda: _FakeSdmxProvider()),
+        patch.object(market_data_module, "EurostatProvider", lambda: _FakeSdmxProvider()),
+        patch.object(market_data_module, "BankOfJapanProvider", lambda: _FakeBojProvider()),
+    )
+
+
 async def test_populate_first_sources_adds_provenance_only():
     from research_analyst.providers.boc import BocRates
 
@@ -197,11 +220,16 @@ async def test_populate_first_sources_adds_provenance_only():
     )
     snapshot = MacroSnapshot(as_of_date=date(2026, 10, 14), us_10y_yield=0.041)
     provider = MarketDataProvider()
+    ecb_patch, bbk_patch, eurostat_patch, boj_patch = _no_step2_providers()
     with (
         patch.object(
             market_data_module, "TreasuryProvider", lambda: _FakeTreasuryProvider(treasury)
         ),
         patch.object(market_data_module, "BankOfCanadaProvider", lambda: _FakeBocProvider(boc)),
+        ecb_patch,
+        bbk_patch,
+        eurostat_patch,
+        boj_patch,
     ):
         got = await provider._populate_first_sources(snapshot)
     assert got is True
@@ -223,9 +251,14 @@ async def test_populate_first_sources_adds_provenance_only():
 async def test_populate_first_sources_failure_leaves_fields_empty():
     snapshot = MacroSnapshot(as_of_date=date(2026, 10, 14))
     provider = MarketDataProvider()
+    ecb_patch, bbk_patch, eurostat_patch, boj_patch = _no_step2_providers()
     with (
         patch.object(market_data_module, "TreasuryProvider", lambda: _FakeTreasuryProvider(None)),
         patch.object(market_data_module, "BankOfCanadaProvider", lambda: _FakeBocProvider(None)),
+        ecb_patch,
+        bbk_patch,
+        eurostat_patch,
+        boj_patch,
     ):
         got = await provider._populate_first_sources(snapshot)
     assert got is False
