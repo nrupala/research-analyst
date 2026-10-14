@@ -42,6 +42,7 @@ Design:
 from __future__ import annotations
 
 import logging
+import math
 from collections import defaultdict
 from datetime import date
 from typing import Any
@@ -112,9 +113,16 @@ class DividendEngine:
             result.current_yield = result.current_yield or dd.etf_ttm_yield
             result.trailing_yield = result.trailing_yield or dd.etf_ttm_yield
 
-        # Fallback to normalized info yield when nothing else is available
+        # Fallback to normalized info yield when nothing else is available.
+        # The computed trailing yield anchors the scale: yfinance ships the
+        # info yield as a fraction for some tickers and as a percent for
+        # others, and magnitude alone cannot tell 0.28%-as-percent from
+        # 28%-as-fraction (live META regression: current_yield read 0.28,
+        # a 100x error that poisoned the Treasury spread and the Dalio lens).
         if result.current_yield is None and dd.info_dividend_yield is not None:
-            result.current_yield = self._normalize_info_yield(dd.info_dividend_yield)
+            result.current_yield = self._normalize_info_yield(
+                dd.info_dividend_yield, reference=result.trailing_yield
+            )
         if result.trailing_yield is None and result.current_yield is not None:
             result.trailing_yield = result.current_yield
 
@@ -163,11 +171,23 @@ class DividendEngine:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _normalize_info_yield(v: float) -> float:
+    def _normalize_info_yield(v: float, reference: float | None = None) -> float:
         """yfinance dividendYield ships as a fraction (0.025) or percent (2.5).
 
-        Values > 1 are treated as percent and divided by 100.
+        Magnitude alone cannot disambiguate small yields: 0.28 may be a
+        0.28% yield shipped as a percent, or a 28% yield shipped as a
+        fraction. When a computed trailing yield is available it anchors
+        the scale — choose the reading (v or v/100) closer to it in ratio
+        terms. The trailing yield is computed from actual payments and
+        price, so it is the trustworthy scale reference. Without a
+        reference, values > 1 are treated as percent and divided by 100.
         """
+        if reference is not None and reference > 0 and v > 0:
+            as_fraction = v
+            as_percent = v / 100.0
+            dist_fraction = abs(math.log(as_fraction / reference))
+            dist_percent = abs(math.log(as_percent / reference))
+            return as_percent if dist_percent < dist_fraction else as_fraction
         return v / 100.0 if v > 1.0 else v
 
     @staticmethod

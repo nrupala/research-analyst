@@ -217,6 +217,49 @@ def test_info_yield_normalization():
     assert r.current_yield == pytest.approx(0.03, rel=1e-3)
 
 
+def test_info_yield_scale_anchored_to_trailing():
+    """Percent-vs-fraction disambiguation uses the computed trailing yield.
+
+    Regression (live META, 2026-10-14): yfinance shipped dividendYield as
+    0.28 (a percent) while the trailing rate/price gave 0.00275. The old
+    magnitude-only heuristic kept 0.28, so the report showed a 28.00%
+    yield, a +2278 bps Treasury spread, and an "Attractive" rating.
+    """
+    engine = DividendEngine()
+    # 0.28 as percent (0.28%) sits next to the trailing anchor; as a
+    # fraction (28%) it is ~100x away.
+    assert engine._normalize_info_yield(0.28, reference=0.00275) == pytest.approx(0.0028)
+    # A genuine high yield keeps its scale under the same rule.
+    assert engine._normalize_info_yield(0.08, reference=0.08) == pytest.approx(0.08)
+    assert engine._normalize_info_yield(8.0, reference=0.08) == pytest.approx(0.08)
+    # No reference: legacy magnitude heuristic is unchanged.
+    assert engine._normalize_info_yield(0.28) == pytest.approx(0.28)
+    assert engine._normalize_info_yield(2.8) == pytest.approx(0.028)
+
+
+def test_info_yield_fallback_meta_shaped():
+    """Engine-level regression for the META live case: dividend_rate
+    missing from the provider payload, trailing rate present, info yield
+    shipped as a percent. Current yield must land on the trailing scale,
+    and the Treasury spread must come out negative (yield below 10Y)."""
+    engine = DividendEngine()
+    dd = DividendData(
+        ticker="META",
+        current_price=762.50,
+        dividend_rate=None,
+        trailing_dividend_rate=2.10,
+        info_dividend_yield=0.28,
+        history=_history({2024: 2.00, 2025: 2.10}),
+    )
+    macro = MacroSnapshot(as_of_date=date(2026, 10, 13), us_10y_yield=0.0522)
+    r = engine.analyze(dd, [], macro=macro, current_price=762.50)
+    assert r.trailing_yield == pytest.approx(2.10 / 762.50, rel=1e-3)
+    assert r.current_yield == pytest.approx(0.0028, rel=1e-2)
+    assert r.yield_vs_treasury_spread == pytest.approx(0.0028 - 0.0522, abs=1e-3)
+    assert r.yield_vs_treasury_spread < 0
+    assert r.attractiveness_rating == "Unattractive (income)"
+
+
 def test_coverage_edge_cases_no_crash():
     engine = DividendEngine()
     dd = DividendData(
