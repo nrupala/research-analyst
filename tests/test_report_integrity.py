@@ -63,7 +63,7 @@ from research_analyst.orchestrator import ResearchOrchestrator, _source_records
 from research_analyst.providers.market_data import PEER_MAP_VERSION, peer_map_hash
 from research_analyst.reports.renderer import ReportRenderer
 from research_analyst.reports.templates import get_template
-from research_analyst.server import stamp_cache_hit
+from research_analyst.server import _eod_cache_expiry, stamp_cache_hit
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -175,6 +175,26 @@ def test_original_response_not_mutated_by_stamp():
     )
     stamp_cache_hit(resp, datetime.now(UTC))
     assert resp.metadata.cache_hit is False  # deep copy: cache stays clean
+
+
+def test_eod_cache_expiry_boundaries():
+    # #66 EOD cadence: a cached report is servable only until the next US
+    # market close (16:00 ET) after generation, TTL permitting.
+    # October 2026: ET is EDT (UTC-4), so 16:00 ET = 20:00 UTC.
+    # Generated Monday 10:00 ET -> expires at Monday's close.
+    mon_10et = datetime(2026, 10, 12, 14, 0, tzinfo=UTC)
+    assert _eod_cache_expiry(mon_10et, 7 * 86400) == datetime(2026, 10, 12, 20, 0, tzinfo=UTC)
+    # Generated Monday 17:00 ET (after the close) -> Tuesday's close.
+    mon_17et = datetime(2026, 10, 12, 21, 0, tzinfo=UTC)
+    assert _eod_cache_expiry(mon_17et, 7 * 86400) == datetime(2026, 10, 13, 20, 0, tzinfo=UTC)
+    # Generated Friday 17:00 ET -> Monday's close (weekend skipped).
+    fri_17et = datetime(2026, 10, 9, 21, 0, tzinfo=UTC)
+    assert _eod_cache_expiry(fri_17et, 7 * 86400) == datetime(2026, 10, 12, 20, 0, tzinfo=UTC)
+    # Generated exactly at the close -> the next close, not instantly stale.
+    mon_close = datetime(2026, 10, 12, 20, 0, tzinfo=UTC)
+    assert _eod_cache_expiry(mon_close, 7 * 86400) == datetime(2026, 10, 13, 20, 0, tzinfo=UTC)
+    # The TTL remains an outer cap when it lands before the next close.
+    assert _eod_cache_expiry(mon_10et, 3600) == mon_10et + timedelta(hours=1)
 
 
 # ---------------------------------------------------------------------------

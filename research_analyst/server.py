@@ -44,7 +44,7 @@ import subprocess
 import time
 import uuid
 from collections import OrderedDict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 
@@ -253,6 +253,29 @@ def get_comparative_orchestrator() -> ComparativeOrchestrator:
 # ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
+
+
+def _eod_cache_expiry(cached_at: datetime, ttl_seconds: int) -> datetime:
+    """When a cached report stops being servable (#66 EOD cadence).
+
+    The owner's freshness design: reports refresh on the end-of-day
+    cadence — a cached entry is served only until the next US market
+    close (16:00 America/New_York) after it was generated, so the first
+    reader after each close gets data as of that close. The configured
+    TTL remains as an outer cap, whichever boundary comes first.
+    Weekends are skipped; exchange holidays are not modelled (the TTL
+    cap and the report's own SLA staleness warning bound that case).
+    """
+    from zoneinfo import ZoneInfo
+
+    et = ZoneInfo("America/New_York")
+    local = cached_at.astimezone(et)
+    close = local.replace(hour=16, minute=0, second=0, microsecond=0)
+    if local >= close:
+        close += timedelta(days=1)
+    while close.weekday() >= 5:  # Saturday/Sunday -> next weekday close
+        close += timedelta(days=1)
+    return min(close.astimezone(UTC), cached_at + timedelta(seconds=ttl_seconds))
 
 
 def stamp_cache_hit(cached: ResearchAPIResponse, cached_at: datetime) -> ResearchAPIResponse:
@@ -467,13 +490,13 @@ def create_app(
         if cached_entry is not None:
             cached, cached_at = cached_entry
             age = (now - cached_at).total_seconds()
-            if age <= cache_ttl:
+            if now <= _eod_cache_expiry(cached_at, cache_ttl):
                 logger.info("Cache hit for %s (age %.0fs)", body.ticker, age)
                 report_cache.move_to_end(ck)
                 api_response = stamp_cache_hit(cached, cached_at)
             else:
                 logger.info(
-                    "Cache entry for %s expired (age %.0fs > TTL %ds); regenerating",
+                    "Cache entry for %s expired (age %.0fs; EOD boundary or TTL %ds); regenerating",
                     body.ticker,
                     age,
                     cache_ttl,
