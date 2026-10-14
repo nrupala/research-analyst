@@ -56,7 +56,7 @@ from ..models import (
     TechnicalIndicators,
     ValuationRange,
 )
-from ..quant import fmt_bps
+from ..quant import fmt_bps, fmt_pp
 from .currency import compact_money, money
 from .templates import StepTemplate, get_template
 from .visuals import VisualEngine
@@ -342,7 +342,8 @@ class ReportRenderer:
             rel = "above" if div.yield_vs_treasury_spread > 0 else "below"
             parts.append(
                 f"- vs 10Y Treasury ({div.us_10y_yield:.2%}): "
-                f"**{fmt_bps(abs(div.yield_vs_treasury_spread))} {rel}**"
+                f"**{fmt_pp(abs(div.yield_vs_treasury_spread))} "
+                f"({fmt_bps(abs(div.yield_vs_treasury_spread))}) {rel}**"
             )
         if compact and div.ex_dividend_date is not None:
             parts.append(
@@ -1389,6 +1390,13 @@ class ReportRenderer:
             parts.extend(self._risk_derivation_block(risk_matrix))
         else:
             gaps.append("Risk matrix not available.")
+            # Never leave the heading bare: the unrated verdict (or the
+            # gap itself) belongs in the body, where the reader looks.
+            if risk_matrix and risk_matrix.score_baseline_note:
+                parts.append(f"**Overall Risk Score:** {risk_matrix.score_baseline_note}")
+            else:
+                parts.append("No structured risk assessment is available for this subject.")
+            parts.append("")
 
         # ---- Valuation ----
         parts.append("### Scenario-Based Valuation Range")

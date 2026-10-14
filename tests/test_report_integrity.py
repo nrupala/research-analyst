@@ -58,11 +58,13 @@ from research_analyst.models import (
     RiskScoreComponent,
     SourceRecord,
     StructuredRisk,
+    ValuationRange,
+    VariantPerception,
 )
 from research_analyst.orchestrator import ResearchOrchestrator, _source_records
 from research_analyst.providers.market_data import PEER_MAP_VERSION, peer_map_hash
 from research_analyst.reports.renderer import ReportRenderer
-from research_analyst.reports.templates import get_template
+from research_analyst.reports.templates import StepTemplate, get_template
 from research_analyst.server import _eod_cache_expiry, stamp_cache_hit
 
 # ---------------------------------------------------------------------------
@@ -443,6 +445,46 @@ def test_risk_derivation_block_shows_unrated_note():
 # ---------------------------------------------------------------------------
 # #72 — duplicate sections
 # ---------------------------------------------------------------------------
+
+def test_risk_assessment_heading_never_bare():
+    # Live META (2026-10-14): Step 6 rendered "### Risk Assessment" with an
+    # empty body when the matrix was unrated — the verdict lived only in a
+    # data-gap list. The heading must always carry its verdict in the body.
+    renderer = ReportRenderer()
+    matrix = RiskEngine().assess(profile=_profile(sector=""))
+    assert matrix.overall_risk_score is None and not matrix.risks
+    step = StepTemplate(
+        step_number=6, title="Risk Assessment & Scenario-Based Valuation", description=""
+    )
+    section, _ = renderer._render_comprehensive_step6(
+        step, {"risk_matrix": matrix, "valuation": None, "profile": _profile()}
+    )
+    assert "### Risk Assessment" in section.content
+    body = section.content.split("### Risk Assessment", 1)[1]
+    assert "unrated" in body.lower()  # the verdict is in the body, not a bare heading
+    assert "Risk matrix not available." in section.data_gaps
+
+
+def test_variant_perception_rendered_once():
+    # #72: comprehensive reports rendered the whole Variant Perception
+    # block twice verbatim — once in Step 6, once in the to_markdown
+    # appendix. It must appear exactly once.
+    vp = VariantPerception(consensus_view="Street view.", variant_view="Our view.", why_it_matters="It matters.")
+    valuation = ValuationRange(ticker="TEST", current_price=100.0, scenarios=[], variant_perception=vp)
+    with_section = _report(
+        sections=[
+            ReportSection(
+                step_number=6, title="Risk & Valuation",
+                content="### Variant Perception\n- **Variant View:** Our view.",
+            )
+        ],
+        valuation=valuation,
+    )
+    assert with_section.to_markdown().count("Variant Perception") == 1
+    # When no section carried it, the appendix still renders it (once).
+    without_section = _report(sections=[], valuation=valuation)
+    assert without_section.to_markdown().count("Variant Perception") == 1
+
 
 def test_templates_have_no_duplicate_sections():
     for rt in ReportType:
