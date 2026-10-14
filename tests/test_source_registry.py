@@ -109,6 +109,11 @@ def test_wired_primaries_are_exactly_the_production_set():
         ("fiscal_rates", "US", "US Treasury Fiscal Data"),
         ("fx_rates", "CA", "Bank of Canada Valet"),
         ("policy_rate", "CA", "Bank of Canada Valet"),
+        ("macro", "EU", "ECB Data Portal"),
+        ("macro", "DE", "Deutsche Bundesbank SDMX"),
+        ("statistics", "EU", "Eurostat Statistics API"),
+        ("fx_rates", "JP", "Bank of Japan Time-Series API"),
+        ("policy_rate", "JP", "Bank of Japan Time-Series API"),
     }
 
 
@@ -131,9 +136,6 @@ def test_planned_first_sources_present():
     planned = {(e.dataset, e.market) for e in SOURCE_REGISTRY if e.status == "planned"}
     assert planned == {
         ("etf_metadata", "US"),
-        ("macro", "EU"),
-        ("macro", "DE"),
-        ("statistics", "EU"),
         ("filings", "UK"),
         ("filings", "JP"),
         ("energy", "US"),

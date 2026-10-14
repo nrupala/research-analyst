@@ -376,6 +376,27 @@ class MacroSnapshot(BaseModel):
     boc_policy_rate: float | None = None  # fraction
     boc_usd_cad: float | None = None  # CAD per USD, as published
     boc_as_of: date | None = None
+
+    # First-source supplements (source registry step 2, 2026-10-14).
+    # Same provenance-only rule as step 1: no engine consumes these yet
+    # and they never overwrite the fields above. Rates/HICP/GDP are
+    # stored as fractions; FX exactly as published.
+    ecb_eur_usd: float | None = None  # USD per EUR (ECB reference rate)
+    ecb_eur_usd_as_of: date | None = None
+    ecb_deposit_facility_rate: float | None = None  # fraction
+    ecb_deposit_facility_as_of: date | None = None
+    ecb_hicp_yoy: float | None = None  # fraction, euro area
+    ecb_hicp_as_of: date | None = None
+    bundesbank_bund_10y_yield: float | None = None  # fraction, monthly
+    bundesbank_bund_10y_as_of: date | None = None
+    eurostat_hicp_yoy: float | None = None  # fraction, EU27
+    eurostat_hicp_as_of: date | None = None
+    eurostat_gdp_growth: float | None = None  # fraction, EA21 annual
+    eurostat_gdp_as_of: date | None = None
+    boj_usd_jpy: float | None = None  # JPY per USD, as published
+    boj_usd_jpy_as_of: date | None = None
+    boj_policy_rate: float | None = None  # fraction (basic discount/loan rate)
+    boj_policy_rate_as_of: date | None = None
     supplemental_sources: list[str] = Field(default_factory=list)
 
     # Cycle

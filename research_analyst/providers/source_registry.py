@@ -40,11 +40,13 @@ Status values:
   - ``out_of_scope`` — first source exists but is paid-only / licence-gated
                        under the owner's free-sources-only scope rule.
 """
-# Module: research_analyst/providers/source_registry.py | Version: 0.1.0 | Updated: 2026-10-14
+# Module: research_analyst/providers/source_registry.py | Version: 0.2.0 | Updated: 2026-10-14
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+from .boj import BOJ_OBLIGATIONS
 
 STATUS_WIRED = "wired"
 STATUS_PLANNED = "planned"
@@ -71,6 +73,7 @@ class SourceEntry:
     is_primary: bool  # True only for first sources of truth
     role: str = ROLE_PRIMARY
     rights_note: str = ""  # per-source/per-series rights caveats
+    flags: tuple[str, ...] = ()  # explicit obligations attached to use
 
 
 @dataclass(frozen=True)
@@ -204,7 +207,7 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
         is_primary=True,
     ),
     # ------------------------------------------------------------------
-    # Eurozone / Germany / EU statistics — SDMX layer (planned)
+    # Eurozone / Germany / EU statistics — SDMX layer (wired, step 2)
     # ------------------------------------------------------------------
     SourceEntry(
         dataset="macro",
@@ -212,13 +215,13 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
         source_name="ECB Data Portal",
         organization="European Central Bank",
         base_url="https://data-api.ecb.europa.eu/service",
-        access_method="SDMX 2.1 REST",
+        access_method="SDMX 2.1 REST (SDMX-JSON)",
         key_env_var=None,
         terms_note=(
             "ESCB statistics: free access and free reuse, commercial or not, "
             "with source quoted and statistics unmodified."
         ),
-        status=STATUS_PLANNED,
+        status=STATUS_WIRED,
         is_primary=True,
     ),
     SourceEntry(
@@ -227,10 +230,10 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
         source_name="Deutsche Bundesbank SDMX",
         organization="Deutsche Bundesbank",
         base_url="https://api.statistiken.bundesbank.de/rest",
-        access_method="SDMX 2.1 REST",
+        access_method="SDMX 2.1 REST (SDMX-JSON)",
         key_env_var=None,
         terms_note="ESCB policy: free reuse with source quoted, statistics unmodified.",
-        status=STATUS_PLANNED,
+        status=STATUS_WIRED,
         is_primary=True,
     ),
     SourceEntry(
@@ -239,14 +242,49 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
         source_name="Eurostat Statistics API",
         organization="Eurostat (European Commission)",
         base_url="https://ec.europa.eu/eurostat/api/dissemination",
-        access_method="REST (JSON-stat 2.0 / SDMX)",
+        access_method="REST (JSON-stat 2.0)",
         key_env_var=None,
         terms_note=(
             "Reuse authorised for commercial and non-commercial purposes with "
             "source acknowledgement (Commission reuse policy / CC BY 4.0)."
         ),
-        status=STATUS_PLANNED,
+        status=STATUS_WIRED,
         is_primary=True,
+    ),
+    # ------------------------------------------------------------------
+    # Japan rates / FX — Bank of Japan Time-Series API (wired, step 2)
+    # ------------------------------------------------------------------
+    SourceEntry(
+        dataset="fx_rates",
+        market="JP",
+        source_name="Bank of Japan Time-Series API",
+        organization="Bank of Japan",
+        base_url="https://www.stat-search.boj.or.jp/api/v1",
+        access_method="REST JSON (getDataCode, FM08/FXERD04)",
+        key_env_var=None,
+        terms_note=(
+            "Keyless. Display carries BoJ obligations — see flags "
+            "(credit line + pre-release notification, api_notice_en.pdf)."
+        ),
+        status=STATUS_WIRED,
+        is_primary=True,
+        flags=BOJ_OBLIGATIONS,
+    ),
+    SourceEntry(
+        dataset="policy_rate",
+        market="JP",
+        source_name="Bank of Japan Time-Series API",
+        organization="Bank of Japan",
+        base_url="https://www.stat-search.boj.or.jp/api/v1",
+        access_method="REST JSON (getDataCode, IR01/MADR1Z@D)",
+        key_env_var=None,
+        terms_note=(
+            "Keyless. Display carries BoJ obligations — see flags "
+            "(credit line + pre-release notification, api_notice_en.pdf)."
+        ),
+        status=STATUS_WIRED,
+        is_primary=True,
+        flags=BOJ_OBLIGATIONS,
     ),
     # ------------------------------------------------------------------
     # UK filings — Companies House (planned; free key not yet obtained)
@@ -434,3 +472,88 @@ def declared_datasets() -> frozenset[str]:
     return frozenset(
         [e.dataset for e in SOURCE_REGISTRY] + [g.dataset for g in REGISTRY_GAPS]
     )
+
+
+# ---------------------------------------------------------------------------
+# FRED per-series rights classification (step 2, 2026-10-14)
+#
+# FRED aggregates 100+ sources; rights attach to the SERIES, not to FRED.
+# Each classification below is sourced from the series' own FRED page
+# (Source line + series notes, verified 2026-10-14):
+#   - Series whose source is a U.S. federal agency (BLS, BEA, the Federal
+#     Reserve) are public domain: displayable commercially with citation.
+#   - BAMLH0A0HYM2's source is ICE Data Indices, LLC; its FRED notes state
+#     reproduction/distribution is prohibited without ICE's prior written
+#     permission — flagged NOT for commercial display.
+# The gate FAILS CLOSED: a series with no classification is not
+# displayable. The FRED fetch path (providers/market_data.py) consults
+# fred_series_displayable() for every series it requests; an excluded
+# series is skipped with a debug log, never silently swapped.
+# ---------------------------------------------------------------------------
+
+RIGHTS_PUBLIC_DOMAIN = "public_domain"
+RIGHTS_THIRD_PARTY_COPYRIGHTED = "third_party_copyrighted"
+
+
+@dataclass(frozen=True)
+class FredSeriesRights:
+    """Rights classification for one FRED series the macro path fetches."""
+
+    series_id: str
+    source_organization: str  # as named in the series' FRED source notes
+    rights: str  # RIGHTS_PUBLIC_DOMAIN / RIGHTS_THIRD_PARTY_COPYRIGHTED
+    commercial_display: bool
+    note: str
+
+
+FRED_SERIES_RIGHTS: tuple[FredSeriesRights, ...] = (
+    FredSeriesRights(
+        series_id="CPIAUCSL",
+        source_organization="U.S. Bureau of Labor Statistics",
+        rights=RIGHTS_PUBLIC_DOMAIN,
+        commercial_display=True,
+        note="Federal statistical agency series; cite BLS + FRED.",
+    ),
+    FredSeriesRights(
+        series_id="A191RL1Q225SBEA",
+        source_organization="U.S. Bureau of Economic Analysis",
+        rights=RIGHTS_PUBLIC_DOMAIN,
+        commercial_display=True,
+        note="Federal statistical agency series; cite BEA + FRED.",
+    ),
+    FredSeriesRights(
+        series_id="T10Y2Y",
+        source_organization="Federal Reserve Bank of St. Louis",
+        rights=RIGHTS_PUBLIC_DOMAIN,
+        commercial_display=True,
+        note="Federal Reserve series calculated from U.S. Treasury data; cite FRED.",
+    ),
+    FredSeriesRights(
+        series_id="BAMLH0A0HYM2",
+        source_organization="ICE Data Indices, LLC",
+        rights=RIGHTS_THIRD_PARTY_COPYRIGHTED,
+        commercial_display=False,
+        note=(
+            "Third-party copyrighted index data: the series' FRED notes "
+            "prohibit reproduction/distribution without ICE Data Indices' "
+            "prior written permission — NOT cleared for commercial display."
+        ),
+    ),
+)
+
+
+def fred_series_rights(series_id: str) -> FredSeriesRights | None:
+    """The rights classification for a FRED series, or None if unclassified."""
+    for entry in FRED_SERIES_RIGHTS:
+        if entry.series_id == series_id:
+            return entry
+    return None
+
+
+def fred_series_displayable(series_id: str) -> bool:
+    """True only when the series is classified AND cleared for display.
+
+    Fail closed: no classification -> not displayable.
+    """
+    entry = fred_series_rights(series_id)
+    return entry is not None and entry.commercial_display

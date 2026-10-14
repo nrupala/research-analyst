@@ -63,6 +63,12 @@ class MarketDataConfig(BaseSettings):
     # keyless official APIs: US Treasury Fiscal Data + Bank of Canada Valet.
     treasury_base_url: str = "https://api.fiscaldata.treasury.gov/services/api/fiscal_service"
     boc_base_url: str = "https://www.bankofcanada.ca/valet"
+    # First-source providers (source registry step 2, 2026-10-14) — all
+    # keyless official APIs: ECB + Bundesbank (SDMX), Eurostat, Bank of Japan.
+    ecb_base_url: str = "https://data-api.ecb.europa.eu/service"
+    bundesbank_base_url: str = "https://api.statistiken.bundesbank.de/rest"
+    eurostat_base_url: str = "https://ec.europa.eu/eurostat/api/dissemination"
+    boj_base_url: str = "https://www.stat-search.boj.or.jp/api/v1"
     # Cache settings
     cache_ttl_seconds: int = 3600  # 1 hour for price data
     cache_dir: Path = _PROJECT_ROOT / ".cache" / "market_data"

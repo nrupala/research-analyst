@@ -90,6 +90,10 @@ _SOURCE_URL_TEMPLATES: list[tuple[str, str]] = [
     ("SEC EDGAR", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker}&type=10-K"),
     ("US Treasury Fiscal Data", "https://fiscaldata.treasury.gov/datasets/average-interest-rates"),
     ("Bank of Canada", "https://www.bankofcanada.ca/valet/"),
+    ("ECB Data Portal", "https://data.ecb.europa.eu"),
+    ("Deutsche Bundesbank", "https://www.bundesbank.de/en/statistics/time-series-databases"),
+    ("Eurostat", "https://ec.europa.eu/eurostat"),
+    ("Bank of Japan", "https://www.stat-search.boj.or.jp"),
     ("yfinance", "https://finance.yahoo.com/quote/{ticker}"),
 ]
 

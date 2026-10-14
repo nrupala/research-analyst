@@ -66,6 +66,9 @@ from ..models import (
 )
 from . import markets
 from .boc import BankOfCanadaProvider
+from .boj import BankOfJapanProvider
+from .sdmx import BundesbankProvider, EcbProvider, EurostatProvider
+from .source_registry import fred_series_displayable
 from .treasury import TreasuryProvider
 
 logger = logging.getLogger(__name__)
@@ -1192,8 +1195,12 @@ class MarketDataProvider:
         key is missing. Series:
           - CPIAUCSL        -> cpi_yoy (YoY from 13 monthly points)
           - A191RL1Q225SBEA -> gdp_growth_latest (real GDP, annualized %)
-          - BAMLH0A0HYM2    -> credit_spread_hy (HY OAS %)
+          - BAMLH0A0HYM2    -> credit_spread_hy (HY OAS %) — RIGHTS-GATED:
+            ICE Data Indices series, not cleared for commercial display,
+            so the registry gate currently excludes it (debug-logged)
           - T10Y2Y          -> yield_curve_spread / signal
+        Every fetch passes the source-registry rights gate
+        (fred_series_displayable; unclassified series fail closed).
         cycle_phase is derived from growth + curve.
         """
         api_key = settings.market.fred_api_key
@@ -1202,8 +1209,23 @@ class MarketDataProvider:
         base = settings.market.fred_base_url
         got = False
 
+        async def _gated(series_id: str, limit: int) -> list[tuple[str, float]]:
+            """Fetch one FRED series through the registry rights gate.
+
+            A series with no rights classification — or one flagged
+            not-for-commercial-display (e.g. the ICE BofA series) — is
+            excluded with a debug log, never silently swapped.
+            """
+            if not fred_series_displayable(series_id):
+                logger.debug(
+                    "FRED %s excluded by source-registry rights classification",
+                    series_id,
+                )
+                return []
+            return await asyncio.to_thread(_fred_observations, series_id, api_key, base, limit)
+
         try:
-            cpi = await asyncio.to_thread(_fred_observations, "CPIAUCSL", api_key, base, 14)
+            cpi = await _gated("CPIAUCSL", 14)
             if len(cpi) >= 13 and cpi[12][1]:
                 snapshot.cpi_yoy = (cpi[0][1] / cpi[12][1]) - 1.0
                 got = True
@@ -1211,7 +1233,7 @@ class MarketDataProvider:
             logger.debug("FRED CPIAUCSL failed: %s", e)
 
         try:
-            gdp = await asyncio.to_thread(_fred_observations, "A191RL1Q225SBEA", api_key, base, 2)
+            gdp = await _gated("A191RL1Q225SBEA", 2)
             if gdp:
                 snapshot.gdp_growth_latest = gdp[0][1] / 100.0
                 got = True
@@ -1219,7 +1241,7 @@ class MarketDataProvider:
             logger.debug("FRED GDP failed: %s", e)
 
         try:
-            hy = await asyncio.to_thread(_fred_observations, "BAMLH0A0HYM2", api_key, base, 5)
+            hy = await _gated("BAMLH0A0HYM2", 5)
             if hy:
                 snapshot.credit_spread_hy = hy[0][1] / 100.0
                 got = True
@@ -1227,7 +1249,7 @@ class MarketDataProvider:
             logger.debug("FRED HY OAS failed: %s", e)
 
         try:
-            curve = await asyncio.to_thread(_fred_observations, "T10Y2Y", api_key, base, 5)
+            curve = await _gated("T10Y2Y", 5)
             if curve:
                 spread = curve[0][1] / 100.0
                 snapshot.yield_curve_spread = spread
@@ -1252,15 +1274,17 @@ class MarketDataProvider:
         return got
 
     async def _populate_first_sources(self, snapshot: MacroSnapshot) -> bool:
-        """Populate first-source supplements (source registry step 1).
+        """Populate first-source supplements (source registry steps 1-2).
 
         US Treasury Fiscal Data (average interest rates) and Bank of
-        Canada Valet (policy rate, USD/CAD) are wired as ADDITIONAL named
-        sources only: they fill the snapshot's supplemental fields and
-        append their labels to ``supplemental_sources`` (which the
-        orchestrator surfaces in the report's source list). They never
-        overwrite the FRED/yfinance fields above. Each source degrades
-        independently; a failure leaves the fields empty, never zeroed.
+        Canada Valet (policy rate, USD/CAD) were wired in step 1; step 2
+        adds the ECB Data Portal, Deutsche Bundesbank, Eurostat, and the
+        Bank of Japan. All are wired as ADDITIONAL named sources only:
+        they fill the snapshot's supplemental fields and append their
+        labels to ``supplemental_sources`` (which the orchestrator
+        surfaces in the report's source list). They never overwrite the
+        FRED/yfinance fields above. Each source degrades independently;
+        a failure leaves the fields empty, never zeroed.
         Returns True if at least one source contributed.
         """
         got = False
@@ -1296,6 +1320,87 @@ class MarketDataProvider:
             if boc.policy_rate_pct is not None or boc.usd_cad is not None:
                 snapshot.supplemental_sources.append(
                     "Bank of Canada Valet (policy rate, USD/CAD)"
+                )
+                got = True
+
+        # --- Step 2: ECB / Bundesbank / Eurostat / Bank of Japan --------
+        try:
+            ecb = await EcbProvider().get_latest_macro()
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("ECB population failed: %s", e)
+            ecb = None
+        if ecb is not None:
+            contributed = False
+            if ecb.eur_usd is not None:
+                snapshot.ecb_eur_usd = ecb.eur_usd
+                snapshot.ecb_eur_usd_as_of = ecb.eur_usd_as_of
+                contributed = True
+            if ecb.deposit_facility_rate_pct is not None:
+                snapshot.ecb_deposit_facility_rate = ecb.deposit_facility_rate_pct / 100.0
+                snapshot.ecb_deposit_facility_as_of = ecb.deposit_facility_as_of
+                contributed = True
+            if ecb.hicp_yoy_pct is not None:
+                snapshot.ecb_hicp_yoy = ecb.hicp_yoy_pct / 100.0
+                snapshot.ecb_hicp_as_of = ecb.hicp_as_of
+                contributed = True
+            if contributed:
+                snapshot.supplemental_sources.append(
+                    "ECB Data Portal (EUR/USD reference, deposit facility rate, HICP)"
+                )
+                got = True
+
+        try:
+            bundesbank = await BundesbankProvider().get_latest_macro()
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("Bundesbank population failed: %s", e)
+            bundesbank = None
+        if bundesbank is not None and bundesbank.bund_10y_yield_pct is not None:
+            snapshot.bundesbank_bund_10y_yield = bundesbank.bund_10y_yield_pct / 100.0
+            snapshot.bundesbank_bund_10y_as_of = bundesbank.bund_10y_as_of
+            snapshot.supplemental_sources.append(
+                "Deutsche Bundesbank SDMX (10-year Bund yield)"
+            )
+            got = True
+
+        try:
+            eurostat = await EurostatProvider().get_latest_macro()
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("Eurostat population failed: %s", e)
+            eurostat = None
+        if eurostat is not None:
+            contributed = False
+            if eurostat.hicp_yoy_pct is not None:
+                snapshot.eurostat_hicp_yoy = eurostat.hicp_yoy_pct / 100.0
+                snapshot.eurostat_hicp_as_of = eurostat.hicp_as_of
+                contributed = True
+            if eurostat.gdp_growth_pct is not None:
+                snapshot.eurostat_gdp_growth = eurostat.gdp_growth_pct / 100.0
+                snapshot.eurostat_gdp_as_of = eurostat.gdp_as_of
+                contributed = True
+            if contributed:
+                snapshot.supplemental_sources.append(
+                    "Eurostat Statistics API (EU HICP, real GDP growth)"
+                )
+                got = True
+
+        try:
+            boj = await BankOfJapanProvider().get_latest_rates()
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("Bank of Japan population failed: %s", e)
+            boj = None
+        if boj is not None:
+            contributed = False
+            if boj.usd_jpy is not None:
+                snapshot.boj_usd_jpy = boj.usd_jpy
+                snapshot.boj_usd_jpy_as_of = boj.usd_jpy_as_of
+                contributed = True
+            if boj.policy_rate_pct is not None:
+                snapshot.boj_policy_rate = boj.policy_rate_pct / 100.0
+                snapshot.boj_policy_rate_as_of = boj.policy_rate_as_of
+                contributed = True
+            if contributed:
+                snapshot.supplemental_sources.append(
+                    "Bank of Japan Time-Series API (USD/JPY, basic discount/loan rate)"
                 )
                 got = True
 
