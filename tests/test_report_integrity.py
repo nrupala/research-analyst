@@ -301,6 +301,48 @@ def test_lens_missing_inputs_named_for_all_lenses():
                 assert name in md, f"{result.lens} missing input {name!r} not rendered"
 
 
+def test_lens_synthesis_is_computed_from_outputs():
+    # #70: the synthesis must be generated from the computed lens outputs —
+    # the same lens at two different prices must synthesize differently,
+    # with the valuation-anchor verdict flipping with the margin of safety.
+    cheap = graham.run(_lens_input(current_price=5.0))
+    pricey = graham.run(_lens_input(current_price=50.0))
+    md_cheap = _report(lenses=[cheap]).to_markdown()
+    md_pricey = _report(lenses=[pricey]).to_markdown()
+    assert "### Lens Synthesis" in md_cheap
+    assert "### Lens Synthesis" in md_pricey
+    # Synthesis precedes the per-lens detail.
+    assert md_cheap.index("### Lens Synthesis") < md_cheap.index("### Graham")
+    # Anchor verdict is computed: positive margin of safety at $5, negative at $50.
+    assert "margin of safety" in md_cheap
+    assert "above the current price" in md_cheap
+    assert "below the current price" in md_pricey
+    assert md_cheap != md_pricey
+    # The counts line reports the lens's actual signal reads.
+    counts = {"favor": 0, "caution": 0, "neutral": 0}
+    for sig in cheap.signals:
+        counts[sig.read] += 1
+    expected = (
+        f"{counts['favor']} favor, {counts['caution']} caution, "
+        f"{counts['neutral']} neutral"
+    )
+    assert expected in md_cheap
+
+
+def test_lens_synthesis_names_data_gaps():
+    # A lens with missing inputs must surface in the synthesis gap line.
+    from research_analyst.engines.lenses import run_all
+    results = run_all(_lens_input())
+    md = _report(lenses=results).to_markdown()
+    assert "### Lens Synthesis" in md
+    gapped = [r for r in results if r.missing_inputs]
+    if gapped:
+        assert "Data gaps" in md
+        for r in gapped:
+            for name in r.missing_inputs:
+                assert name in md
+
+
 # ---------------------------------------------------------------------------
 # #71 — risk derivation
 # ---------------------------------------------------------------------------

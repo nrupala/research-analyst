@@ -843,6 +843,9 @@ class ReportOutput(BaseModel):
                 "The following lenses apply public-domain evaluation methodologies "
                 "to the report's data. They are educational models, not verdicts.\n"
             )
+            # #70: the synthesis is computed from the lens outputs below —
+            # never a static template — so it differs ticker to ticker.
+            parts.extend(self._lens_synthesis())
             for lens in self.lenses:
                 parts.append(f"### {lens.name}\n")
                 parts.append(lens.summary)
@@ -894,6 +897,96 @@ class ReportOutput(BaseModel):
         return "\n".join(parts)
 
     # --- Evidence-integrity rendering (#66/#69/#70/#74) --------------------
+
+    def _lens_synthesis(self) -> list[str]:
+        """Computed cross-lens synthesis (#70).
+
+        Everything rendered here is derived from the lens results
+        themselves — signal reads, margins of safety, cycle position,
+        missing inputs — so two tickers with different numbers produce
+        visibly different syntheses. Explanations of what each framework
+        *is* stay in the per-lens education lines, labelled as education
+        in the section intro; this block carries findings only.
+        """
+        lenses = self.lenses or []
+        if not lenses:
+            return []
+        counts = {"favor": 0, "caution": 0, "neutral": 0}
+        for lens in lenses:
+            for sig in lens.signals:
+                if sig.read in counts:
+                    counts[sig.read] += 1
+        total = sum(counts.values())
+        parts = ["### Lens Synthesis\n"]
+        parts.append(
+            f"Across {len(lenses)} lenses ({total} signals): "
+            f"**{counts['favor']} favor, {counts['caution']} caution, "
+            f"{counts['neutral']} neutral.**\n"
+        )
+        # Intrinsic-value anchors. Both engines report margin of safety as
+        # (value - price) / value, so the figures are directly comparable.
+        anchors: list[tuple[str, float]] = []
+        for lens in lenses:
+            raw = getattr(lens, "raw_values", None) or {}
+            mos = None
+            if lens.lens == "graham":
+                mos = raw.get("graham_margin_of_safety")
+            elif lens.lens == "damodaran":
+                mos = raw.get("margin_of_safety")
+            if isinstance(mos, (int, float)):
+                anchors.append((lens.name.split("—")[0].strip(), float(mos)))
+        if anchors:
+            rendered = ", ".join(f"{name} {mos:+.0%}" for name, mos in anchors)
+            if all(mos < 0 for _, mos in anchors):
+                verdict = (
+                    "every computable intrinsic-value anchor sits below the "
+                    "current price — the value lenses counsel caution at this price"
+                )
+            elif all(mos > 0 for _, mos in anchors):
+                verdict = (
+                    "every computable intrinsic-value anchor sits above the "
+                    "current price — the value lenses see a margin of safety"
+                )
+            else:
+                verdict = "the intrinsic-value anchors disagree — the value lenses split"
+            parts.append(f"- **Valuation anchors (margin of safety):** {rendered} — {verdict}.")
+        # Cycle position (Marks), when that lens computed one.
+        for lens in lenses:
+            if lens.lens != "marks":
+                continue
+            raw = getattr(lens, "raw_values", None) or {}
+            cyc = raw.get("cycle_position")
+            if isinstance(cyc, (int, float)):
+                band = "top" if cyc >= 0.8 else ("middle" if cyc >= 0.4 else "bottom")
+                parts.append(
+                    f"- **Cycle position (Marks):** the multiple sits at {cyc:.0%} "
+                    f"of its long-run band ({band} of the range)."
+                )
+        # Decisive signal per lens: first caution, else first favor.
+        for lens in lenses:
+            decisive = next((s for s in lens.signals if s.read == "caution"), None) or next(
+                (s for s in lens.signals if s.read == "favor"), None
+            )
+            short = lens.name.split("—")[0].strip()
+            if decisive is not None:
+                icon = "▼ caution" if decisive.read == "caution" else "▲ favor"
+                parts.append(f"- **{short}:** {decisive.label} — {decisive.value} ({icon}).")
+            else:
+                parts.append(
+                    f"- **{short}:** no decisive signal — all reads neutral or data-limited."
+                )
+        gapped = [lens for lens in lenses if getattr(lens, "missing_inputs", None)]
+        if gapped:
+            named = "; ".join(
+                f"{lens.name.split('—')[0].strip()} ({', '.join(lens.missing_inputs)})"
+                for lens in gapped
+            )
+            parts.append(
+                f"- **Data gaps:** {named} — those lenses are partial, "
+                "and their reads carry less weight."
+            )
+        parts.append("")
+        return parts
 
     @staticmethod
     def _fmt_raw_value(value: Any) -> str:
