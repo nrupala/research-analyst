@@ -162,6 +162,10 @@ class PriceSeries(BaseModel):
     avg_volume_90d: float = 0.0
     ytd_return: float = 0.0
     total_return_1y: float = 0.0
+    # Which source served these prices: "stooq" (production) or
+    # "yfinance" (dev fallback only). "" for legacy cache entries.
+    # The orchestrator declares it in the report's Data Sources list.
+    data_source: str = ""
 
 
 # ---------------------------------------------------------------------------

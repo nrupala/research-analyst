@@ -20,8 +20,10 @@
 """Market data provider — price data, fundamentals, and macro indicators.
 
 Design:
-  - Primary source: yfinance (free, no API key, comprehensive)
-  - Optional fallback: Alpha Vantage (keyed)
+  - Prices: Stooq free EOD (owner-designated production source,
+    2026-10-14; see providers/stooq.py). yfinance serves the remaining
+    datasets and remains available for prices ONLY behind the
+    RA_DEV_FALLBACK_YFINANCE dev flag — never a silent fallback.
   - Disk-based TTL cache to avoid redundant API calls (O(1) lookup via hash key)
   - All data returned as typed Pydantic models
   - Thread-safe: yfinance calls wrapped in asyncio.to_thread for non-blocking I/O
@@ -36,9 +38,10 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import re
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -69,6 +72,7 @@ from .boc import BankOfCanadaProvider
 from .boj import BankOfJapanProvider
 from .sdmx import BundesbankProvider, EcbProvider, EurostatProvider
 from .source_registry import fred_series_displayable
+from .stooq import StooqProvider
 from .treasury import TreasuryProvider
 
 logger = logging.getLogger(__name__)
@@ -325,12 +329,72 @@ class _DiskCache:
 
 
 # ---------------------------------------------------------------------------
+# Price-source selection (owner decision, 2026-10-14)
+# ---------------------------------------------------------------------------
+
+
+def _dev_fallback_yfinance() -> bool:
+    """True only when the RA_DEV_FALLBACK_YFINANCE dev flag is set.
+
+    Production serves prices from Stooq. The yfinance price path
+    remains in code for development only and is NEVER engaged
+    implicitly — a Stooq failure surfaces as missing/stale data with
+    disclosure, never as a silent swap to yfinance.
+    """
+    return os.environ.get("RA_DEV_FALLBACK_YFINANCE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+# Stooq returns the full daily history in one fetch, so yfinance-style
+# periods are applied as calendar windows back from the newest bar.
+_PERIOD_WINDOW_DAYS: dict[str, int] = {
+    "1d": 0,
+    "5d": 6,
+    "1mo": 31,
+    "3mo": 92,
+    "6mo": 183,
+    "1y": 366,
+    "2y": 731,
+    "3y": 1096,
+    "5y": 1827,
+    "10y": 3653,
+}
+
+
+def _trim_frame_to_period(df: pd.DataFrame, period: str) -> pd.DataFrame:
+    """Trim a full-history daily frame to a yfinance-style period.
+
+    "max" (and any frame whose newest bar is older than the window)
+    keeps at least the newest bar. Unknown periods fall back to the
+    1y window the orchestrator itself defaults to.
+    """
+    if df.empty or period == "max":
+        return df
+    days = _PERIOD_WINDOW_DAYS.get(period)
+    if days is None:
+        logger.debug("Unknown price period %r; defaulting to 1y window", period)
+        days = _PERIOD_WINDOW_DAYS["1y"]
+    last = df.index[-1]
+    last_date = last.date() if hasattr(last, "date") else last
+    cutoff = pd.Timestamp(last_date - timedelta(days=days))
+    return df[df.index >= cutoff]
+
+
+# ---------------------------------------------------------------------------
 # Provider
 # ---------------------------------------------------------------------------
 
 
 class MarketDataProvider:
-    """Async market data provider backed by yfinance.
+    """Async market data provider.
+
+    Prices come from Stooq free EOD (providers/stooq.py); profile,
+    estimates, financials, dividends and peers come from yfinance,
+    with SEC EDGAR as the authoritative filings source.
 
     Usage:
         provider = MarketDataProvider()
@@ -377,6 +441,53 @@ class MarketDataProvider:
             return df
 
         return await asyncio.to_thread(_dl)
+
+    async def _stooq_download(
+        self, ticker: str, period: str = "1y", interval: str = "1d"
+    ) -> pd.DataFrame:
+        """Daily OHLCV frame from Stooq EOD — the production price path.
+
+        One CSV fetch returns the full history; the frame is trimmed
+        to the requested period and resampled for weekly/monthly
+        intervals so its shape matches the yfinance frame the rest of
+        this method has always consumed (DatetimeIndex; Open/High/
+        Low/Close/Adj Close/Volume). Adj Close equals Close because
+        Stooq ships a single split- and dividend-adjusted series (see
+        providers/stooq.py). An empty frame means Stooq has no data
+        for the ticker — missing stays missing.
+        """
+        history = await StooqProvider().get_daily_history(ticker)
+        if history is None or not history.bars:
+            return pd.DataFrame()
+        df = pd.DataFrame(
+            {
+                "Date": pd.to_datetime([b.date.isoformat() for b in history.bars]),
+                "Open": [b.open for b in history.bars],
+                "High": [b.high for b in history.bars],
+                "Low": [b.low for b in history.bars],
+                "Close": [b.close for b in history.bars],
+                "Adj Close": [b.close for b in history.bars],
+                "Volume": [b.volume for b in history.bars],
+            }
+        ).set_index("Date")
+        df = _trim_frame_to_period(df, period)
+        if interval in ("1wk", "1mo"):
+            rule = "W-FRI" if interval == "1wk" else "ME"
+            df = (
+                df.resample(rule)
+                .agg(
+                    {
+                        "Open": "first",
+                        "High": "max",
+                        "Low": "min",
+                        "Close": "last",
+                        "Adj Close": "last",
+                        "Volume": "sum",
+                    }
+                )
+                .dropna(subset=["Close"])
+            )
+        return df
 
     async def fetch_etf_metadata(self, ticker: str, yf_ticker: Any = None) -> ETFMetadata:
         """Fetch ETF-specific metadata from yfinance (.info + .funds_data).
@@ -474,17 +585,28 @@ class MarketDataProvider:
         """
         ticker = _sanitize_ticker(ticker)
 
-        cache_key = f"prices:{ticker}:{period}:{interval}"
+        # Production prices are Stooq's; the yfinance download runs
+        # only behind the explicit dev flag (see _dev_fallback_yfinance).
+        dev_fallback = _dev_fallback_yfinance()
+        source = "yfinance" if dev_fallback else "stooq"
+        cache_key = f"prices:{source}:{ticker}:{period}:{interval}"
         cached = self._cache.get(cache_key)
         if cached:
             return PriceSeries.model_validate(cached)
 
-        df = await self._yf_download(ticker, period=period, interval=interval)
+        if dev_fallback:
+            df = await self._yf_download(ticker, period=period, interval=interval)
+        else:
+            df = await self._stooq_download(ticker, period=period, interval=interval)
 
         if df.empty:
             logger.warning("No price data returned for %s (period=%s)", ticker, period)
             return PriceSeries(
-                ticker=ticker, data=[], period_start=date.today(), period_end=date.today()
+                ticker=ticker,
+                data=[],
+                period_start=date.today(),
+                period_end=date.today(),
+                data_source=source,
             )
 
         # Handle multi-level columns from yfinance
@@ -516,7 +638,11 @@ class MarketDataProvider:
 
         if not data_points:
             return PriceSeries(
-                ticker=ticker, data=[], period_start=date.today(), period_end=date.today()
+                ticker=ticker,
+                data=[],
+                period_start=date.today(),
+                period_end=date.today(),
+                data_source=source,
             )
 
         # Compute summary stats — O(n) single pass where possible
@@ -561,6 +687,7 @@ class MarketDataProvider:
             avg_volume_90d=avg_vol_90,
             ytd_return=ytd_return,
             total_return_1y=ret_1y,
+            data_source=source,
         )
 
         self._cache.put(cache_key, series.model_dump(mode="json"))

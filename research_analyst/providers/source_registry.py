@@ -40,7 +40,7 @@ Status values:
   - ``out_of_scope`` — first source exists but is paid-only / licence-gated
                        under the owner's free-sources-only scope rule.
 """
-# Module: research_analyst/providers/source_registry.py | Version: 0.2.0 | Updated: 2026-10-14
+# Module: research_analyst/providers/source_registry.py | Version: 0.3.0 | Updated: 2026-10-14
 
 from __future__ import annotations
 
@@ -55,6 +55,10 @@ STATUSES = frozenset({STATUS_WIRED, STATUS_PLANNED, STATUS_OUT_OF_SCOPE})
 
 ROLE_PRIMARY = "primary source"
 ROLE_DEV_BACKUP = "development backup — non-primary"
+ROLE_PRODUCTION_EOD = (
+    "owner-designated production price source — free EOD, "
+    "not an exchange first source"
+)
 
 
 @dataclass(frozen=True)
@@ -359,6 +363,45 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
         is_primary=True,
     ),
     # ------------------------------------------------------------------
+    # Prices — Stooq free EOD (owner-designated production source,
+    # 2026-10-14). NOT a first source: the exchange first source below
+    # is paid-only and stays declared out_of_scope; the owner chose
+    # Stooq's free EOD as the production price source, labeled and
+    # disclosed wherever it appears.
+    # ------------------------------------------------------------------
+    SourceEntry(
+        dataset="price_data",
+        market="US",
+        source_name="Stooq",
+        organization="Stooq",
+        base_url="https://stooq.com",
+        access_method="CSV download (daily history, /q/d/l/)",
+        key_env_var=None,
+        terms_note=(
+            "Free end-of-day data published by Stooq — not an exchange "
+            "first source; declared on every report that uses it."
+        ),
+        status=STATUS_WIRED,
+        is_primary=False,
+        role=ROLE_PRODUCTION_EOD,
+    ),
+    SourceEntry(
+        dataset="price_history",
+        market="US",
+        source_name="Stooq",
+        organization="Stooq",
+        base_url="https://stooq.com",
+        access_method="CSV download (daily history, /q/d/l/)",
+        key_env_var=None,
+        terms_note=(
+            "As Stooq (price_data): the same single CSV fetch serves "
+            "the full price history and the latest EOD close."
+        ),
+        status=STATUS_WIRED,
+        is_primary=False,
+        role=ROLE_PRODUCTION_EOD,
+    ),
+    # ------------------------------------------------------------------
     # Declared primaries that are paid-only — out of scope, never filled
     # ------------------------------------------------------------------
     SourceEntry(
@@ -414,7 +457,6 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
         )
         for _yf_dataset in (
             "company_profile",
-            "price_data",
             "financial_statements",
             "analyst_estimates",
             "sector_peers",
@@ -422,6 +464,28 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
             "dividends",
             "etf_metadata",
         )
+    ),
+    # yfinance for prices is a development backup ONLY: production
+    # prices are served by Stooq (owner decision, 2026-10-14) and this
+    # path runs solely behind the RA_DEV_FALLBACK_YFINANCE dev flag —
+    # never as a silent fallback when Stooq has no data.
+    SourceEntry(
+        dataset="price_data",
+        market="GLOBAL",
+        source_name="yfinance",
+        organization="Yahoo Finance (via yfinance library)",
+        base_url="https://finance.yahoo.com",
+        access_method="Library scrape (unofficial)",
+        key_env_var=None,
+        terms_note=(
+            "Development backup ONLY for prices — production prices "
+            "are served by Stooq (owner decision, 2026-10-14); this "
+            "path runs solely behind the RA_DEV_FALLBACK_YFINANCE "
+            "dev flag and is never silently substituted."
+        ),
+        status=STATUS_WIRED,
+        is_primary=False,
+        role=ROLE_DEV_BACKUP,
     ),
 )
 
