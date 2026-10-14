@@ -59,6 +59,10 @@ class MarketDataConfig(BaseSettings):
     # FRED for macro data
     fred_api_key: str = ""
     fred_base_url: str = "https://api.stlouisfed.org/fred"
+    # First-source providers (source registry step 1, 2026-10-14) — both
+    # keyless official APIs: US Treasury Fiscal Data + Bank of Canada Valet.
+    treasury_base_url: str = "https://api.fiscaldata.treasury.gov/services/api/fiscal_service"
+    boc_base_url: str = "https://www.bankofcanada.ca/valet"
     # Cache settings
     cache_ttl_seconds: int = 3600  # 1 hour for price data
     cache_dir: Path = _PROJECT_ROOT / ".cache" / "market_data"

@@ -88,6 +88,8 @@ logger = logging.getLogger(__name__)
 # link or reference.
 _SOURCE_URL_TEMPLATES: list[tuple[str, str]] = [
     ("SEC EDGAR", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker}&type=10-K"),
+    ("US Treasury Fiscal Data", "https://fiscaldata.treasury.gov/datasets/average-interest-rates"),
+    ("Bank of Canada", "https://www.bankofcanada.ca/valet/"),
     ("yfinance", "https://finance.yahoo.com/quote/{ticker}"),
 ]
 
@@ -250,6 +252,11 @@ class ResearchOrchestrator:
         macro_snapshot = self._safe_result(results[5], None, "macro data", warnings)
         if macro_snapshot:
             data_sources.append("yfinance (macro proxies)")
+            # First-source supplements (registry step 1): named official
+            # sources that contributed to the macro snapshot, if any.
+            for label in getattr(macro_snapshot, "supplemental_sources", []):
+                if label not in data_sources:
+                    data_sources.append(label)
 
         holders = self._safe_result(results[6], [], "institutional holders", warnings)
 
