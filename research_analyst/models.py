@@ -367,6 +367,17 @@ class MacroSnapshot(BaseModel):
     credit_spread_hy: float | None = None
     dxy_index: float | None = None  # Dollar index
 
+    # First-source supplements (source registry step 1, 2026-10-14).
+    # Official rates wired as provenance-carrying extras: no engine
+    # consumes them yet and they never overwrite the fields above.
+    # Rates are stored as fractions, matching the fields above.
+    treasury_avg_rates: dict[str, float] = Field(default_factory=dict)
+    treasury_as_of: date | None = None
+    boc_policy_rate: float | None = None  # fraction
+    boc_usd_cad: float | None = None  # CAD per USD, as published
+    boc_as_of: date | None = None
+    supplemental_sources: list[str] = Field(default_factory=list)
+
     # Cycle
     cycle_phase: str = ""  # "expansion" / "peak" / "contraction" / "trough"
     cycle_confidence: float | None = None

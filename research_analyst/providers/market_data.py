@@ -65,6 +65,8 @@ from ..models import (
     SymbolMatch,
 )
 from . import markets
+from .boc import BankOfCanadaProvider
+from .treasury import TreasuryProvider
 
 logger = logging.getLogger(__name__)
 
@@ -1249,6 +1251,56 @@ class MarketDataProvider:
 
         return got
 
+    async def _populate_first_sources(self, snapshot: MacroSnapshot) -> bool:
+        """Populate first-source supplements (source registry step 1).
+
+        US Treasury Fiscal Data (average interest rates) and Bank of
+        Canada Valet (policy rate, USD/CAD) are wired as ADDITIONAL named
+        sources only: they fill the snapshot's supplemental fields and
+        append their labels to ``supplemental_sources`` (which the
+        orchestrator surfaces in the report's source list). They never
+        overwrite the FRED/yfinance fields above. Each source degrades
+        independently; a failure leaves the fields empty, never zeroed.
+        Returns True if at least one source contributed.
+        """
+        got = False
+
+        try:
+            treasury = await TreasuryProvider().get_avg_interest_rates()
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("Treasury population failed: %s", e)
+            treasury = None
+        if treasury is not None and treasury.rates:
+            snapshot.treasury_avg_rates = {
+                p.security_desc: p.avg_interest_rate_pct / 100.0 for p in treasury.rates
+            }
+            snapshot.treasury_as_of = treasury.as_of
+            snapshot.supplemental_sources.append(
+                "US Treasury Fiscal Data (average interest rates)"
+            )
+            got = True
+
+        try:
+            boc = await BankOfCanadaProvider().get_latest_rates()
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("Bank of Canada population failed: %s", e)
+            boc = None
+        if boc is not None:
+            if boc.policy_rate_pct is not None:
+                snapshot.boc_policy_rate = boc.policy_rate_pct / 100.0
+            if boc.usd_cad is not None:
+                snapshot.boc_usd_cad = boc.usd_cad
+            boc_dates = [d for d in (boc.policy_rate_as_of, boc.usd_cad_as_of) if d is not None]
+            if boc_dates:
+                snapshot.boc_as_of = max(boc_dates)
+            if boc.policy_rate_pct is not None or boc.usd_cad is not None:
+                snapshot.supplemental_sources.append(
+                    "Bank of Canada Valet (policy rate, USD/CAD)"
+                )
+                got = True
+
+        return got
+
     async def get_macro_snapshot(self) -> MacroSnapshot:
         """Fetch the current macro environment.
 
@@ -1300,6 +1352,14 @@ class MarketDataProvider:
             await self._populate_fred(snapshot)
         except Exception as e:  # pragma: no cover - defensive
             logger.debug("FRED population failed: %s", e)
+
+        # First-source supplements (registry step 1): US Treasury Fiscal
+        # Data + Bank of Canada Valet, as additional named sources only.
+        # Never raises; existing fields are never overwritten.
+        try:
+            await self._populate_first_sources(snapshot)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("First-source population failed: %s", e)
 
         self._cache.put(cache_key, snapshot.model_dump(mode="json"))
         return snapshot

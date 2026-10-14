@@ -27,8 +27,16 @@ Each provider:
 """
 # Module: research_analyst/providers/__init__.py | Version: 0.1.0 | Updated: 2026-05-15
 
+from .boc import BankOfCanadaProvider
 from .market_data import MarketDataProvider
 from .sec_edgar import SECEdgarProvider
 from .technical import TechnicalProvider
+from .treasury import TreasuryProvider
 
-__all__ = ["MarketDataProvider", "SECEdgarProvider", "TechnicalProvider"]
+__all__ = [
+    "BankOfCanadaProvider",
+    "MarketDataProvider",
+    "SECEdgarProvider",
+    "TechnicalProvider",
+    "TreasuryProvider",
+]
