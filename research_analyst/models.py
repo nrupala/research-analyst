@@ -829,7 +829,13 @@ class ReportOutput(BaseModel):
             parts.append(f"**Current Price:** ${self.valuation.current_price:.2f}\n")
             parts.append(f"```\n{self.valuation.ascii_chart()}\n```\n")
 
-            if self.valuation.variant_perception:
+            # #72: the step sections already develop the variant perception
+            # in full; rendering it again here duplicated the whole block
+            # verbatim in every comprehensive report. Only render it in
+            # this appendix when no section carried it.
+            if self.valuation.variant_perception and not any(
+                "Variant Perception" in (s.content or "") for s in self.sections
+            ):
                 vp = self.valuation.variant_perception
                 parts.append("### Variant Perception\n")
                 parts.append(f"- **Consensus View:** {vp.consensus_view}")

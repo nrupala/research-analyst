@@ -114,6 +114,10 @@ def test_payer_full_analysis():
     assert r.us_10y_yield == 0.043
     assert r.yield_vs_treasury_spread == pytest.approx(1.80 / 28.0 - 0.043, rel=1e-3)
     assert r.attractiveness_rating == "Attractive"
+    # #68: the spread is stated unambiguously in BOTH percentage points
+    # and basis points (spread = 0.0212857 -> 2.13 pp / 213 bps).
+    assert "2.13 pp" in r.attractiveness_rationale
+    assert "213 bps" in r.attractiveness_rationale
     assert r.ex_dividend_date == date(2026, 6, 14)
 
     # Round-trips through JSON (API + cache safety)

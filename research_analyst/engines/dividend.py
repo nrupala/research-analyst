@@ -56,7 +56,7 @@ from ..models import (
     FinancialStatement,
     MacroSnapshot,
 )
-from ..quant import fmt_bps
+from ..quant import fmt_bps, fmt_pp
 
 logger = logging.getLogger(__name__)
 
@@ -513,8 +513,8 @@ class DividendEngine:
                 tnote = f" ({result.us_10y_yield:.2%})" if result.us_10y_yield is not None else ""
                 result.attractiveness_rating = "Attractive"
                 result.attractiveness_rationale = (
-                    f"Yield of {cy:.2%} exceeds the 10Y Treasury{tnote} by {fmt_bps(spread)} "
-                    f"with {result.safety_grade} coverage."
+                    f"Yield of {cy:.2%} exceeds the 10Y Treasury{tnote} by {fmt_pp(spread)} "
+                    f"({fmt_bps(spread)}) with {result.safety_grade} coverage."
                 )
                 return
 
