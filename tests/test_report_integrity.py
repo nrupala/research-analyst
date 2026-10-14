@@ -469,8 +469,12 @@ def test_variant_perception_rendered_once():
     # #72: comprehensive reports rendered the whole Variant Perception
     # block twice verbatim — once in Step 6, once in the to_markdown
     # appendix. It must appear exactly once.
-    vp = VariantPerception(consensus_view="Street view.", variant_view="Our view.", why_it_matters="It matters.")
-    valuation = ValuationRange(ticker="TEST", current_price=100.0, scenarios=[], variant_perception=vp)
+    vp = VariantPerception(
+        consensus_view="Street view.", variant_view="Our view.", why_it_matters="It matters."
+    )
+    valuation = ValuationRange(
+        ticker="TEST", current_price=100.0, scenarios=[], variant_perception=vp
+    )
     with_section = _report(
         sections=[
             ReportSection(
