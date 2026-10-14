@@ -124,7 +124,7 @@ class BankOfCanadaProvider:
         rates = BocRates()
         got = False
         for series, result in zip((POLICY_RATE_SERIES, USD_CAD_SERIES), results, strict=True):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.debug("Bank of Canada Valet %s failed: %s", series, result)
                 continue
             latest = _latest(result)
