@@ -69,6 +69,9 @@ class MarketDataConfig(BaseSettings):
     bundesbank_base_url: str = "https://api.statistiken.bundesbank.de/rest"
     eurostat_base_url: str = "https://ec.europa.eu/eurostat/api/dissemination"
     boj_base_url: str = "https://www.stat-search.boj.or.jp/api/v1"
+    # Stooq free EOD prices — owner-designated production price source
+    # (2026-10-14), keyless CSV download; see providers/stooq.py.
+    stooq_base_url: str = "https://stooq.com"
     # Cache settings
     cache_ttl_seconds: int = 3600  # 1 hour for price data
     cache_dir: Path = _PROJECT_ROOT / ".cache" / "market_data"

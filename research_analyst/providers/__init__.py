@@ -30,6 +30,7 @@ Each provider:
 from .boc import BankOfCanadaProvider
 from .market_data import MarketDataProvider
 from .sec_edgar import SECEdgarProvider
+from .stooq import StooqProvider
 from .technical import TechnicalProvider
 from .treasury import TreasuryProvider
 
@@ -37,6 +38,7 @@ __all__ = [
     "BankOfCanadaProvider",
     "MarketDataProvider",
     "SECEdgarProvider",
+    "StooqProvider",
     "TechnicalProvider",
     "TreasuryProvider",
 ]

@@ -34,6 +34,7 @@ from __future__ import annotations
 from research_analyst.providers.source_registry import (
     REGISTRY_GAPS,
     ROLE_DEV_BACKUP,
+    ROLE_PRODUCTION_EOD,
     SOURCE_REGISTRY,
     STATUSES,
     declared_datasets,
@@ -82,8 +83,34 @@ def test_yfinance_is_never_primary():
 
 def test_non_backup_entries_are_primary_sourced():
     for e in SOURCE_REGISTRY:
-        if e.role != ROLE_DEV_BACKUP:
+        # The Stooq entries are the one sanctioned exception: a
+        # non-primary source the owner designated for production
+        # prices (free EOD) because the first source is paid-only.
+        if e.role not in (ROLE_DEV_BACKUP, ROLE_PRODUCTION_EOD):
             assert e.is_primary is True, e.source_name
+
+
+def test_stooq_is_the_designated_production_price_source():
+    stooq = [e for e in SOURCE_REGISTRY if e.source_name == "Stooq"]
+    assert {(e.dataset, e.market) for e in stooq} == {
+        ("price_data", "US"),
+        ("price_history", "US"),
+    }
+    for e in stooq:
+        assert e.is_primary is False
+        assert e.role == ROLE_PRODUCTION_EOD
+        assert e.status == "wired"
+    # The declared first source for prices is unchanged: the exchange
+    # feed, paid-only and out of scope. Stooq does not shadow it.
+    price_primary = primary_entry("price_data", "US")
+    assert price_primary is not None and price_primary.status == "out_of_scope"
+    # yfinance's price entry is dev-backup wording, flag included.
+    yf_price = [
+        e for e in entries_for_dataset("price_data") if e.source_name == "yfinance"
+    ]
+    assert len(yf_price) == 1
+    assert "RA_DEV_FALLBACK_YFINANCE" in yf_price[0].terms_note
+    assert "Stooq" in yf_price[0].terms_note
 
 
 def test_orchestrator_datasets_all_declared():

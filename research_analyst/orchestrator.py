@@ -94,6 +94,7 @@ _SOURCE_URL_TEMPLATES: list[tuple[str, str]] = [
     ("Deutsche Bundesbank", "https://www.bundesbank.de/en/statistics/time-series-databases"),
     ("Eurostat", "https://ec.europa.eu/eurostat"),
     ("Bank of Japan", "https://www.stat-search.boj.or.jp"),
+    ("Stooq", "https://stooq.com"),
     ("yfinance", "https://finance.yahoo.com/quote/{ticker}"),
 ]
 
@@ -221,7 +222,13 @@ class ResearchOrchestrator:
             period_end=datetime.now().date(),
         ), "price data", warnings)
         if prices.data:
-            data_sources.append("yfinance (price data)")
+            # Declare the source that actually served the prices:
+            # Stooq in production; yfinance only on the dev-flag path
+            # (or a pre-change cache entry, which is yfinance-era).
+            if prices.data_source == "stooq":
+                data_sources.append("Stooq (price data — free end-of-day)")
+            else:
+                data_sources.append("yfinance (price data)")
             data_freshness["prices"] = prices.period_end.isoformat()
 
         financials_yf = self._safe_result(results[1], [], "yfinance financials", warnings)
