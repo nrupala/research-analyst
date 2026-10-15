@@ -102,6 +102,37 @@ def test_source_data_rejects_revoked_key():
     assert r.status_code == 401
 
 
+def test_public_research_open_when_only_store_configured():
+    # H2 (2026-10-15): a KeyStore arms the paid source-data gate only;
+    # the free public endpoints must stay open (the UI carries no key).
+    store, _ = _issue({RA_PRO})
+    client = _app(key_store=store)
+    r = client.post("/api/research", json={"ticker": "AAA"})
+    assert r.status_code == 500  # gate passed; pipeline boomed
+
+
+def test_public_research_gated_in_legacy_paid_keys_mode(monkeypatch):
+    from research_analyst import server as server_mod
+
+    monkeypatch.setattr(server_mod.settings.billing, "paid_keys", ["legacy-1"])
+    client = _app()
+    r = client.post("/api/research", json={"ticker": "AAA"})
+    assert r.status_code == 401
+    r = client.post(
+        "/api/research", json={"ticker": "AAA"}, headers={"x-ra-key": "legacy-1"}
+    )
+    assert r.status_code == 500  # legacy key passes; pipeline boomed
+
+
+def test_quant_gated_in_legacy_paid_keys_mode(monkeypatch):
+    from research_analyst import server as server_mod
+
+    monkeypatch.setattr(server_mod.settings.billing, "paid_keys", ["legacy-1"])
+    client = _app()
+    r = client.get("/api/research/quant", params={"ticker": "AAA"})
+    assert r.status_code == 401  # gate fires before the engine runs
+
+
 def test_usage_requires_key():
     store, raw = _issue({RA_PRO})
     client = _app(key_store=store)

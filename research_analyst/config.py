@@ -156,18 +156,24 @@ class ServerConfig(BaseSettings):
 class BillingConfig(BaseSettings):
     """Paid-feature gating (Phase 8 - simple key issuance, no account system).
 
-    When RA_BILLING_PAID_KEYS is set (comma-separated keys), paid endpoints
-    (e.g. source-data download) require a valid X-RA-Key header. When unset,
-    the operator has not activated paid gating and the endpoints stay open
-    (local/demo use) - activation = setting the env var. No secrets here.
+    Two activation scopes, deliberately separate:
+    - RA_BILLING_PAID_KEYS (comma-separated legacy keys) arms every gated
+      endpoint, including the metered research/resolve/compare/quant APIs.
+    - A KeyStore file (RA_BILLING_API_KEYS_FILE) arms only the paid
+      source-data download (/api/research/data) and /api/usage, so the
+      free public surfaces stay open while the paid claim is real
+      (release-gate finding H2, 2026-10-15).
+    When neither is configured, the operator has not activated paid gating
+    and the endpoints stay open (local/demo use). No secrets here.
     """
 
     paid_keys: list[str] = Field(default_factory=list, description="Comma-separated paid API keys.")
 
     # Key-store file for hashed, revocable API keys (see entitlements.py).
-    # Only key hashes are persisted — never raw keys. When set, /api/research/data
-    # also accepts KeyStore keys carrying the `source.data` entitlement, and
-    # /api/usage serves per-key metering.
+    # Only key hashes are persisted — never raw keys. When set, the
+    # /api/research/data gate arms: KeyStore keys carrying the
+    # `source.data` entitlement are accepted, and /api/usage serves
+    # per-key metering. It does not gate the public research endpoints.
     api_keys_file: str = ""
 
     # White-label branding hooks (evidence is never altered — chrome only).

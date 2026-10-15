@@ -380,20 +380,22 @@ def create_app(
         request.app.state.metering.record(key_id, endpoint)
 
     def _require_api_key(request: Request) -> None:
-        """Gate for the metered data endpoints (research, resolve, compare,
-        quant). Same activation semantics as the /api/research/data paid
-        gate: when any key mechanism is configured (RA_BILLING_PAID_KEYS or
-        a KeyStore file), a valid X-RA-Key is required — a legacy paid key,
-        or a KeyStore key carrying the `ra.pro` entitlement (`twf.pro`
-        unlocks it via the bundle map). When neither is configured
-        (local/demo), the endpoints stay open, as documented in
-        BillingConfig. Raises 401 otherwise.
+        """Gate for the metered endpoints (research, resolve, compare, quant).
+
+        These endpoints serve the free public UI, which carries no key, so
+        they arm ONLY in legacy paid-keys mode (RA_BILLING_PAID_KEYS set):
+        a valid X-RA-Key is then required — a legacy paid key, or a KeyStore
+        key carrying the `ra.pro` entitlement (`twf.pro` unlocks it via the
+        bundle map). A KeyStore file on its own arms only the paid
+        source-data gate (/api/research/data) and /api/usage; configuring
+        the store must never lock the free public surfaces (release-gate
+        finding H2, 2026-10-15). Raises 401 otherwise.
         """
         paid_keys = settings.billing.paid_keys
-        if not paid_keys and request.app.state.key_store is None:
+        if not paid_keys:
             return
         provided = request.headers.get("x-ra-key", "")
-        if paid_keys and provided in paid_keys:
+        if provided in paid_keys:
             return
         record = _key_record(request)
         if record is not None and has_entitlement(record, RA_PRO):
@@ -785,9 +787,10 @@ def create_app(
     ) -> Response:
         """Paid feature (8c-2): the raw source-data bundle behind a report.
 
-        Gated by a valid X-RA-Key header when RA_BILLING_PAID_KEYS is set
-        (see BillingConfig). When paid keys are not configured (local/demo),
-        the endpoint is open. Returns JSON (canonical) or CSV.
+        Gated by a valid X-RA-Key header whenever any key mechanism is
+        configured — RA_BILLING_PAID_KEYS or a KeyStore file (see
+        BillingConfig). When neither is configured (local/demo), the
+        endpoint is open. Returns JSON (canonical) or CSV.
         """
         from .data_export import build_bundle, bundle_to_csv
 
