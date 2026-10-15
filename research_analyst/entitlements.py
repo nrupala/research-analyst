@@ -19,13 +19,22 @@
 
 """API keys, entitlements, metering and white-label hooks for Research Analyst.
 
-Product surface (per the RA monetization plan):
-- RA Pro subscription (test anchor: $15/mo or $120/yr — not a public-price
-  commitment) unlocks metered API use, the source-data bundle and white-label.
-- TWF Pro bundles RA Pro: a key carrying the ``twf.pro`` entitlement unlocks
-  everything ``ra.pro`` unlocks (bundle mapping, no billing implemented here).
-- Merchant of Record (Paddle / Lemon Squeezy) is undecided and out of scope:
-  this module only models keys, entitlements and usage — never charges.
+Product surface (family-mirrored pricing, adopted 2026-10-15):
+- Free: reports, quant, compare — keyless.
+- RA Pro (app) $19/mo, RA Team (app) $79/mo: saved scenarios, watchlists,
+  alerts, exports, shareable links (the ``ra.pro`` entitlement gates the
+  Pro feature surface in the app/API).
+- RA API Pro $58/mo per 100,000 calls, RA API Team $198/mo per 1,000,000
+  calls: metered access to RA's own analysis (reports/quant). Same tools
+  on every tier; volume is the only difference.
+- TWF Pro bundles RA Pro: a key carrying the ``twf.pro`` entitlement
+  unlocks everything ``ra.pro`` unlocks (bundle mapping below).
+- Billing rail is Stripe (decided 2026-10-14); charging itself lives
+  outside this module — this module only models keys, entitlements and
+  usage.
+- Source data is NEVER sold (owner ruling, 2026-10-15): the datasets RA
+  consumes stay under their own licenses; entitlements gate only the
+  information and features RA itself produces.
 
 Security properties (do not weaken):
 - Raw API keys are returned ONCE at issuance and never stored, logged or
@@ -44,6 +53,7 @@ import hmac
 import json
 import logging
 import secrets
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -62,7 +72,7 @@ SOURCE_DATA = "source.data"  # source-data bundle download
 WHITE_LABEL = "white.label"  # white-label branding on exports
 
 # TWF Pro is a bundle: carrying twf.pro unlocks the RA Pro surface.
-# (Billing itself — Paddle/Lemon Squeezy — is undecided and not implemented.)
+# (Billing rail: Stripe, decided 2026-10-14; charging is not implemented here.)
 BUNDLE_UNLOCKS: dict[str, set[str]] = {
     TWF_PRO: {RA_PRO, SOURCE_DATA},
 }
@@ -116,14 +126,52 @@ class APIKeyRecord:
 
 
 class KeyStore:
-    """Issue, verify and revoke API keys. Hashes only, in memory + JSON file."""
+    """Issue, verify and revoke API keys. Hashes only, in memory + JSON file.
+
+    Freshness: when the store is file-backed, verify()/get()/revoke()
+    re-read the file if its mtime changed since the last load. Keys
+    minted or revoked by another process (the Stripe webhook minter, the
+    ops CLI) therefore take effect without a service restart
+    (Stream A design, 2026-10-15). The freshness check is one stat call
+    per verify; the reload itself happens only on an actual change.
+    """
 
     def __init__(self, path: Path | str | None = None) -> None:
         self._path = Path(path) if path else None
         self._by_hash: dict[str, APIKeyRecord] = {}
         self._by_id: dict[str, APIKeyRecord] = {}
+        self._lock = threading.RLock()
+        self._file_mtime_ns: int | None = None
         if self._path and self._path.exists():
             self._load()
+            self._sync_mtime()
+
+    # -- freshness ---------------------------------------------------------
+    def _stat_mtime_ns(self) -> int | None:
+        if not self._path:
+            return None
+        try:
+            return self._path.stat().st_mtime_ns
+        except OSError:
+            return None
+
+    def _sync_mtime(self) -> None:
+        self._file_mtime_ns = self._stat_mtime_ns()
+
+    def _maybe_reload(self) -> None:
+        """Reload from disk if another writer changed the key file."""
+        if not self._path:
+            return
+        if self._stat_mtime_ns() == self._file_mtime_ns:
+            return
+        with self._lock:
+            if self._stat_mtime_ns() == self._file_mtime_ns:
+                return
+            self._by_hash = {}
+            self._by_id = {}
+            if self._path.exists():
+                self._load()
+            self._sync_mtime()
 
     # -- issuance ---------------------------------------------------------
     def create(self, label: str, entitlements: set[str] | None = None) -> tuple[APIKeyRecord, str]:
@@ -136,9 +184,10 @@ class KeyStore:
             created_at_utc=datetime.now(UTC).isoformat(),
             entitlements=set(entitlements or set()),
         )
-        self._by_hash[record.key_hash] = record
-        self._by_id[record.key_id] = record
-        self._save()
+        with self._lock:
+            self._by_hash[record.key_hash] = record
+            self._by_id[record.key_id] = record
+            self._save()
         logger.info("API key issued: key_id=%s label=%s", record.key_id, label)
         return record, raw_key
 
@@ -148,26 +197,38 @@ class KeyStore:
         if not raw_key or not raw_key.startswith(KEY_PREFIX):
             return None
         digest = _hash_key(raw_key)
+        # One stat per verify: if another process minted or revoked a
+        # key, the file changed and we reload before answering — a
+        # cross-process revocation is honored on the very next call.
+        self._maybe_reload()
+        with self._lock:
+            record = self._find_by_digest(digest)
+        if record is None or record.revoked:
+            return None
+        return record
+
+    def _find_by_digest(self, digest: str) -> APIKeyRecord | None:
         # Constant-time comparison against stored hashes.
         for stored_hash, record in self._by_hash.items():
             if hmac.compare_digest(stored_hash, digest):
-                if record.revoked:
-                    return None
                 return record
         return None
 
     # -- revocation ----------------------------------------------------------
     def revoke(self, key_id: str) -> bool:
-        record = self._by_id.get(key_id)
-        if record is None or record.revoked:
-            return False
-        record.revoked = True
-        record.revoked_at_utc = datetime.now(UTC).isoformat()
-        self._save()
+        self._maybe_reload()
+        with self._lock:
+            record = self._by_id.get(key_id)
+            if record is None or record.revoked:
+                return False
+            record.revoked = True
+            record.revoked_at_utc = datetime.now(UTC).isoformat()
+            self._save()
         logger.info("API key revoked: key_id=%s", key_id)
         return True
 
     def get(self, key_id: str) -> APIKeyRecord | None:
+        self._maybe_reload()
         return self._by_id.get(key_id)
 
     # -- persistence (hashes only) -------------------------------------------
@@ -195,6 +256,7 @@ class KeyStore:
                 json.dumps({"keys": [r.to_dict() for r in self._by_id.values()]}, indent=2),
                 encoding="utf-8",
             )
+            self._sync_mtime()
         except Exception as e:
             logger.warning("Could not persist API key file %s: %s", self._path, e)
 
