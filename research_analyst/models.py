@@ -491,6 +491,15 @@ class MacroSnapshot(BaseModel):
     psa_cpi_as_of: date | None = None
     psa_unemployment_rate: float | None = None  # fraction
     psa_unemployment_as_of: date | None = None
+
+    # First-source supplements (source registry step 7, 2026-10-16).
+    # Statistics Canada (WDS): CPI 12-month change (computed from
+    # the published All-items index) and the unemployment rate, as
+    # fractions (fleet convention).
+    statcan_cpi_yoy: float | None = None  # fraction
+    statcan_cpi_as_of: date | None = None
+    statcan_unemployment_rate: float | None = None  # fraction
+    statcan_unemployment_as_of: date | None = None
     supplemental_sources: list[str] = Field(default_factory=list)
 
     # Cycle

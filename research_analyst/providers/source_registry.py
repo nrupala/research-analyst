@@ -448,6 +448,28 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
         is_primary=True,
     ),
     # ------------------------------------------------------------------
+    # Canada statistics — Statistics Canada WDS (WIRED 2026-10-16:
+    # CPI 12-month change + unemployment rate as macro supplements;
+    # keyless. Base path /t1/wds/rest. The CPI change is computed
+    # from StatCan's published All-items index.)
+    # ------------------------------------------------------------------
+    SourceEntry(
+        dataset="statistics",
+        market="CA",
+        source_name="Statistics Canada — Web Data Service (WDS)",
+        organization="Statistics Canada",
+        base_url="https://www150.statcan.gc.ca/t1/wds/rest",
+        access_method="REST vectors API (getDataFromVectorsAndLatestNPeriods)",
+        key_env_var=None,
+        terms_note=(
+            "Statistics Canada Open Licence (registry matrix, "
+            "2026-10-15): reuse with attribution; RA sells its "
+            "analysis, never the dataset."
+        ),
+        status=STATUS_WIRED,
+        is_primary=True,
+    ),
+    # ------------------------------------------------------------------
     # Prices — the owner's cascade (2026-10-15). Order: (1) market-
     # direct (Nasdaq for US; TMX designated for Canada, route not yet
     # established), (2) free key services (Tiingo, Alpha Vantage;

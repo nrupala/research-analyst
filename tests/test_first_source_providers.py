@@ -220,6 +220,13 @@ class _FakePsaProvider:
         return None
 
 
+class _FakeStatCanProvider:
+    """Step-7 StatCan provider, neutralised for step-1 tests."""
+
+    async def get_latest_macro(self):
+        return None
+
+
 def _no_step2_providers():
     return (
         patch.object(market_data_module, "EcbProvider", lambda: _FakeSdmxProvider()),
@@ -229,6 +236,7 @@ def _no_step2_providers():
         patch.object(market_data_module, "BcbProvider", lambda: _FakeBcbProvider()),
         patch.object(market_data_module, "AbsProvider", lambda: _FakeAbsProvider()),
         patch.object(market_data_module, "PsaProvider", lambda: _FakePsaProvider()),
+        patch.object(market_data_module, "StatCanProvider", lambda: _FakeStatCanProvider()),
     )
 
 
@@ -246,7 +254,7 @@ async def test_populate_first_sources_adds_provenance_only():
     provider = MarketDataProvider()
     patches = _no_step2_providers()
     ecb_patch, bbk_patch, eurostat_patch, boj_patch = patches[:4]
-    bcb_patch, abs_patch, psa_patch = patches[4:]
+    bcb_patch, abs_patch, psa_patch, statcan_patch = patches[4:]
     with (
         patch.object(
             market_data_module, "TreasuryProvider", lambda: _FakeTreasuryProvider(treasury)
@@ -259,6 +267,7 @@ async def test_populate_first_sources_adds_provenance_only():
         bcb_patch,
         abs_patch,
         psa_patch,
+        statcan_patch,
     ):
         got = await provider._populate_first_sources(snapshot)
     assert got is True
@@ -282,7 +291,7 @@ async def test_populate_first_sources_failure_leaves_fields_empty():
     provider = MarketDataProvider()
     patches = _no_step2_providers()
     ecb_patch, bbk_patch, eurostat_patch, boj_patch = patches[:4]
-    bcb_patch, abs_patch, psa_patch = patches[4:]
+    bcb_patch, abs_patch, psa_patch, statcan_patch = patches[4:]
     with (
         patch.object(market_data_module, "TreasuryProvider", lambda: _FakeTreasuryProvider(None)),
         patch.object(market_data_module, "BankOfCanadaProvider", lambda: _FakeBocProvider(None)),
@@ -293,6 +302,7 @@ async def test_populate_first_sources_failure_leaves_fields_empty():
         bcb_patch,
         abs_patch,
         psa_patch,
+        statcan_patch,
     ):
         got = await provider._populate_first_sources(snapshot)
     assert got is False
