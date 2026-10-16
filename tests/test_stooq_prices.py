@@ -17,7 +17,7 @@
 # A separate commercial license is available for uses incompatible with
 # the AGPL-3.0. See COMMERCIAL-LICENSE.md.
 
-"""Stooq EOD price tests (owner-designated production price source).
+"""Stooq EOD price tests (price cascade step 3, owner directive 2026-10-15).
 
 Fixtures are REAL recorded Stooq responses:
   - stooq_aapl_us_head.csv / stooq_aapl_us_split_window.csv: contiguous
@@ -39,11 +39,11 @@ from __future__ import annotations
 import hashlib
 from datetime import date
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
-import pandas as pd
 import pytest
 
+import research_analyst.providers.nasdaq as nasdaq_module
 import research_analyst.providers.stooq as stooq_module
 from research_analyst.orchestrator import _source_records
 from research_analyst.providers.market_data import MarketDataProvider, _DiskCache
@@ -178,8 +178,11 @@ def _provider(tmp_path: Path) -> MarketDataProvider:
 
 async def test_price_series_served_by_stooq(tmp_path):
     provider = _provider(tmp_path)
-    with patch.object(
-        stooq_module, "_download_csv_text", return_value=_load("stooq_aapl_us_head.csv")
+    with (
+        patch.object(nasdaq_module, "_fetch_history_json", return_value=None),
+        patch.object(
+            stooq_module, "_download_csv_text", return_value=_load("stooq_aapl_us_head.csv")
+        ),
     ):
         series = await provider.get_price_series("AAPL", period="max")
     assert series.data_source == "stooq"
@@ -192,57 +195,16 @@ async def test_price_series_served_by_stooq(tmp_path):
 
 async def test_price_series_period_trim(tmp_path):
     provider = _provider(tmp_path)
-    with patch.object(
-        stooq_module, "_download_csv_text", return_value=_load("stooq_aapl_us_head.csv")
+    with (
+        patch.object(nasdaq_module, "_fetch_history_json", return_value=None),
+        patch.object(
+            stooq_module, "_download_csv_text", return_value=_load("stooq_aapl_us_head.csv")
+        ),
     ):
         series = await provider.get_price_series("AAPL", period="5d")
     assert series.data_source == "stooq"
     assert 0 < len(series.data) < 12
     assert series.period_end == date(2025, 2, 14)
-
-
-async def test_no_silent_fallback_when_stooq_has_no_data(tmp_path, monkeypatch):
-    monkeypatch.delenv("RA_DEV_FALLBACK_YFINANCE", raising=False)
-    provider = _provider(tmp_path)
-
-    async def _boom(*args, **kwargs):
-        raise AssertionError("yfinance price path must not run in production mode")
-
-    with (
-        patch.object(
-            stooq_module,
-            "_download_csv_text",
-            return_value=_load("stooq_access_denied.txt"),
-        ),
-        patch.object(MarketDataProvider, "_yf_download", _boom),
-    ):
-        series = await provider.get_price_series("AAPL", period="1y")
-    assert series.data == []
-    assert series.data_source == "stooq"
-
-
-async def test_dev_flag_uses_yfinance(tmp_path, monkeypatch):
-    monkeypatch.setenv("RA_DEV_FALLBACK_YFINANCE", "1")
-    provider = _provider(tmp_path)
-    idx = pd.to_datetime(["2026-10-12", "2026-10-13"])
-    frame = pd.DataFrame(
-        {
-            "Open": [100.0, 101.0],
-            "High": [102.0, 103.0],
-            "Low": [99.0, 100.0],
-            "Close": [101.0, 102.0],
-            "Adj Close": [101.0, 102.0],
-            "Volume": [1_000_000, 1_100_000],
-        },
-        index=idx,
-    )
-    with patch.object(
-        MarketDataProvider, "_yf_download", new=AsyncMock(return_value=frame)
-    ):
-        series = await provider.get_price_series("AAPL", period="1y")
-    assert series.data_source == "yfinance"
-    assert len(series.data) == 2
-    assert series.current_price == pytest.approx(102.0)
 
 
 # ---------------------------------------------------------------------------

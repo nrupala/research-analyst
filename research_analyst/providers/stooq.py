@@ -53,11 +53,12 @@ the page itself publishes, POST it to /__verify, keep the session
 cookie — openly, under an identifying User-Agent. If verification or
 the download is refused, the fetch yields NO data: observed from the
 production host on 2026-10-14, the download endpoint answered
-"Access denied" even to a verified session, so until Stooq admits the
-egress the price surfaces as unavailable through the caller's
-stale/unavailable disclosure machinery. This client NEVER falls back
-to another price source; the yfinance price path in market_data.py
-exists only behind the RA_DEV_FALLBACK_YFINANCE dev flag.
+"Access denied" even to a verified session. Since the owner's cascade
+directive (2026-10-15), Stooq is step 3 of the declared price cascade
+in market_data.py: when this client yields no data the cascade falls
+through to the next step, and whichever step serves is stamped on the
+series and labeled next to the price — fall-through is disclosed,
+never silent. This client itself still serves Stooq data only.
 
 Symbol mapping (providers/markets.py registry driven): an entry is
 added ONLY with live-verified evidence that the Stooq symbol returns

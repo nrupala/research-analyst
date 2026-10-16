@@ -95,6 +95,9 @@ _SOURCE_URL_TEMPLATES: list[tuple[str, str]] = [
     ("Eurostat", "https://ec.europa.eu/eurostat"),
     ("Bank of Japan", "https://www.stat-search.boj.or.jp"),
     ("Stooq", "https://stooq.com"),
+    ("Nasdaq", "https://www.nasdaq.com/market-activity/stocks/{ticker}"),
+    ("Tiingo", "https://www.tiingo.com"),
+    ("Alpha Vantage", "https://www.alphavantage.co"),
     ("yfinance", "https://finance.yahoo.com/quote/{ticker}"),
 ]
 
@@ -222,10 +225,18 @@ class ResearchOrchestrator:
             period_end=datetime.now().date(),
         ), "price data", warnings)
         if prices.data:
-            # Declare the source that actually served the prices:
-            # Stooq in production; yfinance only on the dev-flag path
-            # (or a pre-change cache entry, which is yfinance-era).
-            if prices.data_source == "stooq":
+            # Declare the cascade step that actually served the
+            # prices (owner cascade, 2026-10-15); an unknown/legacy
+            # stamp falls back to the generic yfinance-era wording.
+            if prices.data_source == "nasdaq":
+                data_sources.append(
+                    "Nasdaq (price data — exchange-published, end-of-day)"
+                )
+            elif prices.data_source == "tiingo":
+                data_sources.append("Tiingo (price data — end-of-day)")
+            elif prices.data_source == "alphavantage":
+                data_sources.append("Alpha Vantage (price data — end-of-day)")
+            elif prices.data_source == "stooq":
                 data_sources.append("Stooq (price data — free end-of-day)")
             else:
                 data_sources.append("yfinance (price data)")

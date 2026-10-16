@@ -20,10 +20,11 @@
 """Market data provider — price data, fundamentals, and macro indicators.
 
 Design:
-  - Prices: Stooq free EOD (owner-designated production source,
-    2026-10-14; see providers/stooq.py). yfinance serves the remaining
-    datasets and remains available for prices ONLY behind the
-    RA_DEV_FALLBACK_YFINANCE dev flag — never a silent fallback.
+  - Prices: the owner's declared cascade (2026-10-15) — market-direct
+    (Nasdaq) -> free key services (Tiingo, Alpha Vantage) -> Stooq ->
+    yfinance last; the serving step is stamped on the series and
+    labeled next to the price (see _cascade_download). yfinance also
+    serves the remaining non-price datasets.
   - Disk-based TTL cache to avoid redundant API calls (O(1) lookup via hash key)
   - All data returned as typed Pydantic models
   - Thread-safe: yfinance calls wrapped in asyncio.to_thread for non-blocking I/O
@@ -38,7 +39,6 @@ import asyncio
 import hashlib
 import json
 import logging
-import os
 import re
 import time
 from datetime import date, datetime, timedelta
@@ -68,11 +68,14 @@ from ..models import (
     SymbolMatch,
 )
 from . import markets
+from .alphavantage import AlphaVantageProvider
 from .boc import BankOfCanadaProvider
 from .boj import BankOfJapanProvider
+from .nasdaq import NasdaqProvider
 from .sdmx import BundesbankProvider, EcbProvider, EurostatProvider
 from .source_registry import fred_series_displayable
 from .stooq import StooqProvider
+from .tiingo import TiingoProvider
 from .treasury import TreasuryProvider
 
 logger = logging.getLogger(__name__)
@@ -333,20 +336,7 @@ class _DiskCache:
 # ---------------------------------------------------------------------------
 
 
-def _dev_fallback_yfinance() -> bool:
-    """True only when the RA_DEV_FALLBACK_YFINANCE dev flag is set.
 
-    Production serves prices from Stooq. The yfinance price path
-    remains in code for development only and is NEVER engaged
-    implicitly — a Stooq failure surfaces as missing/stale data with
-    disclosure, never as a silent swap to yfinance.
-    """
-    return os.environ.get("RA_DEV_FALLBACK_YFINANCE", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
 
 
 # Stooq returns the full daily history in one fetch, so yfinance-style
@@ -442,32 +432,27 @@ class MarketDataProvider:
 
         return await asyncio.to_thread(_dl)
 
-    async def _stooq_download(
-        self, ticker: str, period: str = "1y", interval: str = "1d"
-    ) -> pd.DataFrame:
-        """Daily OHLCV frame from Stooq EOD — the production price path.
+    @staticmethod
+    def _history_frame(bars: list[Any], period: str, interval: str) -> pd.DataFrame:
+        """Build the standard OHLCV frame from provider bars.
 
-        One CSV fetch returns the full history; the frame is trimmed
-        to the requested period and resampled for weekly/monthly
-        intervals so its shape matches the yfinance frame the rest of
-        this method has always consumed (DatetimeIndex; Open/High/
-        Low/Close/Adj Close/Volume). Adj Close equals Close because
-        Stooq ships a single split- and dividend-adjusted series (see
-        providers/stooq.py). An empty frame means Stooq has no data
-        for the ticker — missing stays missing.
+        Shared by the single-series cascade providers (Nasdaq, Stooq):
+        the frame is trimmed to the requested period and resampled for
+        weekly/monthly intervals so its shape matches the yfinance
+        frame the rest of this module has always consumed
+        (DatetimeIndex; Open/High/Low/Close/Adj Close/Volume). Adj
+        Close equals Close because these providers ship a single
+        adjusted series (each provider's module documents its basis).
         """
-        history = await StooqProvider().get_daily_history(ticker)
-        if history is None or not history.bars:
-            return pd.DataFrame()
         df = pd.DataFrame(
             {
-                "Date": pd.to_datetime([b.date.isoformat() for b in history.bars]),
-                "Open": [b.open for b in history.bars],
-                "High": [b.high for b in history.bars],
-                "Low": [b.low for b in history.bars],
-                "Close": [b.close for b in history.bars],
-                "Adj Close": [b.close for b in history.bars],
-                "Volume": [b.volume for b in history.bars],
+                "Date": pd.to_datetime([b.date.isoformat() for b in bars]),
+                "Open": [b.open for b in bars],
+                "High": [b.high for b in bars],
+                "Low": [b.low for b in bars],
+                "Close": [b.close for b in bars],
+                "Adj Close": [b.close for b in bars],
+                "Volume": [b.volume for b in bars],
             }
         ).set_index("Date")
         df = _trim_frame_to_period(df, period)
@@ -488,6 +473,97 @@ class MarketDataProvider:
                 .dropna(subset=["Close"])
             )
         return df
+
+    async def _nasdaq_download(
+        self, ticker: str, period: str = "1y", interval: str = "1d"
+    ) -> pd.DataFrame:
+        """Daily OHLCV frame from Nasdaq — cascade step 1 (US).
+
+        Market-direct: the listing exchange's own published history
+        (see providers/nasdaq.py for the split-adjustment basis). An
+        empty frame means Nasdaq has no data for the ticker — the
+        cascade falls through to the next step.
+        """
+        history = await NasdaqProvider().get_daily_history(ticker)
+        if history is None or not history.bars:
+            return pd.DataFrame()
+        return self._history_frame(history.bars, period, interval)
+
+    async def _stooq_download(
+        self, ticker: str, period: str = "1y", interval: str = "1d"
+    ) -> pd.DataFrame:
+        """Daily OHLCV frame from Stooq EOD — cascade step 3.
+
+        One CSV fetch returns the full history (see providers/stooq.py
+        for the split- and dividend-adjustment basis). An empty frame
+        means Stooq has no data for the ticker — the cascade falls
+        through to the next step.
+        """
+        history = await StooqProvider().get_daily_history(ticker)
+        if history is None or not history.bars:
+            return pd.DataFrame()
+        return self._history_frame(history.bars, period, interval)
+
+    async def _tiingo_download(
+        self, ticker: str, period: str = "1y", interval: str = "1d"
+    ) -> pd.DataFrame:
+        """Daily OHLCV frame from Tiingo — cascade step 2 (key-gated)."""
+        history = await TiingoProvider().get_daily_history(ticker)
+        if history is None or not history.bars:
+            return pd.DataFrame()
+        return self._history_frame(history.bars, period, interval)
+
+    async def _alphavantage_download(
+        self, ticker: str, period: str = "1y", interval: str = "1d"
+    ) -> pd.DataFrame:
+        """Daily OHLCV frame from Alpha Vantage — step 2 gap-filler."""
+        history = await AlphaVantageProvider().get_daily_history(ticker)
+        if history is None or not history.bars:
+            return pd.DataFrame()
+        return self._history_frame(history.bars, period, interval)
+
+    async def _cascade_download(
+        self, ticker: str, period: str = "1y", interval: str = "1d"
+    ) -> tuple[pd.DataFrame, str]:
+        """Serve a price frame through the owner's declared cascade.
+
+        Order (owner directive, 2026-10-15): (1) market-direct —
+        Nasdaq, the exchange's own published data (TMX joins for
+        Canada when its route lands; Canada's secondaries serve in
+        the meantime, per the owner's Canada rule); (2) the free key
+        services — Tiingo, then Alpha Vantage (Twelve Data and FMP
+        join as their providers land), each dormant until its key is
+        configured; (3) Stooq; (4) yfinance, last. The first step that
+        returns data serves, and its id is returned with the frame so
+        the caller stamps it on the series — the served source is
+        labeled next to the price, never silently substituted. Every
+        step's failure falls through, logged. All steps empty ->
+        (empty frame, "") and the price surfaces as Not available.
+        """
+        steps = [
+            ("nasdaq", self._nasdaq_download),
+            ("tiingo", self._tiingo_download),
+            ("alphavantage", self._alphavantage_download),
+            ("stooq", self._stooq_download),
+            ("yfinance", self._yf_download),
+        ]
+        for source, fetch in steps:
+            try:
+                df = await fetch(ticker, period=period, interval=interval)
+            except Exception:
+                logger.warning(
+                    "price cascade: %s errored for %s; falling through",
+                    source,
+                    ticker,
+                    exc_info=True,
+                )
+                continue
+            if df is not None and not df.empty:
+                return df, source
+            logger.info(
+                "price cascade: %s has no data for %s; falling through", source, ticker
+            )
+        return pd.DataFrame(), ""
 
     async def fetch_etf_metadata(self, ticker: str, yf_ticker: Any = None) -> ETFMetadata:
         """Fetch ETF-specific metadata from yfinance (.info + .funds_data).
@@ -585,19 +661,17 @@ class MarketDataProvider:
         """
         ticker = _sanitize_ticker(ticker)
 
-        # Production prices are Stooq's; the yfinance download runs
-        # only behind the explicit dev flag (see _dev_fallback_yfinance).
-        dev_fallback = _dev_fallback_yfinance()
-        source = "yfinance" if dev_fallback else "stooq"
-        cache_key = f"prices:{source}:{ticker}:{period}:{interval}"
+        # Prices are served by the declared cascade (see
+        # _cascade_download); the serving step is stamped on the
+        # series and labeled next to the price.
+        cache_key = f"prices:cascade:{ticker}:{period}:{interval}"
         cached = self._cache.get(cache_key)
         if cached:
             return PriceSeries.model_validate(cached)
 
-        if dev_fallback:
-            df = await self._yf_download(ticker, period=period, interval=interval)
-        else:
-            df = await self._stooq_download(ticker, period=period, interval=interval)
+        df, source = await self._cascade_download(
+            ticker, period=period, interval=interval
+        )
 
         if df.empty:
             logger.warning("No price data returned for %s (period=%s)", ticker, period)

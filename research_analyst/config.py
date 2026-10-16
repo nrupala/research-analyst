@@ -53,9 +53,14 @@ class MarketDataConfig(BaseSettings):
 
     # yfinance is the primary free provider — no key needed
     yfinance_enabled: bool = True
-    # Alpha Vantage as optional backup
+    # Alpha Vantage — price cascade step 2 (free key tier; see
+    # providers/alphavantage.py). Empty key = the step is skipped.
     alpha_vantage_key: str = ""
     alpha_vantage_base_url: str = "https://www.alphavantage.co/query"
+    # Tiingo — price cascade step 2, first of the key services (free
+    # key tier; see providers/tiingo.py). Empty key = step skipped.
+    tiingo_api_key: str = ""
+    tiingo_base_url: str = "https://api.tiingo.com"
     # FRED for macro data
     fred_api_key: str = ""
     fred_base_url: str = "https://api.stlouisfed.org/fred"

@@ -166,10 +166,38 @@ class PriceSeries(BaseModel):
     avg_volume_90d: float = 0.0
     ytd_return: float | None = None
     total_return_1y: float | None = None
-    # Which source served these prices: "stooq" (production) or
-    # "yfinance" (dev fallback only). "" for legacy cache entries.
-    # The orchestrator declares it in the report's Data Sources list.
+    # Which cascade step served these prices: "nasdaq", "tiingo",
+    # "alphavantage", "stooq", or "yfinance" (owner cascade,
+    # 2026-10-15). "" when no
+    # source served or for legacy cache entries. The orchestrator
+    # declares it in the report's Data Sources list, and renderers
+    # show it in small print next to the price (price_source_label).
     data_source: str = ""
+
+
+# Display names for the price cascade's steps, keyed by
+# PriceSeries.data_source (owner cascade directive, 2026-10-15: the
+# source in play is indicated next to the price).
+PRICE_SOURCE_LABELS: dict[str, str] = {
+    "nasdaq": "Nasdaq",
+    "tiingo": "Tiingo",
+    "alphavantage": "Alpha Vantage",
+    "twelvedata": "Twelve Data",
+    "fmp": "FMP",
+    "stooq": "Stooq",
+    "yfinance": "Yahoo Finance",
+}
+
+
+def price_source_label(data_source: str) -> str:
+    """Small-print source note for a price, e.g. ' (source: Nasdaq)'.
+
+    Empty when the serving source is unknown (no source served, or a
+    legacy cache entry) — an unlabeled price is never dressed up with
+    a guessed source.
+    """
+    name = PRICE_SOURCE_LABELS.get(data_source)
+    return f" (source: {name})" if name else ""
 
 
 # ---------------------------------------------------------------------------
