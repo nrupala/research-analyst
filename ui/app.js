@@ -334,6 +334,7 @@ function renderQuantData(data){
     var h='<h2>Quantitative Engine — '+esc(data.ticker||"")+'</h2>';
     h+='<p class="status__text">Research and education only — computed quantities from reported financial statements, not investment advice.</p>';
     h+='<p class="status__text">Periods: '+esc((data.periods||[]).join(", ")||"n/a")+'</p>';
+    if(data.statements_source){h+='<p class="status__text">Statements: '+esc(data.statements_source)+'</p>'}
     // Discount-rate assumption (analyst input; implied-growth rows need it).
     h+='<form id="quant-dr-form" class="quant-dr"><label for="quant-dr">Discount rate (for implied-growth inversions, as a decimal):</label> '+
         '<input id="quant-dr" type="number" step="0.001" min="0" max="1" value="'+esc(quantCache.discountRate||"")+'" placeholder="e.g. 0.09"> '+

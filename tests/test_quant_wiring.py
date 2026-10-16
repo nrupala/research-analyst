@@ -342,8 +342,15 @@ def _quant_client(stmts, price: float | None = None):
     from research_analyst.server import create_app
 
     orch = AsyncMock()
-    orch._fetch_yf_financials = AsyncMock(return_value=stmts)
-    orch._fetch_sec_financials = AsyncMock(return_value=[])
+    # F1.8: the endpoint takes statements from the orchestrator's one
+    # merged path; stub it with a yfinance-led bundle over the fixtures.
+    from research_analyst.orchestrator import FinancialsBundle
+
+    orch.fetch_merged_financials = AsyncMock(
+        return_value=FinancialsBundle(
+            financials=stmts, lead="yfinance", yf=stmts, sec=[], cvm=[], edinet=[]
+        )
+    )
     profile = CompanyProfile(
         ticker="TST",
         name="Test Inc",

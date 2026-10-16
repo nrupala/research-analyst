@@ -46,7 +46,7 @@ import json
 import logging
 import time
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NamedTuple
 
 from .config import settings
 from .engines.competitor import CompetitorEngine
@@ -158,6 +158,47 @@ def _price_declaration(data_source: str) -> str:
     return f"{name} ({suffix})"
 
 
+class FinancialsBundle(NamedTuple):
+    """The merged statement set plus every source's raw contribution.
+
+    ``financials`` is the set that leads (what reports and quant compute
+    over); ``lead`` names its source: "cvm", "edinet", "yfinance", or
+    "sec". The raw per-source lists ride along because the report's
+    Data Sources declarations name every source that contributed data,
+    not only the one that led.
+    """
+
+    financials: list[FinancialStatement]
+    lead: str
+    yf: list[FinancialStatement]
+    sec: list[FinancialStatement]
+    cvm: list[FinancialStatement]
+    edinet: list[FinancialStatement]
+
+
+#: Canonical Data Sources label for each statement lead (F1.8) — the
+#: quant endpoint declares its statements with the same words the
+#: research report uses, from this one map.
+STATEMENT_LEAD_LABELS: dict[str, str] = {
+    "cvm": "CVM (financial statements — Brazil regulator filings)",
+    "edinet": "EDINET (financial statements — Japan regulator filings)",
+    "sec": "SEC EDGAR XBRL (financial statements)",
+}
+
+
+def statement_lead_label(lead: str) -> str:
+    """Data Sources label for a merged-statements lead.
+
+    The yfinance lead takes its label from DATASET_SOURCE_LABELS (the
+    canonical dataset map); the regulator/SEC labels live in
+    STATEMENT_LEAD_LABELS. Unknown leads fall back to the Yahoo Finance
+    label rather than inventing a source name.
+    """
+    if lead == "yfinance":
+        return DATASET_SOURCE_LABELS["financials"]
+    return STATEMENT_LEAD_LABELS.get(lead, DATASET_SOURCE_LABELS["financials"])
+
+
 class ResearchOrchestrator:
     """Main research pipeline — coordinates providers, engines, and renderers.
 
@@ -245,30 +286,26 @@ class ResearchOrchestrator:
                 ) from e
 
         # --- Parallel data fetching ---
+        # Statements come from the one merged path (F1.8) the quant
+        # endpoint also uses — see fetch_merged_financials.
         price_task = self._fetch_prices(ticker, request)
-        financials_yf_task = self._fetch_yf_financials(ticker)
-        financials_sec_task = self._fetch_sec_financials(ticker)
+        financials_task = self.fetch_merged_financials(
+            ticker, profile.name if profile else "", warnings
+        )
         estimates_task = self._fetch_estimates(ticker)
         peers_task = self._fetch_peers(ticker)
         macro_task = self._fetch_macro()
         holders_task = self._fetch_holders(ticker)
         dividends_task = self._fetch_dividends(ticker)
-        financials_cvm_task = self._fetch_cvm_financials(
-            ticker, profile.name if profile else ""
-        )
-        financials_edinet_task = self._fetch_edinet_financials(ticker)
 
         results = await asyncio.gather(
             price_task,
-            financials_yf_task,
-            financials_sec_task,
+            financials_task,
             estimates_task,
             peers_task,
             macro_task,
             holders_task,
             dividends_task,
-            financials_cvm_task,
-            financials_edinet_task,
             return_exceptions=True,
         )
 
@@ -283,51 +320,24 @@ class ResearchOrchestrator:
             data_sources.append(_price_declaration(prices.data_source))
             data_freshness["prices"] = prices.period_end.isoformat()
 
-        financials_yf = self._safe_result(results[1], [], "Yahoo Finance financials", warnings)
-        financials_sec = self._safe_result(results[2], [], "SEC XBRL financials", warnings)
-        financials_cvm = self._safe_result(results[8], [], "CVM financials", warnings)
-        financials_edinet = self._safe_result(results[9], [], "EDINET financials", warnings)
-
-        # Merge financials: for Brazilian listings the regulator's own
-        # filings (CVM) are the first source and lead — but only over
-        # a completeness floor (newest statement carries revenue AND
-        # net income), so a partial CVM parse can never degrade a
-        # report yfinance would have served whole. Japanese listings
-        # follow the same rule with EDINET. Elsewhere yfinance leads
-        # with SEC XBRL as its fallback.
-        cvm_leads = bool(
-            financials_cvm
-            and financials_cvm[0].revenue is not None
-            and financials_cvm[0].net_income is not None
+        empty_bundle = FinancialsBundle(
+            financials=[], lead="sec", yf=[], sec=[], cvm=[], edinet=[]
         )
-        edinet_leads = bool(
-            financials_edinet
-            and financials_edinet[0].revenue is not None
-            and financials_edinet[0].net_income is not None
-        )
-        if cvm_leads:
-            financials = financials_cvm
-        elif edinet_leads:
-            financials = financials_edinet
-        elif financials_yf:
-            financials = financials_yf
-        else:
-            financials = financials_sec
-        if cvm_leads:
-            data_sources.append("CVM (financial statements — Brazil regulator filings)")
-        if edinet_leads:
-            data_sources.append("EDINET (financial statements — Japan regulator filings)")
-        if financials_yf:
+        bundle = self._safe_result(results[1], empty_bundle, "financials", warnings)
+        financials = bundle.financials
+        if bundle.lead in ("cvm", "edinet"):
+            data_sources.append(statement_lead_label(bundle.lead))
+        if bundle.yf:
             data_sources.append(DATASET_SOURCE_LABELS["financials"])
-        if financials_sec:
+        if bundle.sec:
             data_sources.append("SEC EDGAR XBRL (financial statements)")
 
-        estimates = self._safe_result(results[3], None, "analyst estimates", warnings)
+        estimates = self._safe_result(results[2], None, "analyst estimates", warnings)
         if estimates:
             data_sources.append(DATASET_SOURCE_LABELS["estimates"])
 
         peers, peer_provenance = self._safe_result(
-            results[4], ([], None), "peer data", warnings
+            results[3], ([], None), "peer data", warnings
         )
         if peers:
             data_sources.append(DATASET_SOURCE_LABELS["peers"])
@@ -341,7 +351,7 @@ class ResearchOrchestrator:
                 f"(hash {peer_provenance.map_hash})."
             )
 
-        macro_snapshot = self._safe_result(results[5], None, "macro data", warnings)
+        macro_snapshot = self._safe_result(results[4], None, "macro data", warnings)
         if macro_snapshot:
             data_sources.append(DATASET_SOURCE_LABELS["macro"])
             # First-source supplements (registry step 1): named official
@@ -350,10 +360,10 @@ class ResearchOrchestrator:
                 if label not in data_sources:
                     data_sources.append(label)
 
-        holders = self._safe_result(results[6], [], "institutional holders", warnings)
+        holders = self._safe_result(results[5], [], "institutional holders", warnings)
 
         dividend_data = self._safe_result(
-            results[7], DividendData(ticker=ticker), "dividend data", warnings
+            results[6], DividendData(ticker=ticker), "dividend data", warnings
         )
         if dividend_data and (dividend_data.history or dividend_data.dividend_rate):
             data_sources.append(DATASET_SOURCE_LABELS["dividends"])
@@ -626,6 +636,62 @@ class ResearchOrchestrator:
         }
         period = period_map.get(request.timeframe.value, "1y")
         return await self._market.get_price_series(ticker, period=period)
+
+    async def fetch_merged_financials(
+        self, ticker: str, company_name: str, warnings: list[str]
+    ) -> FinancialsBundle:
+        """Fetch all statement sources and apply the first-source merge.
+
+        The single statements path for the whole product (F1.8): the
+        research pipeline and the quant endpoint both compute over the
+        bundle this returns, so a ticker can never show one set of
+        statements in its report and a different set in its quant view.
+
+        Merge rule (unchanged since the CVM/EDINET wiring): a regulator
+        source leads only over a completeness floor — its newest
+        statement carries revenue AND net income — so a partial parse
+        can never degrade a set another source would have served whole.
+        CVM (Brazil) first, then EDINET (Japan), then Yahoo Finance,
+        with SEC XBRL as the final fallback.
+        """
+        yf_r, sec_r, cvm_r, edinet_r = await asyncio.gather(
+            self._fetch_yf_financials(ticker),
+            self._fetch_sec_financials(ticker),
+            self._fetch_cvm_financials(ticker, company_name),
+            self._fetch_edinet_financials(ticker),
+            return_exceptions=True,
+        )
+        financials_yf = self._safe_result(yf_r, [], "Yahoo Finance financials", warnings)
+        financials_sec = self._safe_result(sec_r, [], "SEC XBRL financials", warnings)
+        financials_cvm = self._safe_result(cvm_r, [], "CVM financials", warnings)
+        financials_edinet = self._safe_result(edinet_r, [], "EDINET financials", warnings)
+
+        cvm_leads = bool(
+            financials_cvm
+            and financials_cvm[0].revenue is not None
+            and financials_cvm[0].net_income is not None
+        )
+        edinet_leads = bool(
+            financials_edinet
+            and financials_edinet[0].revenue is not None
+            and financials_edinet[0].net_income is not None
+        )
+        if cvm_leads:
+            financials, lead = financials_cvm, "cvm"
+        elif edinet_leads:
+            financials, lead = financials_edinet, "edinet"
+        elif financials_yf:
+            financials, lead = financials_yf, "yfinance"
+        else:
+            financials, lead = financials_sec, "sec"
+        return FinancialsBundle(
+            financials=financials,
+            lead=lead,
+            yf=financials_yf,
+            sec=financials_sec,
+            cvm=financials_cvm,
+            edinet=financials_edinet,
+        )
 
     async def _fetch_yf_financials(self, ticker: str) -> list[FinancialStatement]:
         return await self._market.get_financials(ticker)
