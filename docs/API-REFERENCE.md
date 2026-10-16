@@ -19,6 +19,9 @@ payload). Formats: `json` (default), `xml`, `markdown`, `html`, `ts`
 | `/api/research/shared/{token}` | GET | A saved scenario's report via its share link (no key) | all research formats |
 | `/api/scenarios` | POST / GET | Save / list your scenarios (key required) | json |
 | `/api/scenarios/{id}` | DELETE | Delete your scenario (kills its share link) | json |
+| `/api/watchlist` | POST / GET | Add / list your watched tickers (key required) | json |
+| `/api/watchlist/{ticker}` | DELETE | Remove a ticker from your watchlist | json |
+| `/api/watchlist/quotes` | GET | Current prices for your watchlist, each with its source | json |
 | `/api/compare` | POST | Multi-ticker comparative (2–5) | json, xml, markdown, html, ts |
 | `/api/resolve` | POST | Ticker/name resolution (+ international `X.NS`) | json, xml, ts |
 | `/api/usage` | GET | Your key's plan, usage, allowance (key required) | json |

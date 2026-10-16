@@ -37,6 +37,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -97,6 +98,7 @@ from .stripe_billing import (
     verify_signature,
 )
 from .telemetry import TelemetryRecorder
+from .watchlists import MAX_WATCHLIST_TICKERS_PER_KEY, WatchlistStore, watch_entry_public
 
 logger = logging.getLogger(__name__)
 
@@ -372,6 +374,7 @@ def create_app(
     grant_store: GrantStore | None = None,
     telemetry: TelemetryRecorder | None = None,
     scenario_store: ScenarioStore | None = None,
+    watchlist_store: WatchlistStore | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="Research Analyst",
@@ -458,6 +461,16 @@ def create_app(
                 Path(settings.billing.api_keys_file).parent / "scenarios.json"
             )
         scenario_store = ScenarioStore(path=scenarios_path or None)
+    if watchlist_store is None and key_store is not None:
+        # Watchlists need key identity, exactly like scenarios;
+        # without a key store the feature stays dormant (503).
+        watchlists_path = settings.billing.watchlists_file
+        if not watchlists_path and settings.billing.api_keys_file:
+            watchlists_path = str(
+                Path(settings.billing.api_keys_file).parent / "watchlists.json"
+            )
+        watchlist_store = WatchlistStore(path=watchlists_path or None)
+    app.state.watchlist_store = watchlist_store
     app.state.key_store = key_store
     app.state.grant_store = grant_store
     app.state.metering = metering
@@ -832,6 +845,92 @@ def create_app(
         if not store.delete(scenario_id, record.key_id):
             raise HTTPException(status_code=404, detail="Scenario not found.")
         return JSONResponse({"deleted": True, "scenario_id": scenario_id})
+
+    # ================================================================
+    # Watchlists (Stream B / F1.7)
+    # ================================================================
+
+    def _require_watchlist_store(request: Request) -> WatchlistStore:
+        store = request.app.state.watchlist_store
+        if store is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Watchlists are not configured (no API key store).",
+            )
+        return cast("WatchlistStore", store)
+
+    @app.post("/api/watchlist")
+    async def add_to_watchlist(body: dict[str, Any], request: Request) -> JSONResponse:
+        """Add a ticker to the caller's watchlist (idempotent)."""
+        store = _require_watchlist_store(request)
+        record = _require_key_record(request)
+        try:
+            probe = ResearchAPIRequest(ticker=str(body.get("ticker", "")))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid ticker: {e}") from e
+        ticker = probe.ticker.upper().strip()
+        result = store.add(record.key_id, ticker)
+        if result is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Watchlist limit reached "
+                    f"({MAX_WATCHLIST_TICKERS_PER_KEY} per key)."
+                ),
+            )
+        entry, created = result
+        return JSONResponse(
+            watch_entry_public(entry), status_code=201 if created else 200
+        )
+
+    @app.get("/api/watchlist")
+    async def list_watchlist(request: Request) -> JSONResponse:
+        """The caller's watched tickers — never anyone else's."""
+        store = _require_watchlist_store(request)
+        record = _require_key_record(request)
+        return JSONResponse(
+            {"tickers": [watch_entry_public(e) for e in store.list_for_key(record.key_id)]}
+        )
+
+    @app.delete("/api/watchlist/{ticker}")
+    async def remove_from_watchlist(ticker: str, request: Request) -> JSONResponse:
+        """Remove a ticker from the caller's watchlist."""
+        store = _require_watchlist_store(request)
+        record = _require_key_record(request)
+        if not store.remove(record.key_id, ticker.upper().strip()):
+            raise HTTPException(status_code=404, detail="Ticker not on your watchlist.")
+        return JSONResponse({"deleted": True, "ticker": ticker.upper().strip()})
+
+    @app.get("/api/watchlist/quotes")
+    async def watchlist_quotes(request: Request) -> JSONResponse:
+        """Current prices for the caller's watchlist, each labelled
+        with the cascade source that served it. A ticker whose price
+        cannot be served stays on the list with a null price — missing
+        stays missing, never a fabricated figure."""
+        store = _require_watchlist_store(request)
+        record = _require_key_record(request)
+        entries = store.list_for_key(record.key_id)
+
+        async def _quote(ticker: str) -> dict[str, Any]:
+            from .models import PRICE_SOURCE_LABELS
+
+            try:
+                series = await market_provider.get_price_series(ticker, period="1y")
+            except Exception as e:
+                logger.debug("Watchlist quote unavailable for %s: %s", ticker, e)
+                return {"ticker": ticker, "price": None, "source": None, "as_of": None}
+            return {
+                "ticker": ticker,
+                "price": series.current_price,
+                # The plain source name from the canonical label map
+                # (the same name the price lines print).
+                "source": PRICE_SOURCE_LABELS.get(series.data_source),
+                "as_of": series.period_end.isoformat() if series.period_end else None,
+            }
+
+        quotes = await asyncio.gather(*(_quote(e.ticker) for e in entries))
+        _meter(request, "watchlist")
+        return JSONResponse({"quotes": quotes})
 
     @app.get("/api/research/shared/{share_token}")
     async def shared_research(
