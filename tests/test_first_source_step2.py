@@ -440,6 +440,7 @@ async def test_populate_first_sources_step2_adds_provenance_only():
         patch.object(market_data_module, "BcbProvider", lambda: _NoneProvider()),
         patch.object(market_data_module, "AbsProvider", lambda: _NoneProvider()),
         patch.object(market_data_module, "PsaProvider", lambda: _NoneProvider()),
+        patch.object(market_data_module, "StatCanProvider", lambda: _NoneProvider()),
     ):
         got = await provider._populate_first_sources(snapshot)
     assert got is True
@@ -479,6 +480,7 @@ async def test_populate_first_sources_step2_failure_leaves_fields_empty():
         patch.object(market_data_module, "BcbProvider", lambda: _NoneProvider()),
         patch.object(market_data_module, "AbsProvider", lambda: _NoneProvider()),
         patch.object(market_data_module, "PsaProvider", lambda: _NoneProvider()),
+        patch.object(market_data_module, "StatCanProvider", lambda: _NoneProvider()),
     ):
         got = await provider._populate_first_sources(snapshot)
     assert got is False

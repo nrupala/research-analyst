@@ -78,6 +78,7 @@ from .nasdaq import NasdaqProvider
 from .psa import PsaProvider
 from .sdmx import BundesbankProvider, EcbProvider, EurostatProvider
 from .source_registry import fred_series_displayable
+from .statcan import StatCanProvider
 from .stooq import StooqProvider
 from .tiingo import TiingoProvider
 from .treasury import TreasuryProvider
@@ -1576,7 +1577,7 @@ class MarketDataProvider:
         return got
 
     async def _populate_first_sources(self, snapshot: MacroSnapshot) -> bool:
-        """Populate first-source supplements (source registry steps 1-6).
+        """Populate first-source supplements (source registry steps 1-7).
 
         US Treasury Fiscal Data (average interest rates) and Bank of
         Canada Valet (policy rate, USD/CAD) were wired in step 1; step 2
@@ -1799,6 +1800,32 @@ class MarketDataProvider:
             if contributed:
                 snapshot.supplemental_sources.append(
                     "Philippine Statistics Authority OpenSTAT (CPI, unemployment rate)"
+                )
+                got = True
+
+        # --- Step 7: Statistics Canada WDS (keyless) ---------------------
+        try:
+            statcan_macro = await StatCanProvider().get_latest_macro()
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("StatCan population failed: %s", e)
+            statcan_macro = None
+        if statcan_macro is not None:
+            contributed = False
+            if statcan_macro.cpi_yoy_pct is not None:
+                snapshot.statcan_cpi_yoy = statcan_macro.cpi_yoy_pct / 100.0
+                snapshot.statcan_cpi_as_of = statcan_macro.cpi_as_of
+                contributed = True
+            if statcan_macro.unemployment_pct is not None:
+                snapshot.statcan_unemployment_rate = (
+                    statcan_macro.unemployment_pct / 100.0
+                )
+                snapshot.statcan_unemployment_as_of = (
+                    statcan_macro.unemployment_as_of
+                )
+                contributed = True
+            if contributed:
+                snapshot.supplemental_sources.append(
+                    "Statistics Canada WDS (CPI, unemployment rate)"
                 )
                 got = True
 

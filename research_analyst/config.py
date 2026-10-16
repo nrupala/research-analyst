@@ -87,6 +87,10 @@ class MarketDataConfig(BaseSettings):
     # First-source provider (source registry step 6, 2026-10-16) —
     # keyless official API: Philippine Statistics Authority OpenSTAT.
     psa_base_url: str = "https://openstat.psa.gov.ph/PXWeb/api/v1/en"
+    # First-source provider (source registry step 7, 2026-10-16) —
+    # keyless official API: Statistics Canada Web Data Service.
+    # NOTE the base path is /t1/wds/rest (the /n1/ variant 404s).
+    statcan_base_url: str = "https://www150.statcan.gc.ca/t1/wds/rest"
     # First-source providers (source registry step 2, 2026-10-14) — all
     # keyless official APIs: ECB + Bundesbank (SDMX), Eurostat, Bank of Japan.
     ecb_base_url: str = "https://data-api.ecb.europa.eu/service"
