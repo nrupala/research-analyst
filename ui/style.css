@@ -40,9 +40,9 @@
     --c-error-bg: rgba(248, 113, 113, 0.08);
     --c-code-bg: #0b1120;
     --c-glow: 0 0 0 3px rgba(99, 102, 241, 0.25);
-    --ff-display: 'Inter Tight', 'Inter', system-ui, -apple-system, sans-serif;
-    --ff-sans: 'Inter', system-ui, -apple-system, sans-serif;
-    --ff-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    --ff-display: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --ff-sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --ff-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
     --fs-xs: 0.75rem; --fs-sm: 0.875rem; --fs-base: 1rem;
     --fs-lg: 1.125rem; --fs-xl: 1.25rem; --fs-2xl: 1.5rem; --fs-3xl: 1.875rem;
     --sp-1: 0.25rem; --sp-2: 0.5rem; --sp-3: 0.75rem; --sp-4: 1rem;
@@ -72,9 +72,9 @@
     --c-error-bg: #fef2f2;
     --c-code-bg: #eef1f8;
     --c-glow: 0 0 0 3px rgba(67, 56, 202, 0.15);
-    --ff-display: 'Inter Tight', 'Inter', system-ui, -apple-system, sans-serif;
-    --ff-sans: 'Inter', system-ui, -apple-system, sans-serif;
-    --ff-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    --ff-display: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --ff-sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --ff-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
     --fs-xs: 0.75rem; --fs-sm: 0.875rem; --fs-base: 1rem;
     --fs-lg: 1.125rem; --fs-xl: 1.25rem; --fs-2xl: 1.5rem; --fs-3xl: 1.875rem;
     --sp-1: 0.25rem; --sp-2: 0.5rem; --sp-3: 0.75rem; --sp-4: 1rem;
@@ -104,9 +104,9 @@
     --c-error-bg: rgba(224, 120, 86, 0.10);
     --c-code-bg: #100c08;
     --c-glow: 0 0 0 3px rgba(185, 138, 47, 0.22);
-    --ff-display: 'Inter Tight', 'Inter', system-ui, -apple-system, sans-serif;
-    --ff-sans: 'Inter', system-ui, -apple-system, sans-serif;
-    --ff-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    --ff-display: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --ff-sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --ff-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
     --fs-xs: 0.75rem; --fs-sm: 0.875rem; --fs-base: 1rem;
     --fs-lg: 1.125rem; --fs-xl: 1.25rem; --fs-2xl: 1.5rem; --fs-3xl: 1.875rem;
     --sp-1: 0.25rem; --sp-2: 0.5rem; --sp-3: 0.75rem; --sp-4: 1rem;
