@@ -257,3 +257,12 @@ def test_render_payload_rejects_csv_without_content():
     with pytest.raises(HTTPException) as exc:
         _render_payload({}, "csv", "research")
     assert exc.value.status_code == 400
+
+
+def test_embed_card_recognizes_canonical_declaration_name():
+    """Declarations now carry the display name itself (canonical-name
+    fix); the card's source note must still resolve."""
+    resp = _api_response()
+    resp.metadata.data_sources = ["Yahoo Finance (price data)"]
+    card = embed_card_html(resp, app_url="https://ra.aimlds.org")
+    assert "(source: Yahoo Finance)" in card
