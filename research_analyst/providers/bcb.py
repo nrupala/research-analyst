@@ -35,6 +35,12 @@ is only "current" if its date is not in the future — the parser
 takes the newest observation dated today or earlier and never
 presents a future-dated row as the present rate.
 
+Fetching uses explicit date-range queries, never ``ultimos/N``:
+the SGS caps that form at 20 values (HTTP 400 beyond it — learned
+live 2026-10-16 when a 30-row window silently degraded two of the
+three series), and a range ending today excludes the forward
+strip by construction.
+
 The provider is a first-source SUPPLEMENT (source registry step 4):
 it fills the macro snapshot's BCB fields and adds its label to
 ``supplemental_sources``; it never overwrites other fields.
@@ -53,8 +59,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import urllib.parse
 import urllib.request
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from pydantic import BaseModel
@@ -113,15 +120,25 @@ def parse_sgs_payload(
     return best
 
 
-def _fetch_series(base_url: str, series: int, recent: int) -> list[dict[str, Any]]:
-    """Fetch recent observations for one SGS series. Stdlib only.
+def _fetch_series(
+    base_url: str, series: int, lookback_days: int, *, today: date | None = None
+) -> list[dict[str, Any]]:
+    """Fetch one SGS series over an explicit date range. Stdlib only.
 
-    Raises on transport/HTTP errors so the caller can degrade.
+    Range form (dataInicial/dataFinal), never ``ultimos/N`` — see
+    the module docstring for the 20-value cap. Raises on
+    transport/HTTP errors so the caller can degrade.
     """
-    url = (
-        f"{base_url.rstrip('/')}/dados/serie/bcdata.sgs.{series}"
-        f"/dados/ultimos/{recent}?formato=json"
+    end = today or date.today()
+    start = end - timedelta(days=lookback_days)
+    params = urllib.parse.urlencode(
+        {
+            "formato": "json",
+            "dataInicial": start.strftime("%d/%m/%Y"),
+            "dataFinal": end.strftime("%d/%m/%Y"),
+        }
     )
+    url = f"{base_url.rstrip('/')}/dados/serie/bcdata.sgs.{series}/dados?{params}"
     req = urllib.request.Request(url, headers={"User-Agent": "ResearchAnalyst/0.4"})
     with urllib.request.urlopen(req, timeout=15) as resp:
         payload = json.loads(resp.read().decode())
@@ -137,9 +154,9 @@ class BcbProvider:
     async def get_latest_macro(self) -> BcbMacro | None:
         """Latest Selic/IPCA/PTAX. None only when every series fails."""
         plan = (
-            (SELIC_SERIES, 30),
-            (IPCA_12M_SERIES, 3),
-            (USD_BRL_SERIES, 30),
+            (SELIC_SERIES, 45),
+            (IPCA_12M_SERIES, 400),
+            (USD_BRL_SERIES, 45),
         )
         results = await asyncio.gather(
             *(

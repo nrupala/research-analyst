@@ -43,6 +43,14 @@ SELIC_STRIP = [
     {"data": "30/10/2026", "valor": "13.75"},
     {"data": "04/11/2026", "valor": "13.75"},
 ]
+# The real date-range response shape (2026-09-16 -> 2026-10-16
+# window, captured live): the Selic was CUT inside the window —
+# 14.00 at the start, 13.75 at the end. The newest row wins.
+SELIC_RANGE = [
+    {"data": "16/09/2026", "valor": "14.00"},
+    {"data": "15/10/2026", "valor": "13.75"},
+    {"data": "16/10/2026", "valor": "13.75"},
+]
 IPCA_ROWS = [
     {"data": "01/07/2026", "valor": "4.44"},
     {"data": "01/08/2026", "valor": "4.22"},
@@ -53,6 +61,10 @@ PTAX_ROWS = [{"data": "15/10/2026", "valor": "5.0521"}]
 
 def test_parse_selic_skips_future_strip():
     assert parse_sgs_payload(SELIC_STRIP, today=TODAY) == (TODAY, 13.75)
+
+
+def test_parse_selic_range_takes_newest_not_first():
+    assert parse_sgs_payload(SELIC_RANGE, today=TODAY) == (TODAY, 13.75)
 
 
 def test_parse_all_future_is_missing_not_current():
