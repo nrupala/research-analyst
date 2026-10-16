@@ -691,20 +691,19 @@ def create_app(
         }
         timeframe = timeframe_map.get(body.timeframe.upper(), Timeframe.ONE_YEAR)
 
-        research_request = ResearchRequest(
-            ticker=body.ticker.upper().strip(),
-            report_types=report_types,
-            compare_tickers=body.compare_tickers,
-            timeframe=timeframe,
-            custom_assumptions=body.custom_assumptions,
-        )
-
-        # CPU time is process-wide (async tasks share the process), so
-        # avg_cpu_s is an upper-bound estimate under concurrency — the
-        # pricing model re-run treats it as such (Stream C).
+        # Construction sits inside the try: a model ValidationError is
+        # a ValueError, and invalid input must surface as a clean 400,
+        # never a bare 500 (the ticker-cap drift did exactly that).
         wall0 = time.perf_counter()
         cpu0 = time.process_time()
         try:
+            research_request = ResearchRequest(
+                ticker=body.ticker.upper().strip(),
+                report_types=report_types,
+                compare_tickers=body.compare_tickers,
+                timeframe=timeframe,
+                custom_assumptions=body.custom_assumptions,
+            )
             result = await orchestrator.run(research_request)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
@@ -715,6 +714,9 @@ def create_app(
                 status_code=500,
                 detail=f"Research pipeline failed: {type(e).__name__}",
             ) from e
+        # CPU time is process-wide (async tasks share the process), so
+        # avg_cpu_s is an upper-bound estimate under concurrency — the
+        # pricing model re-run treats it as such (Stream C).
         telemetry.record_timing(
             "research_pipeline",
             wall_ms=(time.perf_counter() - wall0) * 1000,

@@ -28,10 +28,25 @@ charset guard (alphanumeric + dot/hyphen) is unchanged.
 """
 # Module: tests/test_ticker_validation.py
 
+from datetime import UTC, datetime
+
 import pandas as pd
 import pytest
+from fastapi.testclient import TestClient
 
+from research_analyst.enums import ReportType, ScenarioType, SecurityType
+from research_analyst.models import (
+    CapitalAllocation,
+    DividendAnalysis,
+    ReportOutput,
+    ResearchMetadata,
+    ResearchResponse,
+    RiskMatrix,
+    ValuationRange,
+    ValuationScenario,
+)
 from research_analyst.providers.market_data import MarketDataProvider, _sanitize_ticker
+from research_analyst.server import create_app
 
 
 @pytest.mark.parametrize(
@@ -94,3 +109,81 @@ async def test_price_series_reaches_cascade_for_long_india_ticker(monkeypatch):
     series = await provider.get_price_series("RELIANCE.NS", period="3mo")
     assert series.ticker == "RELIANCE.NS"
     assert series.data == []
+
+
+# ---------------------------------------------------------------------------
+# End-to-end: the cap existed in THREE layers (API model / provider /
+# ResearchRequest). The first fix aligned two and RELIANCE.NS still 500'd
+# live on the third — these tests pin the whole path through the server.
+# ---------------------------------------------------------------------------
+
+
+def _make_response(ticker: str) -> ResearchResponse:
+    scenario = ValuationScenario(
+        scenario_type=ScenarioType.BASE,
+        label="Base Case",
+        assumptions=[],
+        revenue_growth=0.08,
+        operating_margin=0.25,
+        implied_price_low=110.0,
+        implied_price_high=110.0,
+        implied_upside_low=0.10,
+        implied_upside_high=0.10,
+    )
+    report = ReportOutput(
+        report_type=ReportType.COMPREHENSIVE,
+        ticker=ticker,
+        title=f"{ticker} — Comprehensive 7-Step Research Report",
+        generated_at=datetime(2026, 7, 18, 12, 0, tzinfo=UTC),
+        sections=[],
+        valuation=ValuationRange(
+            ticker=ticker,
+            current_price=100.0,
+            scenarios=[scenario],
+            primary_methodology="Hybrid (PE + EV/EBITDA)",
+        ),
+        risk_matrix=RiskMatrix(ticker=ticker, overall_risk_score=4.0),
+        capital_allocation=CapitalAllocation(
+            ticker=ticker, period="TTM", roic=0.15,
+            roic_minus_wacc=0.06, shareholder_yield=0.03,
+        ),
+        dividend=DividendAnalysis(
+            ticker=ticker, pays_dividend=False,
+            no_dividend_context="No dividend currently paid.",
+        ),
+    )
+    return ResearchResponse(
+        ticker=ticker,
+        security_type=SecurityType.EQUITY,
+        company_name=f"{ticker} Inc.",
+        generated_at=datetime(2026, 7, 18, 12, 0, tzinfo=UTC),
+        reports=[report],
+        metadata=ResearchMetadata(data_sources=["Yahoo Finance (price data)"]),
+    )
+
+
+class _EchoOrchestrator:
+    """Returns a canned response; records the ticker it was handed."""
+
+    def __init__(self):
+        self.seen: list[str] = []
+
+    async def run(self, request):
+        self.seen.append(request.ticker)
+        return _make_response(request.ticker)
+
+
+def test_research_endpoint_serves_long_india_ticker():
+    orch = _EchoOrchestrator()
+    client = TestClient(create_app(orchestrator=orch), raise_server_exceptions=False)
+    resp = client.post("/api/research", json={"ticker": "RELIANCE.NS"})
+    assert resp.status_code == 200
+    assert orch.seen == ["RELIANCE.NS"]
+
+
+def test_research_endpoint_rejects_overlong_ticker_cleanly():
+    orch = _EchoOrchestrator()
+    client = TestClient(create_app(orchestrator=orch), raise_server_exceptions=False)
+    resp = client.post("/api/research", json={"ticker": "A" * 21})
+    assert resp.status_code == 422  # API-layer validation, not a 500
+    assert orch.seen == []
