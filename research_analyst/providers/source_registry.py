@@ -337,7 +337,9 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
         is_primary=True,
     ),
     # ------------------------------------------------------------------
-    # US energy — EIA (planned; free key not yet obtained)
+    # US energy — EIA (provider built 2026-10-16 as a macro-snapshot
+    # supplement; arms when the key is placed in the box env — until
+    # then it cannot serve, so the status stays planned)
     # ------------------------------------------------------------------
     SourceEntry(
         dataset="energy",
@@ -346,10 +348,11 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
         organization="U.S. Energy Information Administration",
         base_url="https://api.eia.gov/v2",
         access_method="REST + bulk files",
-        key_env_var="RA_EIA_API_KEY",
+        key_env_var="RA_MARKET_EIA_API_KEY",
         terms_note=(
-            "Free of charge; registration and the API Terms of Service apply "
-            "(EIA Copyrights and Reuse Policy)."
+            "Free registration key (obtained 2026-10-14, held in the Secure "
+            "Vault); API Terms of Service and the EIA Copyrights and Reuse "
+            "Policy apply. Data cited as EIA + series + as-of date."
         ),
         status=STATUS_PLANNED,
         is_primary=True,

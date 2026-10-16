@@ -71,6 +71,7 @@ from . import markets
 from .alphavantage import AlphaVantageProvider
 from .boc import BankOfCanadaProvider
 from .boj import BankOfJapanProvider
+from .eia import EiaProvider
 from .nasdaq import NasdaqProvider
 from .sdmx import BundesbankProvider, EcbProvider, EurostatProvider
 from .source_registry import fred_series_displayable
@@ -1482,7 +1483,7 @@ class MarketDataProvider:
         return got
 
     async def _populate_first_sources(self, snapshot: MacroSnapshot) -> bool:
-        """Populate first-source supplements (source registry steps 1-2).
+        """Populate first-source supplements (source registry steps 1-3).
 
         US Treasury Fiscal Data (average interest rates) and Bank of
         Canada Valet (policy rate, USD/CAD) were wired in step 1; step 2
@@ -1609,6 +1610,32 @@ class MarketDataProvider:
             if contributed:
                 snapshot.supplemental_sources.append(
                     "Bank of Japan Time-Series API (USD/JPY, basic discount/loan rate)"
+                )
+                got = True
+
+        # --- Step 3: EIA spot energy prices (key-gated) ------------------
+        try:
+            eia = await EiaProvider().get_latest_energy_prices()
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("EIA population failed: %s", e)
+            eia = None
+        if eia is not None:
+            contributed = False
+            if eia.wti_spot_usd is not None:
+                snapshot.eia_wti_spot = eia.wti_spot_usd
+                snapshot.eia_wti_as_of = eia.wti_as_of
+                contributed = True
+            if eia.brent_spot_usd is not None:
+                snapshot.eia_brent_spot = eia.brent_spot_usd
+                snapshot.eia_brent_as_of = eia.brent_as_of
+                contributed = True
+            if eia.henry_hub_spot_usd is not None:
+                snapshot.eia_henry_hub_spot = eia.henry_hub_spot_usd
+                snapshot.eia_henry_hub_as_of = eia.henry_hub_as_of
+                contributed = True
+            if contributed:
+                snapshot.supplemental_sources.append(
+                    "EIA Open Data API (WTI, Brent, Henry Hub spot prices)"
                 )
                 got = True
 
