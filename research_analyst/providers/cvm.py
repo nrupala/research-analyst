@@ -37,8 +37,13 @@ exact match on the legal or commercial name, else a unique
 token-subset match. No confident match -> no CVM statements, and
 the pipeline falls back to its other sources. Nothing is guessed.
 
-Scope v1: ANNUAL statements from DFP (consolidated preferred,
-individual as fallback). Quarterly ITR is a named fast-follow.
+Scope: ANNUAL statements from DFP (consolidated preferred,
+individual as fallback), plus a trailing-twelve-months (TTM)
+statement built from the quarterly ITR when its legs are complete
+(FY − prior-year YTD + current YTD; balance sheet as filed at the
+quarter end). The pipeline is annual-shaped, so quarters are never
+mixed into the statement list raw — the TTM is a 12-month flow
+statement and is labeled as one ("TTM 2026-Q2").
 """
 # Module: research_analyst/providers/cvm.py | Version: 0.1.0 | Updated: 2026-10-15
 
@@ -66,6 +71,7 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://dados.cvm.gov.br"
 _CADASTRO_PATH = "/dados/CIA_ABERTA/CAD/DADOS/cad_cia_aberta.csv"
 _DFP_PATH = "/dados/CIA_ABERTA/DOC/DFP/DADOS/dfp_cia_aberta_{year}.zip"
+_ITR_PATH = "/dados/CIA_ABERTA/DOC/ITR/DADOS/itr_cia_aberta_{year}.zip"
 _CACHE_TTL = timedelta(days=7)
 _USER_AGENT = "ResearchAnalyst/0.4 (contact: info@aimlds.org)"
 
@@ -357,6 +363,152 @@ def assemble_statements(
     return statements
 
 
+# Flow fields carried by the TTM identity (FY − prior YTD + YTD).
+_TTM_FLOW_FIELDS = (
+    "revenue",
+    "cost_of_revenue",
+    "gross_profit",
+    "operating_income",
+    "ebit",
+    "net_income",
+    "interest_expense",
+    "tax_expense",
+    "sga_expense",
+    "operating_cash_flow",
+)
+
+
+def _exercise_rows(
+    rows: list[dict[str, str]], ini: str, fim: str
+) -> list[dict[str, str]]:
+    """Rows of ONE exercise window (DT_INI_EXERC → DT_FIM_EXERC).
+
+    An ITR filing carries several exercises per account — current
+    YTD, prior-year YTD, and the discrete quarter — all ending on
+    the same DT_FIM_EXERC. The DFP-era _period_values keys by end
+    date alone, so ITR flow rows must be exercise-filtered before
+    they reach it, or the windows collide.
+    """
+    return [
+        r
+        for r in rows
+        if (r.get("DT_INI_EXERC") or "").strip() == ini
+        and (r.get("DT_FIM_EXERC") or "").strip() == fim
+    ]
+
+
+def _flows_from(
+    dre_rows: list[dict[str, str]],
+    dfc_rows: list[dict[str, str]],
+    ini: str,
+    fim: str,
+) -> FinancialStatement | None:
+    """Assemble one exercise window's flow fields (balance empty)."""
+    stmts = assemble_statements(
+        _exercise_rows(dre_rows, ini, fim),
+        [],
+        [],
+        _exercise_rows(dfc_rows, ini, fim),
+        [],
+        max_periods=3,
+    )
+    return stmts[0] if stmts else None
+
+
+def assemble_ttm(
+    annual: list[FinancialStatement],
+    dre_rows: list[dict[str, str]],
+    bpa_rows: list[dict[str, str]],
+    bpp_rows: list[dict[str, str]],
+    dfc_rows: list[dict[str, str]],
+    capital_rows: list[dict[str, str]],
+) -> FinancialStatement | None:
+    """Trailing-twelve-months statement from the newest ITR quarter.
+
+    TTM flows = prior FY − prior-year YTD + current YTD, per field;
+    a field is computed only when all three legs filed it (missing
+    stays missing). The balance sheet is the quarter-end snapshot
+    as filed. Returns None unless the anchor quarter, the prior FY,
+    both YTD legs, and the snapshot all exist, and the TTM revenue
+    and net income are computable — a partial TTM never leads.
+    """
+    ytd_ends = sorted(
+        {
+            (r.get("DT_FIM_EXERC") or "").strip()
+            for r in dre_rows
+            if (r.get("DT_INI_EXERC") or "").strip()
+            == f"{(r.get('DT_FIM_EXERC') or '')[:4]}-01-01"
+        },
+        reverse=True,
+    )
+    if not ytd_ends:
+        return None
+    fim = ytd_ends[0]
+    try:
+        qend = date.fromisoformat(fim)
+    except ValueError:
+        return None
+    qyear = qend.year
+    fy = next(
+        (s for s in annual if s.period_end_date == date(qyear - 1, 12, 31)),
+        None,
+    )
+    if fy is None:
+        return None
+    curr = _flows_from(dre_rows, dfc_rows, f"{qyear}-01-01", fim)
+    prior = _flows_from(
+        dre_rows, dfc_rows, f"{qyear - 1}-01-01", f"{qyear - 1}{fim[4:]}"
+    )
+    if curr is None or prior is None:
+        return None
+    snapshots = assemble_statements(
+        [], bpa_rows, bpp_rows, [], capital_rows, max_periods=10
+    )
+    snap = next((s for s in snapshots if s.period_end_date == qend), None)
+    if snap is None:
+        return None
+
+    flows: dict[str, Decimal | None] = {}
+    for field in _TTM_FLOW_FIELDS:
+        legs = (getattr(fy, field), getattr(prior, field), getattr(curr, field))
+        flows[field] = (
+            legs[0] - legs[1] + legs[2]
+            if all(leg is not None for leg in legs)
+            else None
+        )
+    if flows["revenue"] is None or flows["net_income"] is None:
+        return None
+    quarter = (qend.month - 1) // 3 + 1
+    return FinancialStatement(
+        period=f"TTM {qyear}-Q{quarter}",
+        period_end_date=qend,
+        is_annual=True,  # a 12-month flow statement, labeled as TTM
+        revenue=flows["revenue"],
+        cost_of_revenue=flows["cost_of_revenue"],
+        gross_profit=flows["gross_profit"],
+        operating_income=flows["operating_income"],
+        ebit=flows["ebit"],
+        net_income=flows["net_income"],
+        interest_expense=flows["interest_expense"],
+        tax_expense=flows["tax_expense"],
+        sga_expense=flows["sga_expense"],
+        operating_cash_flow=flows["operating_cash_flow"],
+        gross_margin=_margin(flows["gross_profit"], flows["revenue"]),
+        operating_margin=_margin(flows["operating_income"], flows["revenue"]),
+        net_margin=_margin(flows["net_income"], flows["revenue"]),
+        total_assets=snap.total_assets,
+        current_assets=snap.current_assets,
+        cash_and_equivalents=snap.cash_and_equivalents,
+        ppe_net=snap.ppe_net,
+        total_liabilities=snap.total_liabilities,
+        current_liabilities=snap.current_liabilities,
+        total_equity=snap.total_equity,
+        total_debt=snap.total_debt,
+        net_debt=snap.net_debt,
+        shares_outstanding=snap.shares_outstanding or fy.shares_outstanding,
+    )
+
+
 def _margin(numerator: Decimal | None, revenue: Decimal | None) -> float | None:
     if numerator is None or revenue is None or revenue == 0:
         return None
@@ -389,7 +541,12 @@ class CVMProvider:
     async def get_financials(
         self, ticker: str, company_name: str, periods: int = 5
     ) -> list[FinancialStatement]:
-        """Annual statements for a Brazilian (.SA) listing, or []."""
+        """Annual statements for a Brazilian (.SA) listing, or [].
+
+        Annuals come from DFP; when the quarterly ITR's legs are
+        complete, a trailing-twelve-months statement (assemble_ttm)
+        is prepended as the newest period.
+        """
         if not ticker.upper().strip().endswith(".SA"):
             return []
         entries = parse_cadastro(await self._cadastro_text())
@@ -399,24 +556,46 @@ class CVMProvider:
             return []
         con: dict[str, list[dict[str, str]]] = {kind: [] for kind in _KINDS}
         ind: dict[str, list[dict[str, str]]] = {kind: [] for kind in _KINDS}
+        itr_con: dict[str, list[dict[str, str]]] = {kind: [] for kind in _KINDS}
+        itr_ind: dict[str, list[dict[str, str]]] = {kind: [] for kind in _KINDS}
         year = date.today().year
         for candidate_year in (year, year - 1, year - 2):
             zip_path = await self._dfp_zip(candidate_year)
-            if zip_path is None:
-                continue
-            self._collect(zip_path, entry.cnpj, con, ind)
+            if zip_path is not None:
+                self._collect(zip_path, entry.cnpj, con, ind)
+            itr_path = await self._itr_zip(candidate_year)
+            if itr_path is not None:
+                self._collect(itr_path, entry.cnpj, itr_con, itr_ind, doc="itr")
         # Consolidated statements are the value of record; individual
         # statements serve only companies that file no consolidated.
         rows = {kind: con[kind] or ind[kind] for kind in _KINDS}
         if not rows["DRE"] and not rows["BPA"]:
             return []
-        return assemble_statements(
+        annuals = assemble_statements(
             rows["DRE"],
             rows["BPA"],
             rows["BPP"],
             rows["DFC_MI"] or rows["DFC_MD"],
             rows["composicao_capital"],
             max_periods=periods,
+        )
+        itr_rows = {kind: itr_con[kind] or itr_ind[kind] for kind in _KINDS}
+        ttm = None
+        if itr_rows["DRE"]:
+            ttm = assemble_ttm(
+                annuals,
+                itr_rows["DRE"],
+                itr_rows["BPA"],
+                itr_rows["BPP"],
+                itr_rows["DFC_MI"] or itr_rows["DFC_MD"],
+                itr_rows["composicao_capital"],
+            )
+        if ttm is None:
+            return annuals
+        return sorted(
+            [ttm, *annuals],
+            key=lambda s: s.period_end_date or date.min,
+            reverse=True,
         )
 
     # -- downloads + cache ------------------------------------------------
@@ -485,6 +664,14 @@ class CVMProvider:
                 return None
         return path if path.exists() else None
 
+    async def _itr_zip(self, year: int) -> Path | None:
+        path = self._cache_dir / f"itr_cia_aberta_{year}.zip"
+        if not self._fresh(path):
+            ok = await self._download(BASE_URL + _ITR_PATH.format(year=year), path)
+            if not ok and not path.exists():
+                return None
+        return path if path.exists() else None
+
     # -- extraction ---------------------------------------------------------
 
     def _collect(
@@ -493,6 +680,7 @@ class CVMProvider:
         cnpj: str,
         con: dict[str, list[dict[str, str]]],
         ind: dict[str, list[dict[str, str]]],
+        doc: str = "dfp",
     ) -> None:
         try:
             archive = zipfile.ZipFile(zip_path)
@@ -503,13 +691,13 @@ class CVMProvider:
         year = zip_path.stem.rsplit("_", 1)[-1]
         for kind in _KINDS:
             if kind == "composicao_capital":
-                member = f"dfp_cia_aberta_composicao_capital_{year}.csv"
+                member = f"{doc}_cia_aberta_composicao_capital_{year}.csv"
                 if member in names:
                     text = archive.read(member).decode("latin-1")
                     con[kind].extend(parse_statement_rows(text, cnpj))
                 continue
             for suffix, bucket in (("con", con), ("ind", ind)):
-                member = f"dfp_cia_aberta_{kind}_{suffix}_{year}.csv"
+                member = f"{doc}_cia_aberta_{kind}_{suffix}_{year}.csv"
                 if member not in names:
                     continue
                 try:

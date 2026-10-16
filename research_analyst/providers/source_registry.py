@@ -360,8 +360,10 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
     # ------------------------------------------------------------------
     # Brazil filings — CVM open data (WIRED 2026-10-15: DFP annual
     # statements lead for .SA listings; ticker resolved by company
-    # name against the CVM register, never guessed. ITR quarterly is
-    # a named fast-follow.)
+    # name against the CVM register, never guessed. ITR quarterly
+    # WIRED 2026-10-16 as a TTM statement — FY − prior YTD + current
+    # YTD, quarter-end balance sheet — never raw quarters, since the
+    # pipeline is annual-shaped.)
     # ------------------------------------------------------------------
     SourceEntry(
         dataset="filings",

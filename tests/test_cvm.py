@@ -36,6 +36,7 @@ from decimal import Decimal
 from research_analyst.providers.cvm import (
     CVMProvider,
     assemble_statements,
+    assemble_ttm,
     parse_cadastro,
     parse_statement_rows,
     resolve_company,
@@ -260,6 +261,11 @@ async def test_provider_end_to_end_from_cache(tmp_path):
     _write_zip(tmp_path / "dfp_cia_aberta_2024.zip", members)
     _write_zip(tmp_path / f"dfp_cia_aberta_{year}.zip", {})
     _write_zip(tmp_path / f"dfp_cia_aberta_{year - 1}.zip", {})
+    # Empty ITR archives: cached and fresh, so the TTM path runs and
+    # finds no legs (annuals only), without touching the network.
+    _write_zip(tmp_path / f"itr_cia_aberta_{year}.zip", {})
+    _write_zip(tmp_path / f"itr_cia_aberta_{year - 1}.zip", {})
+    _write_zip(tmp_path / "itr_cia_aberta_2024.zip", {})
     manifest = {
         name: datetime.now().isoformat()
         for name in (
@@ -267,6 +273,9 @@ async def test_provider_end_to_end_from_cache(tmp_path):
             "dfp_cia_aberta_2024.zip",
             f"dfp_cia_aberta_{year}.zip",
             f"dfp_cia_aberta_{year - 1}.zip",
+            f"itr_cia_aberta_{year}.zip",
+            f"itr_cia_aberta_{year - 1}.zip",
+            "itr_cia_aberta_2024.zip",
         )
     }
     (tmp_path / "manifest.json").write_text(json.dumps(manifest))
@@ -323,3 +332,107 @@ def test_resolve_tolerates_duplicate_register_rows():
     entries = parse_cadastro(CADASTRO + f"{CNPJ};{NAME};PETROBRAS;ATIVO;9512\n")
     hit = resolve_company(entries, "Petróleo Brasileiro S.A. - Petrobras")
     assert hit is not None and hit.cd_cvm == "9512"
+
+
+# ---------------------------------------------------------------------------
+# ITR trailing-twelve-months (fast-follow, 2026-10-16)
+#
+# Golden chain = Petrobras's REAL filings, extracted from the actual
+# CVM bulk files: FY2025 DFP (revenue R$497,549M, attributable net
+# R$110,129M); ITR 2026 Q2 carrying 1H2026 YTD (293,216 / 85,108),
+# 1H2025 YTD (242,272 / 61,861) and the discrete Q2 (169,530 /
+# 52,445); balance sheet at 2026-06-30 (assets R$1,279,019M =
+# 181,372 + 615,793 + 481,854 — balances to the thousand).
+# TTM = 497,549 − 242,272 + 293,216 = R$548,493M revenue;
+#       110,129 − 61,861 + 85,108  = R$133,376M net.
+# ---------------------------------------------------------------------------
+
+_FY25_DRE = "\n".join([
+    _FLOW_HEADER,
+    _flow_row("3.01", "497549000.0000000000", fim="2025-12-31", refer="2025-12-31"),
+    _flow_row("3.11.01", "110129000.0000000000", fim="2025-12-31", refer="2025-12-31"),
+])
+
+_ITR_DRE = "\n".join([
+    _FLOW_HEADER,
+    # Current YTD (2026-01-01 -> 2026-06-30), as filed in the Q2 ITR.
+    _flow_row("3.01", "293216000.0000000000", fim="2026-06-30", refer="2026-06-30"),
+    _flow_row("3.11.01", "85108000.0000000000", fim="2026-06-30", refer="2026-06-30"),
+    # Prior-year YTD (2025-01-01 -> 2025-06-30), same filing.
+    _flow_row("3.01", "242272000.0000000000", fim="2025-06-30", refer="2026-06-30"),
+    _flow_row("3.11.01", "61861000.0000000000", fim="2025-06-30", refer="2026-06-30"),
+    # The DISCRETE quarter (2026-04-01 -> 2026-06-30): same DT_FIM_EXERC
+    # as the YTD — must never pollute a YTD leg.
+    f"{CNPJ};2026-06-30;1;{NAME};009512;IT;REAL;MIL;ÚLTIMO;"
+    "2026-04-01;2026-06-30;3.01;Conta;169530000.0000000000;S",
+    f"{CNPJ};2026-06-30;1;{NAME};009512;IT;REAL;MIL;ÚLTIMO;"
+    "2026-04-01;2026-06-30;3.11.01;Conta;52445000.0000000000;S",
+])
+
+_ITR_BPA = "\n".join([
+    _BS_HEADER,
+    _bs_row("1", "1279019000.0000000000", fim="2026-06-30", refer="2026-06-30"),
+    # Prior year-end comparative snapshot in the same filing — the
+    # picker must take the quarter end, not this.
+    _bs_row("1", "1223389000.0000000000", fim="2025-12-31", refer="2026-06-30"),
+])
+_ITR_BPP = "\n".join([
+    _BS_HEADER,
+    _bs_row("2.01", "181372000.0000000000", fim="2026-06-30", refer="2026-06-30"),
+    _bs_row("2.02", "615793000.0000000000", fim="2026-06-30", refer="2026-06-30"),
+    _bs_row("2.03", "481854000.0000000000", fim="2026-06-30", refer="2026-06-30"),
+])
+
+
+def _fy25_annuals():
+    return assemble_statements(parse_statement_rows(_FY25_DRE, CNPJ), [], [], [], [])
+
+
+def test_ttm_golden_petrobras_q2_2026():
+    ttm = assemble_ttm(
+        _fy25_annuals(),
+        parse_statement_rows(_ITR_DRE, CNPJ),
+        parse_statement_rows(_ITR_BPA, CNPJ),
+        parse_statement_rows(_ITR_BPP, CNPJ),
+        [],
+        [],
+    )
+    assert ttm is not None
+    assert ttm.period == "TTM 2026-Q2"
+    assert ttm.period_end_date == date(2026, 6, 30)
+    assert ttm.revenue == Decimal("548493000000")
+    assert ttm.net_income == Decimal("133376000000")
+    assert ttm.total_assets == Decimal("1279019000000")
+    assert ttm.total_equity == Decimal("481854000000")
+    assert ttm.total_liabilities == Decimal("797165000000")
+    # The filed balance sheet balances; so does the TTM statement.
+    assert ttm.total_assets == ttm.total_liabilities + ttm.total_equity
+
+
+def test_ttm_missing_leg_stays_missing():
+    # Without the prior-year YTD leg there is no TTM — never a
+    # YTD-as-annual substitute.
+    dre_no_prior = "\n".join(
+        line for line in _ITR_DRE.splitlines() if "2025-06-30" not in line
+    )
+    ttm = assemble_ttm(
+        _fy25_annuals(),
+        parse_statement_rows(dre_no_prior, CNPJ),
+        parse_statement_rows(_ITR_BPA, CNPJ),
+        parse_statement_rows(_ITR_BPP, CNPJ),
+        [],
+        [],
+    )
+    assert ttm is None
+
+
+def test_ttm_needs_prior_fy():
+    ttm = assemble_ttm(
+        [],
+        parse_statement_rows(_ITR_DRE, CNPJ),
+        parse_statement_rows(_ITR_BPA, CNPJ),
+        parse_statement_rows(_ITR_BPP, CNPJ),
+        [],
+        [],
+    )
+    assert ttm is None
