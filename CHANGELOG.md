@@ -10,6 +10,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project use
 Releases are cut by tagging the repo (see `docs/VERSIONING.md`); GitHub auto-generates the per-release notes from merged PRs.
 
 ## [Unreleased]
+### Added
+- **Metered analysis API activated (Stream B / F1.2).** The analysis endpoints (`/api/research`, `/api/compare`, `/api/resolve`, `/api/research/quant`) now serve a keyed lane alongside the free public lane: a presented key governs by its entitlements — invalid/revoked 401, no `api.access` 403, per-key rate caps (60/min API Pro, 300/min API Team) and monthly call allowances (100,000 / 1,000,000) enforced with 429. Served calls count toward the allowance; failed pipeline calls never do. Metering counts persist to disk (`RA_BILLING_METERING_FILE`, default sibling of the key store) so usage survives restarts, and `/api/usage` now reports the month truthfully (per-endpoint monthly counts, allowance, remaining) alongside the existing day fields.
+
 ### Removed
 - **Paid source-data download retired (owner ruling, 2026-10-15).** `POST /api/research/data`, the `source.data` entitlement, the TWF bundle's source-data unlock, the web UI's *Download data* button, and the bundle exporter (`research_analyst/data_export.py`) are removed. Data RA consumes under license is never sold or redistributed in any format; the paid API sells metered access to RA's own analysis only. The TWF Pro bundle now unlocks RA Pro + `api.access`.
 

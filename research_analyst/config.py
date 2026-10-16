@@ -177,6 +177,11 @@ class BillingConfig(BaseSettings):
     # gate the public research endpoints.
     api_keys_file: str = ""
 
+    # Metering persistence file (Stream B / F1.2): per-key usage counts
+    # survive restarts, so monthly allowances and /api/usage stay true.
+    # Defaults to a "metering.json" sibling of the key-store file.
+    metering_file: str = ""
+
     # Stripe billing (Stream A). All values come from the environment —
     # never from code. The billing endpoints stay dormant (503) until
     # stripe_secret_key and stripe_webhook_secret are both set. Card

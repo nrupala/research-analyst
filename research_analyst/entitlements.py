@@ -56,7 +56,7 @@ import secrets
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -340,15 +340,61 @@ MeterSink = Callable[[str, str, str], None]  # (key_id, endpoint, day) -> None
 
 
 class MeteringRecorder:
-    """Record API usage. In-memory counters with a pluggable sink.
+    """Record API usage. Counters per (key, endpoint, day), a pluggable
+    sink, and optional JSON-file persistence.
 
     The sink lets a future billing backend receive usage events without
     changing call sites. The default sink is a no-op.
+
+    Persistence (Stream B / F1.2): monthly allowance enforcement and
+    /api/usage read these counters, so when a path is configured the
+    counts survive restarts — a restart must never reset a customer's
+    usage. Buckets older than ~92 days are pruned on load.
     """
 
-    def __init__(self, sink: MeterSink | None = None) -> None:
+    def __init__(
+        self, sink: MeterSink | None = None, path: str | Path | None = None
+    ) -> None:
         self._counts: dict[tuple[str, str, str], int] = {}
         self._sink = sink or (lambda key_id, endpoint, day: None)
+        self._path = Path(path) if path else None
+        if self._path is not None:
+            self._load()
+
+    def _load(self) -> None:
+        assert self._path is not None
+        try:
+            raw = json.loads(self._path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        cutoff = (datetime.now(UTC) - timedelta(days=92)).strftime("%Y-%m-%d")
+        for compound, count in (raw.get("counts") or {}).items():
+            parts = compound.split("|")
+            if len(parts) != 3:
+                continue
+            key_id, endpoint, day = parts
+            if day < cutoff:
+                continue
+            try:
+                self._counts[(key_id, endpoint, day)] = int(count)
+            except (TypeError, ValueError):
+                continue
+
+    def _save(self) -> None:
+        if self._path is None:
+            return
+        data = {
+            "counts": {
+                f"{k}|{e}|{d}": c for (k, e, d), c in sorted(self._counts.items())
+            }
+        }
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self._path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data), encoding="utf-8")
+            tmp.replace(self._path)
+        except OSError as e:
+            logger.warning("Metering persistence failed: %s", e)
 
     @staticmethod
     def _today_utc() -> str:
@@ -358,6 +404,7 @@ class MeteringRecorder:
         day = day or self._today_utc()
         k = (key_id, endpoint, day)
         self._counts[k] = self._counts.get(k, 0) + 1
+        self._save()
         try:
             self._sink(key_id, endpoint, day)
         except Exception as e:
@@ -374,6 +421,22 @@ class MeteringRecorder:
 
     def total_requests(self, key_id: str, day: str | None = None) -> int:
         return sum(self.usage(key_id, day=day).values())
+
+    @staticmethod
+    def current_month_utc() -> str:
+        return datetime.now(UTC).strftime("%Y-%m")
+
+    def month_usage(self, key_id: str, month: str | None = None) -> dict[str, int]:
+        """Per-endpoint request counts for a key in a UTC month."""
+        month = month or self.current_month_utc()
+        out: dict[str, int] = {}
+        for (k, endpoint, d), count in self._counts.items():
+            if k == key_id and d.startswith(month):
+                out[endpoint] = out.get(endpoint, 0) + count
+        return out
+
+    def month_total(self, key_id: str, month: str | None = None) -> int:
+        return sum(self.month_usage(key_id, month=month).values())
 
 
 # ---------------------------------------------------------------------------

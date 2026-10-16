@@ -44,7 +44,7 @@ import os
 import subprocess
 import time
 import uuid
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
@@ -71,6 +71,7 @@ from .comparative import MAX_TICKERS, MIN_TICKERS, ComparativeOrchestrator
 from .config import settings
 from .disclaimer import DISCLAIMER_FULL, DISCLAIMER_SHORT, DISCLAIMER_VERSION
 from .entitlements import (
+    API_ACCESS,
     RA_PRO,
     APIKeyRecord,
     KeyStore,
@@ -231,6 +232,34 @@ class _IPRateLimiter:
         return False
 
 
+# Per-key rate caps for the keyed analysis-API lane (Stream B / F1.2),
+# from the adopted flavors: same tools every tier, volume is the
+# difference. Keys with api.access but no plan get the Pro cap.
+_PLAN_RATE_CAPS_PER_MIN: dict[str, int] = {"api_pro": 60, "api_team": 300}
+_DEFAULT_KEY_RATE_CAP_PER_MIN = 60
+
+
+class _KeyRateLimiter:
+    """Per-API-key request-rate cap (sliding 60-second window).
+
+    In-memory by design: the cap is a burst guard, not a billing
+    counter — billing truth lives in MeteringRecorder.
+    """
+
+    def __init__(self) -> None:
+        self._hits: dict[str, deque[float]] = {}
+
+    def allow(self, key_id: str, cap_per_minute: int) -> bool:
+        now = time.monotonic()
+        window = self._hits.setdefault(key_id, deque())
+        while window and now - window[0] > 60.0:
+            window.popleft()
+        if len(window) >= cap_per_minute:
+            return False
+        window.append(now)
+        return True
+
+
 # ---------------------------------------------------------------------------
 # Response models (defined in api_models.py — the typed-export source of truth)
 # ---------------------------------------------------------------------------
@@ -369,10 +398,17 @@ def create_app(
         if not grants_path and settings.billing.api_keys_file:
             grants_path = str(Path(settings.billing.api_keys_file).parent / "stripe_grants.json")
         grant_store = GrantStore(grants_path or None)
-    metering = metering or MeteringRecorder()
+    if metering is None:
+        metering_path = settings.billing.metering_file
+        if not metering_path and settings.billing.api_keys_file:
+            metering_path = str(
+                Path(settings.billing.api_keys_file).parent / "metering.json"
+            )
+        metering = MeteringRecorder(path=metering_path or None)
     app.state.key_store = key_store
     app.state.grant_store = grant_store
     app.state.metering = metering
+    app.state.key_rate_limiter = _KeyRateLimiter()
     app.state.white_label = WhiteLabelProfile(
         org_name=settings.billing.white_label_org_name,
         prepared_on_url=settings.billing.white_label_prepared_on_url,
@@ -420,6 +456,54 @@ def create_app(
             status_code=401,
             detail="Provide a valid X-RA-Key header to use this endpoint.",
         )
+
+    def _api_access_gate(request: Request) -> None:
+        """Keyed lane for the analysis API (Stream B / F1.2).
+
+        No X-RA-Key header -> the free public lane, untouched (the UI
+        carries no key). A legacy paid key passes as before. A presented
+        KeyStore key governs by its own entitlements:
+
+        - invalid or revoked key -> 401
+        - valid key without `api.access` -> 403 (app tiers are app-only)
+        - valid key with `api.access` -> per-key rate cap (429) and,
+          when the key carries a monthly allowance, the month's served
+          calls must be under it (429). Allowance counts SERVED calls:
+          a call our pipeline fails is never billed to the customer.
+        """
+        provided = request.headers.get("x-ra-key", "")
+        if not provided:
+            return
+        if provided in settings.billing.paid_keys:
+            return
+        record = _key_record(request)
+        if record is None:
+            raise HTTPException(
+                status_code=401, detail="The API key provided is not valid."
+            )
+        if not has_entitlement(record, API_ACCESS):
+            raise HTTPException(
+                status_code=403,
+                detail="This API key does not include API access.",
+            )
+        cap = _PLAN_RATE_CAPS_PER_MIN.get(
+            record.plan or "", _DEFAULT_KEY_RATE_CAP_PER_MIN
+        )
+        if not request.app.state.key_rate_limiter.allow(record.key_id, cap):
+            raise HTTPException(
+                status_code=429,
+                detail="Rate limit exceeded for this API key. Slow down and retry.",
+            )
+        if record.monthly_call_allowance is not None:
+            used = request.app.state.metering.month_total(record.key_id)
+            if used >= record.monthly_call_allowance:
+                raise HTTPException(
+                    status_code=429,
+                    detail=(
+                        "Monthly API call allowance reached for this key. "
+                        "It resets on the 1st of next month (UTC)."
+                    ),
+                )
 
     # --- Market data (symbol/name resolution) ---
     market_provider = MarketDataProvider()
@@ -472,6 +556,7 @@ def create_app(
         if not rate_limiter.allow(client_ip):
             raise HTTPException(status_code=429, detail="Rate limit exceeded.")
         _require_api_key(request)
+        _api_access_gate(request)
         from .resolver import resolve_subject
 
         matches = await market_provider.search_symbols(body.query)
@@ -499,6 +584,7 @@ def create_app(
         if not rate_limiter.allow(client_ip):
             raise HTTPException(status_code=429, detail="Rate limit exceeded.")
         _require_api_key(request)
+        _api_access_gate(request)
 
         request_id = str(uuid.uuid4())[:8]
 
@@ -540,7 +626,7 @@ def create_app(
 
     async def _run_pipeline(body: ResearchAPIRequest) -> Any:
         """Build the ResearchRequest and run the orchestrator -> typed
-        ResearchResponse (shared by /api/research and the paid data endpoint)."""
+        ResearchResponse (shared by the research endpoints)."""
         report_types = ReportType.from_user_input(body.report_type)
 
         from .enums import Timeframe
@@ -606,6 +692,7 @@ def create_app(
         if not rate_limiter.allow(client_ip):
             raise HTTPException(status_code=429, detail="Rate limit exceeded.")
         _require_api_key(request)
+        _api_access_gate(request)
 
         request_id = str(uuid.uuid4())[:8]
 
@@ -675,6 +762,7 @@ def create_app(
         if not rate_limiter.allow(client_ip):
             raise HTTPException(status_code=429, detail="Rate limit exceeded.")
         _require_api_key(request)
+        _api_access_gate(request)
 
         clean = ticker.upper().strip()
 
@@ -812,14 +900,25 @@ def create_app(
         from .entitlements import effective_entitlements
 
         metering = request.app.state.metering
+        monthly = metering.month_usage(record.key_id)
+        monthly_total = sum(monthly.values())
+        allowance = record.monthly_call_allowance
         return JSONResponse(
             {
                 "key_id": record.key_id,
                 "label": record.label,
                 "entitlements": sorted(effective_entitlements(record)),
+                "plan": record.plan,
                 "day_utc": metering._today_utc(),
                 "usage": metering.usage(record.key_id),
                 "total_requests": metering.total_requests(record.key_id),
+                "month_utc": metering.current_month_utc(),
+                "monthly_usage": monthly,
+                "monthly_total_requests": monthly_total,
+                "monthly_call_allowance": allowance,
+                "monthly_remaining": (
+                    allowance - monthly_total if allowance is not None else None
+                ),
             }
         )
 
