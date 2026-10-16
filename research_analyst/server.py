@@ -38,6 +38,7 @@ Endpoints:
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -93,6 +94,7 @@ from .stripe_billing import (
     handle_event,
     verify_signature,
 )
+from .telemetry import TelemetryRecorder
 
 logger = logging.getLogger(__name__)
 
@@ -346,6 +348,7 @@ def create_app(
     key_store: KeyStore | None = None,
     metering: MeteringRecorder | None = None,
     grant_store: GrantStore | None = None,
+    telemetry: TelemetryRecorder | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="Research Analyst",
@@ -361,7 +364,7 @@ def create_app(
         allow_origins=settings.server.cors_origins,
         allow_credentials=False,
         allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "X-RA-Key"],
+        allow_headers=["Content-Type", "Authorization", "X-RA-Key", "X-RA-Admin-Key"],
     )
     app.add_middleware(GZipMiddleware, minimum_size=500)
 
@@ -405,9 +408,18 @@ def create_app(
                 Path(settings.billing.api_keys_file).parent / "metering.json"
             )
         metering = MeteringRecorder(path=metering_path or None)
+    if telemetry is None:
+        telemetry_dir = settings.telemetry.directory
+        if not telemetry_dir and settings.billing.api_keys_file:
+            telemetry_dir = str(Path(settings.billing.api_keys_file).parent)
+        telemetry = TelemetryRecorder(
+            directory=telemetry_dir or None,
+            retention_days=settings.telemetry.retention_days,
+        )
     app.state.key_store = key_store
     app.state.grant_store = grant_store
     app.state.metering = metering
+    app.state.telemetry = telemetry
     app.state.key_rate_limiter = _KeyRateLimiter()
     app.state.white_label = WhiteLabelProfile(
         org_name=settings.billing.white_label_org_name,
@@ -431,6 +443,40 @@ def create_app(
         record = _key_record(request)
         key_id = record.key_id if record else "anonymous"
         request.app.state.metering.record(key_id, endpoint)
+
+    # --- Telemetry (Stream C): first-party, on-box, aggregates only ---
+    # Content rules live in telemetry.py: route template only (never a
+    # raw path with ids, never the query string), key RECORD id only
+    # (never the raw key), no IP addresses in any form.
+
+    def _route_template(request: Request) -> str:
+        route = request.scope.get("route")
+        path = getattr(route, "path", None)
+        return str(path) if path else "unmatched"
+
+    def _telemetry_key_id(request: Request) -> str:
+        if not request.headers.get("x-ra-key"):
+            return "anonymous"
+        record = _key_record(request)
+        return record.key_id if record else "invalid"
+
+    @app.middleware("http")
+    async def telemetry_middleware(request: Request, call_next: Any) -> Any:
+        recorder = request.app.state.telemetry
+        start = time.perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception as e:
+            recorder.record_error(_route_template(request), type(e).__name__)
+            raise
+        recorder.record_request(
+            route=_route_template(request),
+            method=request.method,
+            status=response.status_code,
+            duration_ms=(time.perf_counter() - start) * 1000,
+            key_id=_telemetry_key_id(request),
+        )
+        return response
 
     def _require_api_key(request: Request) -> None:
         """Gate for the metered endpoints (research, resolve, compare, quant).
@@ -597,6 +643,7 @@ def create_app(
             if now <= _eod_cache_expiry(cached_at, cache_ttl):
                 logger.info("Cache hit for %s (age %.0fs)", body.ticker, age)
                 report_cache.move_to_end(ck)
+                telemetry.record_cache(True)
                 api_response = stamp_cache_hit(cached, cached_at)
             else:
                 logger.info(
@@ -606,9 +653,11 @@ def create_app(
                     cache_ttl,
                 )
                 del report_cache[ck]
+                telemetry.record_cache(False)
                 api_response = await _run_research_uncached(body, request_id)
                 _cache_store(ck, api_response)
         else:
+            telemetry.record_cache(False)
             api_response = await _run_research_uncached(body, request_id)
             _cache_store(ck, api_response)
 
@@ -650,16 +699,27 @@ def create_app(
             custom_assumptions=body.custom_assumptions,
         )
 
+        # CPU time is process-wide (async tasks share the process), so
+        # avg_cpu_s is an upper-bound estimate under concurrency — the
+        # pricing model re-run treats it as such (Stream C).
+        wall0 = time.perf_counter()
+        cpu0 = time.process_time()
         try:
             result = await orchestrator.run(research_request)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:
+            telemetry.record_error("/api/research", type(e).__name__)
             logger.error("Pipeline error for %s: %s", body.ticker, e, exc_info=True)
             raise HTTPException(
                 status_code=500,
                 detail=f"Research pipeline failed: {type(e).__name__}",
             ) from e
+        telemetry.record_timing(
+            "research_pipeline",
+            wall_ms=(time.perf_counter() - wall0) * 1000,
+            cpu_ms=(time.process_time() - cpu0) * 1000,
+        )
         return result
 
     async def _run_research_uncached(
@@ -707,16 +767,24 @@ def create_app(
                 ),
             )
 
+        wall0 = time.perf_counter()
+        cpu0 = time.process_time()
         try:
             report = await comparative.run(distinct, timeframe=body.timeframe)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:
+            telemetry.record_error("/api/compare", type(e).__name__)
             logger.error("Comparative pipeline error for %s: %s", distinct, e, exc_info=True)
             raise HTTPException(
                 status_code=500,
                 detail=f"Comparative pipeline failed: {type(e).__name__}",
             ) from e
+        telemetry.record_timing(
+            "compare_pipeline",
+            wall_ms=(time.perf_counter() - wall0) * 1000,
+            cpu_ms=(time.process_time() - cpu0) * 1000,
+        )
 
         api_response = CompareAPIResponse(
             request_id=request_id,
@@ -921,6 +989,38 @@ def create_app(
                 ),
             }
         )
+
+    @app.get("/api/telemetry/summary")
+    async def telemetry_summary(request: Request) -> JSONResponse:
+        """Operator telemetry summary for one UTC day (Stream C).
+
+        Dormant (503) until RA_TELEMETRY_ADMIN_KEY is set; then requires
+        the X-RA-Admin-Key header. Serves the on-box aggregates only —
+        request counts/durations by route template, pipeline timings
+        (avg CPU-s per report), cache hit rate, error counts. No user
+        data exists in telemetry to serve (see telemetry.py).
+        """
+        admin_key = settings.telemetry.admin_key
+        if not admin_key:
+            raise HTTPException(
+                status_code=503,
+                detail="Telemetry summary is not configured (RA_TELEMETRY_ADMIN_KEY unset).",
+            )
+        provided = request.headers.get("x-ra-admin-key", "")
+        if not hmac.compare_digest(provided, admin_key):
+            raise HTTPException(
+                status_code=401,
+                detail="Provide a valid X-RA-Admin-Key header.",
+            )
+        day = request.query_params.get("day")
+        if day is not None:
+            try:
+                datetime.strptime(day, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(
+                    status_code=400, detail="day must be YYYY-MM-DD."
+                ) from None
+        return JSONResponse(request.app.state.telemetry.summary(day))
 
     # ================================================================
     # Stripe billing (Stream A) — dormant until configured
