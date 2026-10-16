@@ -1,0 +1,45 @@
+{
+ "response": {
+  "data": [
+   {
+    "period": "2026-10-14",
+    "duoarea": "ZEU",
+    "area-name": "NA",
+    "product": "EPCBRENT",
+    "product-name": "UK Brent Crude Oil",
+    "process": "PF4",
+    "process-name": "Spot Price FOB",
+    "series": "RBRTE",
+    "series-description": "Europe Brent Spot Price FOB (Dollars per Barrel)",
+    "value": 126.55,
+    "units": "$/BBL"
+   },
+   {
+    "period": "2026-10-13",
+    "duoarea": "ZEU",
+    "area-name": "NA",
+    "product": "EPCBRENT",
+    "product-name": "UK Brent Crude Oil",
+    "process": "PF4",
+    "process-name": "Spot Price FOB",
+    "series": "RBRTE",
+    "series-description": "Europe Brent Spot Price FOB (Dollars per Barrel)",
+    "value": 125.78,
+    "units": "$/BBL"
+   },
+   {
+    "period": "2026-10-12",
+    "duoarea": "ZEU",
+    "area-name": "NA",
+    "product": "EPCBRENT",
+    "product-name": "UK Brent Crude Oil",
+    "process": "PF4",
+    "process-name": "Spot Price FOB",
+    "series": "RBRTE",
+    "series-description": "Europe Brent Spot Price FOB (Dollars per Barrel)",
+    "value": 129.95,
+    "units": "$/BBL"
+   }
+  ]
+ }
+}

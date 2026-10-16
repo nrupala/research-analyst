@@ -65,6 +65,10 @@ class MarketDataConfig(BaseSettings):
     # see providers/edinet.py). Empty key = provider dormant.
     edinet_api_key: str = ""
     edinet_base_url: str = "https://api.edinet-fsa.go.jp/api/v2"
+    # EIA — first source for US energy prices (free registration key;
+    # see providers/eia.py). Empty key = supplement dormant.
+    eia_api_key: str = ""
+    eia_base_url: str = "https://api.eia.gov/v2"
     # FRED for macro data
     fred_api_key: str = ""
     fred_base_url: str = "https://api.stlouisfed.org/fred"

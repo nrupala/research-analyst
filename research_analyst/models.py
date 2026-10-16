@@ -437,6 +437,16 @@ class MacroSnapshot(BaseModel):
     boj_usd_jpy_as_of: date | None = None
     boj_policy_rate: float | None = None  # fraction (basic discount/loan rate)
     boj_policy_rate_as_of: date | None = None
+
+    # First-source supplements (source registry step 3, 2026-10-16).
+    # EIA spot energy prices, exactly as published (not fractions);
+    # same provenance-only rule as steps 1-2. Dormant without a key.
+    eia_wti_spot: float | None = None  # USD per barrel, Cushing WTI spot
+    eia_wti_as_of: date | None = None
+    eia_brent_spot: float | None = None  # USD per barrel, Brent spot
+    eia_brent_as_of: date | None = None
+    eia_henry_hub_spot: float | None = None  # USD per MMBtu, Henry Hub spot
+    eia_henry_hub_as_of: date | None = None
     supplemental_sources: list[str] = Field(default_factory=list)
 
     # Cycle

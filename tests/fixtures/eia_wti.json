@@ -1,0 +1,45 @@
+{
+ "response": {
+  "data": [
+   {
+    "period": "2026-10-14",
+    "duoarea": "YCUOK",
+    "area-name": "NA",
+    "product": "EPCWTI",
+    "product-name": "WTI Crude Oil",
+    "process": "PF4",
+    "process-name": "Spot Price FOB",
+    "series": "RWTC",
+    "series-description": "Cushing, OK WTI Spot Price FOB (Dollars per Barrel)",
+    "value": 101.91,
+    "units": "$/BBL"
+   },
+   {
+    "period": "2026-10-13",
+    "duoarea": "YCUOK",
+    "area-name": "NA",
+    "product": "EPCWTI",
+    "product-name": "WTI Crude Oil",
+    "process": "PF4",
+    "process-name": "Spot Price FOB",
+    "series": "RWTC",
+    "series-description": "Cushing, OK WTI Spot Price FOB (Dollars per Barrel)",
+    "value": 100.86,
+    "units": "$/BBL"
+   },
+   {
+    "period": "2026-10-12",
+    "duoarea": "YCUOK",
+    "area-name": "NA",
+    "product": "EPCWTI",
+    "product-name": "WTI Crude Oil",
+    "process": "PF4",
+    "process-name": "Spot Price FOB",
+    "series": "RWTC",
+    "series-description": "Cushing, OK WTI Spot Price FOB (Dollars per Barrel)",
+    "value": 98.73,
+    "units": "$/BBL"
+   }
+  ]
+ }
+}
