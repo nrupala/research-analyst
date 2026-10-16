@@ -151,7 +151,7 @@ class DividendEngine:
                 Assumption(
                     label="Dividend Policy",
                     value="No dividend currently paid",
-                    source="yfinance dividend history / info",
+                    source="Yahoo Finance dividend history / info",
                 )
             )
             return result
@@ -599,7 +599,7 @@ class DividendEngine:
                 Assumption(
                     label="Dividend History",
                     value=f"{len(dd.history)} payments across {result.paying_years} years",
-                    source="yfinance dividend history",
+                    source="Yahoo Finance dividend history",
                     note="Special/one-time dividends may distort single-year growth.",
                 )
             )

@@ -59,6 +59,7 @@ from .engines.technical import TechnicalEngine
 from .engines.valuation import ValuationEngine
 from .enums import SecurityType
 from .models import (
+    DATASET_SOURCE_LABELS,
     PRICE_SOURCE_LABELS,
     AnalystEstimates,
     CompanyProfile,
@@ -104,6 +105,10 @@ _SOURCE_URL_TEMPLATES: list[tuple[str, str]] = [
     ("Nasdaq", "https://www.nasdaq.com/market-activity/stocks/{ticker}"),
     ("Tiingo", "https://www.tiingo.com"),
     ("Alpha Vantage", "https://www.alphavantage.co"),
+    # Canonical declarations name the service; the legacy library-keyed
+    # marker stays so pre-rename declarations (cached reports) still
+    # resolve their link.
+    ("Yahoo Finance", "https://finance.yahoo.com/quote/{ticker}"),
     ("yfinance", "https://finance.yahoo.com/quote/{ticker}"),
 ]
 
@@ -210,7 +215,7 @@ class ResearchOrchestrator:
         profile: CompanyProfile | None = None
         try:
             profile = await self._market.get_company_profile(ticker)
-            data_sources.append("yfinance (company profile)")
+            data_sources.append(DATASET_SOURCE_LABELS["profile"])
         except Exception as e:
             logger.warning("Market data profile failed for %s: %s", ticker, e)
             warnings.append(f"Market data profile unavailable: {e}")
@@ -274,7 +279,7 @@ class ResearchOrchestrator:
             data_sources.append(_price_declaration(prices.data_source))
             data_freshness["prices"] = prices.period_end.isoformat()
 
-        financials_yf = self._safe_result(results[1], [], "yfinance financials", warnings)
+        financials_yf = self._safe_result(results[1], [], "Yahoo Finance financials", warnings)
         financials_sec = self._safe_result(results[2], [], "SEC XBRL financials", warnings)
         financials_cvm = self._safe_result(results[8], [], "CVM financials", warnings)
         financials_edinet = self._safe_result(results[9], [], "EDINET financials", warnings)
@@ -309,19 +314,19 @@ class ResearchOrchestrator:
         if edinet_leads:
             data_sources.append("EDINET (financial statements — Japan regulator filings)")
         if financials_yf:
-            data_sources.append("yfinance (financial statements)")
+            data_sources.append(DATASET_SOURCE_LABELS["financials"])
         if financials_sec:
             data_sources.append("SEC EDGAR XBRL (financial statements)")
 
         estimates = self._safe_result(results[3], None, "analyst estimates", warnings)
         if estimates:
-            data_sources.append("yfinance (analyst estimates)")
+            data_sources.append(DATASET_SOURCE_LABELS["estimates"])
 
         peers, peer_provenance = self._safe_result(
             results[4], ([], None), "peer data", warnings
         )
         if peers:
-            data_sources.append("yfinance (sector peers)")
+            data_sources.append(DATASET_SOURCE_LABELS["peers"])
         # Issue #67: missing expected peers are flagged loudly, never silent.
         if peer_provenance is not None and peer_provenance.missing_tickers:
             warnings.append(
@@ -334,7 +339,7 @@ class ResearchOrchestrator:
 
         macro_snapshot = self._safe_result(results[5], None, "macro data", warnings)
         if macro_snapshot:
-            data_sources.append("yfinance (macro proxies)")
+            data_sources.append(DATASET_SOURCE_LABELS["macro"])
             # First-source supplements (registry step 1): named official
             # sources that contributed to the macro snapshot, if any.
             for label in getattr(macro_snapshot, "supplemental_sources", []):
@@ -347,7 +352,7 @@ class ResearchOrchestrator:
             results[7], DividendData(ticker=ticker), "dividend data", warnings
         )
         if dividend_data and (dividend_data.history or dividend_data.dividend_rate):
-            data_sources.append("yfinance (dividends)")
+            data_sources.append(DATASET_SOURCE_LABELS["dividends"])
 
         # ================================================================
         # PHASE 2: Analysis Engines
@@ -433,7 +438,7 @@ class ResearchOrchestrator:
             etf_metadata = None
             try:
                 etf_metadata = await self._market.fetch_etf_metadata(ticker)
-                data_sources.append("yfinance (ETF metadata)")
+                data_sources.append(DATASET_SOURCE_LABELS["etf"])
             except Exception as e:
                 logger.warning("ETF metadata fetch failed for %s: %s", ticker, e)
             etf_analysis = self._etf_engine.analyze(profile, etf_metadata)

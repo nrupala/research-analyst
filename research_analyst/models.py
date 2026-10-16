@@ -204,6 +204,23 @@ def price_source_label(data_source: str) -> str:
     return f" (source: {name})" if name else ""
 
 
+# Data Sources declarations for the non-price datasets served via
+# the yfinance library. Declarations name the SERVICE the data comes
+# from (Yahoo Finance), never the client library used to fetch it —
+# the same rule the price declarations follow (PR #121). Every
+# orchestrator append for these datasets takes its string from this
+# map, so the name exists in exactly one place and cannot drift.
+DATASET_SOURCE_LABELS: dict[str, str] = {
+    "profile": "Yahoo Finance (company profile)",
+    "financials": "Yahoo Finance (financial statements)",
+    "estimates": "Yahoo Finance (analyst estimates)",
+    "peers": "Yahoo Finance (sector peers)",
+    "macro": "Yahoo Finance (macro proxies)",
+    "dividends": "Yahoo Finance (dividends)",
+    "etf": "Yahoo Finance (ETF metadata)",
+}
+
+
 # ---------------------------------------------------------------------------
 # Fundamental Data
 # ---------------------------------------------------------------------------

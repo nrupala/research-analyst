@@ -268,7 +268,7 @@ class CompetitorEngine:
             Assumption(
                 label="Peer Universe",
                 value=f"{len(peers)} peers from {profile.sector} sector",
-                source="Curated sector peer map (deterministic); metrics enriched via yfinance",
+                source="Curated sector peer map (deterministic); metrics via Yahoo Finance",
                 confidence="Medium",
                 note=(
                     "Peers selected from a curated large-cap sector map; may not capture all "

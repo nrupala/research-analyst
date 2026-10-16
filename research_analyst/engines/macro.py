@@ -308,8 +308,8 @@ class MacroEngine:
             Assumption(
                 label="Macro Data Source",
                 value=(
-                    "Market proxies via yfinance (^TNX, ^VIX). Official FRED data preferred when "
-                    "available."
+                    "Market proxies via Yahoo Finance (^TNX, ^VIX). Official FRED data "
+                    "preferred when available."
                 ),
                 source="MarketDataProvider",
                 confidence="Medium",
