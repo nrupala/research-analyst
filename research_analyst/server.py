@@ -85,6 +85,7 @@ from .exporters import ts_definitions, xml_from_dict
 from .models import ResearchRequest
 from .orchestrator import ResearchOrchestrator
 from .providers.market_data import MarketDataProvider
+from .report_export import embed_card_html, research_csv, research_pdf
 from .reports.comparative_renderer import render_html, render_markdown
 from .stripe_billing import (
     PLANS,
@@ -140,7 +141,7 @@ def _build_commit() -> str:
 # Content negotiation (typed-export layer)
 # ---------------------------------------------------------------------------
 
-SUPPORTED_FORMATS = {"json", "xml", "markdown", "html", "ts"}
+SUPPORTED_FORMATS = {"json", "xml", "markdown", "html", "ts", "csv", "pdf"}
 
 _ACCEPT_MAP: dict[str, str] = {
     "application/json": "json",
@@ -150,6 +151,8 @@ _ACCEPT_MAP: dict[str, str] = {
     "text/html": "html",
     "text/typescript": "ts",
     "application/typescript": "ts",
+    "text/csv": "csv",
+    "application/pdf": "pdf",
     "*/*": "json",
 }
 
@@ -181,6 +184,9 @@ def _render_payload(
     *,
     markdown: str | None = None,
     html: str | None = None,
+    csv_text: str | None = None,
+    pdf_bytes: bytes | None = None,
+    download_name: str | None = None,
 ) -> Response:
     """Render a typed payload dict in the negotiated format."""
     if fmt == "json":
@@ -199,6 +205,21 @@ def _render_payload(
         return Response(content=html, media_type="text/html")
     if fmt == "ts":
         return Response(content=ts_definitions(), media_type="text/typescript")
+    if fmt == "csv":
+        # F1.6: export of our analysis tables — never source data.
+        if csv_text is None:
+            raise HTTPException(status_code=400, detail="csv is not available for this endpoint.")
+        headers = {}
+        if download_name:
+            headers["Content-Disposition"] = f'attachment; filename="{download_name}.csv"'
+        return Response(content=csv_text, media_type="text/csv", headers=headers)
+    if fmt == "pdf":
+        if pdf_bytes is None:
+            raise HTTPException(status_code=400, detail="pdf is not available for this endpoint.")
+        headers = {}
+        if download_name:
+            headers["Content-Disposition"] = f'attachment; filename="{download_name}.pdf"'
+        return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
     raise HTTPException(status_code=400, detail=f"Unsupported format {fmt!r}.")
 
 
@@ -371,11 +392,18 @@ def create_app(
     @app.middleware("http")
     async def security_headers(request: Request, call_next: Any) -> Any:
         response = await call_next(request)
+        # The F1.6 embed card opts into framing via a marker header;
+        # it is consumed here and never leaves the service. Every
+        # other response keeps the full deny-by-default posture.
+        embed = response.headers.get("x-ra-frame-policy") == "embed"
+        if embed:
+            del response.headers["x-ra-frame-policy"]
         response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
+        if not embed:
+            response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Content-Security-Policy"] = (
+        csp = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' https://cdn.plot.ly https://cdn.jsdelivr.net; "
             "style-src 'self' 'unsafe-inline'; "
@@ -383,6 +411,9 @@ def create_app(
             "img-src 'self' data:; "
             "connect-src 'self' https://ra.devinfo.dev https://ra.aimlds.org"
         )
+        if embed:
+            csp += "; frame-ancestors *"
+        response.headers["Content-Security-Policy"] = csp
         return response
 
     # --- Rate limiter (injectable so tests can widen the window) ---
@@ -633,7 +664,35 @@ def create_app(
         _api_access_gate(request)
 
         request_id = str(uuid.uuid4())[:8]
+        api_response = await _serve_research(body, request_id)
 
+        fmt = negotiate_format(format, request.headers.get("accept", ""))
+        if fmt == "html":
+            raise HTTPException(
+                status_code=400,
+                detail="html is not available for /api/research (use markdown).",
+            )
+        markdown = (
+            "\n\n---\n\n".join(api_response.reports_markdown)
+            if fmt in ("markdown", "pdf")
+            else None
+        )
+        _meter(request, "research")
+        return _render_payload(
+            api_response.model_dump(mode="json"),
+            fmt,
+            "research",
+            markdown=markdown,
+            csv_text=research_csv(api_response) if fmt == "csv" else None,
+            pdf_bytes=research_pdf(api_response) if fmt == "pdf" else None,
+            download_name=f"research-{api_response.ticker}" if fmt in ("csv", "pdf") else None,
+        )
+
+    async def _serve_research(
+        body: ResearchAPIRequest, request_id: str
+    ) -> ResearchAPIResponse:
+        """Cache-or-run for a research request (shared by /api/research
+        and the F1.6 embed card, so both serve the identical report)."""
         ck = _cache_key(body)
         now = datetime.now(UTC)
         cached_entry = report_cache.get(ck)
@@ -644,33 +703,48 @@ def create_app(
                 logger.info("Cache hit for %s (age %.0fs)", body.ticker, age)
                 report_cache.move_to_end(ck)
                 telemetry.record_cache(True)
-                api_response = stamp_cache_hit(cached, cached_at)
-            else:
-                logger.info(
-                    "Cache entry for %s expired (age %.0fs; EOD boundary or TTL %ds); regenerating",
-                    body.ticker,
-                    age,
-                    cache_ttl,
-                )
-                del report_cache[ck]
-                telemetry.record_cache(False)
-                api_response = await _run_research_uncached(body, request_id)
-                _cache_store(ck, api_response)
-        else:
-            telemetry.record_cache(False)
-            api_response = await _run_research_uncached(body, request_id)
-            _cache_store(ck, api_response)
-
-        fmt = negotiate_format(format, request.headers.get("accept", ""))
-        if fmt == "html":
-            raise HTTPException(
-                status_code=400,
-                detail="html is not available for /api/research (use markdown).",
+                return stamp_cache_hit(cached, cached_at)
+            logger.info(
+                "Cache entry for %s expired (age %.0fs; EOD boundary or TTL %ds); regenerating",
+                body.ticker,
+                age,
+                cache_ttl,
             )
-        markdown = "\n\n---\n\n".join(api_response.reports_markdown) if fmt == "markdown" else None
-        _meter(request, "research")
-        return _render_payload(
-            api_response.model_dump(mode="json"), fmt, "research", markdown=markdown
+            del report_cache[ck]
+        telemetry.record_cache(False)
+        api_response = await _run_research_uncached(body, request_id)
+        _cache_store(ck, api_response)
+        return api_response
+
+    @app.get("/api/research/embed")
+    async def research_embed(
+        request: Request,
+        ticker: str = Query(..., min_length=1, max_length=20),
+    ) -> Response:
+        """F1.6 embed card: a compact HTML summary for third-party pages.
+
+        Same gates, same cache, same report as /api/research — the
+        card is a view of the analysis, never a separate product.
+        Framing is permitted for THIS route only, via the
+        X-RA-Frame-Policy marker the security-headers middleware
+        honors; every other route keeps X-Frame-Options: DENY.
+        """
+        client_ip = request.client.host if request.client else "unknown"
+        if not rate_limiter.allow(client_ip):
+            raise HTTPException(status_code=429, detail="Rate limit exceeded.")
+        _require_api_key(request)
+        _api_access_gate(request)
+
+        body = ResearchAPIRequest(ticker=ticker)
+        api_response = await _serve_research(body, str(uuid.uuid4())[:8])
+        _meter(request, "embed")
+        app_url = (
+            settings.billing.white_label_prepared_on_url or "https://ra.aimlds.org"
+        )
+        return Response(
+            content=embed_card_html(api_response, app_url=app_url),
+            media_type="text/html",
+            headers={"X-RA-Frame-Policy": "embed"},
         )
 
     async def _run_pipeline(body: ResearchAPIRequest) -> Any:
@@ -733,6 +807,7 @@ def create_app(
             ticker=result.ticker,
             company_name=result.company_name,
             security_type=result.security_type.value,
+            currency=result.currency,
             reports=result.reports,
             metadata=result.metadata,
             reports_markdown=[],
