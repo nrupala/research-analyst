@@ -1,0 +1,88 @@
+<!--
+Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+SPDX-License-Identifier: Apache-2.0
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <meta name="description" content="Research Analyst - Privacy">
+    <meta property="og:title" content="Privacy - Research Analyst">
+    <meta property="og:description" content="What Research Analyst records, what it never does, and how your data is handled.">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Research Analyst">
+    <meta property="og:image" content="https://ra.devinfo.dev/og-image.png">
+    <meta name="theme-color" content="#0f172a">
+    <title>Privacy - Research Analyst</title>
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+    <script src="/theme.js"></script>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <a href="#main" class="sr-only">Skip to main content</a>
+
+    <header class="header" role="banner">
+        <div class="header__inner">
+            <div class="header__brand">
+                <div class="header__logo" aria-hidden="true"><img src="/icons/icon-96x96.png" alt="" width="40" height="40"></div>
+                <div>
+                    <h1 class="header__title">Research Analyst</h1>
+                    <p class="header__subtitle">Privacy</p>
+                </div>
+            </div>
+            <nav class="header__nav" aria-label="Primary">
+                <a href="/" class="btn btn--ghost back-link" aria-label="Back to the app">&larr; Back to app</a>
+            </nav>
+        </div>
+    </header>
+
+    <main id="main" class="main">
+        <section class="card">
+            <h2>What this service records</h2>
+            <p>When you use Research Analyst, the server keeps a request log so we can operate and protect the service. Each entry holds the route requested, the method, the response status, and how long the request took. For calls made with an API key, the log holds an internal key record identifier &mdash; never the key itself. The log does <strong>not</strong> record IP addresses or query strings. Request logs are kept for 90 days and then deleted.</p>
+
+            <h2>API keys and metering</h2>
+            <p>If you hold an API key, we count the calls it serves, by endpoint and by month, so your plan allowance can be applied. You can see your own counts at any time via <code>GET /api/usage</code> with your key. Metering records are pruned after about 90 days.</p>
+
+            <h2>Saved scenarios and share links</h2>
+            <p>Saving a scenario stores its name and its report parameters (ticker, report type, timeframe, and any assumptions you set) under your API key. A share link displays that saved report to anyone who has the link &mdash; treat it like a password. Deleting a scenario disables its link immediately.</p>
+
+            <h2>Payments</h2>
+            <p>Paid plans are handled by Stripe. We never receive or store your card number. We store the subscription status and the API key it grants, so the service can honour your plan.</p>
+
+            <h2>What we never do</h2>
+            <ul>
+                <li>No advertising, and no ad networks.</li>
+                <li>No third-party trackers or analytics beacons in the app.</li>
+                <li>No sale, rental, or sharing of personal data for marketing.</li>
+                <li>No harvesting of data about you beyond what is described on this page.</li>
+            </ul>
+            <p>One disclosure: interactive charts load the Plotly charting library from its public content-delivery network in your browser, the way any web page loads a library. Everything else the app needs is served by this service itself.</p>
+
+            <h2>Market data</h2>
+            <p>Reports are generated from the public and licensed sources named in each report&rsquo;s Data Sources section. We sell our own analysis. Source data we consume under licence is never sold or redistributed.</p>
+
+            <h2>Contact</h2>
+            <p>Questions about privacy: <a href="mailto:info@aimlds.org?subject=Research%20Analyst%20privacy">info@aimlds.org</a>.</p>
+
+            <p class="modal__disclaimer"><strong>Disclaimer:</strong> For informational and educational purposes only. Not financial advice or a recommendation to buy or sell any security.</p>
+        </section>
+    </main>
+</body>
+</html>

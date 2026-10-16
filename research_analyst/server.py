@@ -1412,6 +1412,60 @@ def create_app(
             return FileResponse(str(p), media_type="text/css")
         raise HTTPException(status_code=404)
 
+    # The remaining UI files the pages reference (Stream D): help and
+    # privacy pages, the theme script, the social image, and the
+    # crawler files. Each existed in ui/ without a route — the Help
+    # link in the app header 404'd — so they are served explicitly,
+    # in the same idiom as the files above.
+    @app.get("/help.html")
+    async def serve_help() -> FileResponse:
+        p = ui_dir / "help.html"
+        if p.exists():
+            return FileResponse(str(p), media_type="text/html")
+        raise HTTPException(status_code=404)
+
+    @app.get("/privacy.html")
+    async def serve_privacy() -> FileResponse:
+        p = ui_dir / "privacy.html"
+        if p.exists():
+            return FileResponse(str(p), media_type="text/html")
+        raise HTTPException(status_code=404)
+
+    @app.get("/theme.js")
+    async def serve_theme_js() -> FileResponse:
+        p = ui_dir / "theme.js"
+        if p.exists():
+            return FileResponse(str(p), media_type="application/javascript")
+        raise HTTPException(status_code=404)
+
+    @app.get("/og-image.png")
+    async def serve_og_image() -> FileResponse:
+        p = ui_dir / "og-image.png"
+        if p.exists():
+            return FileResponse(str(p), media_type="image/png")
+        raise HTTPException(status_code=404)
+
+    @app.get("/robots.txt")
+    async def serve_robots() -> FileResponse:
+        p = ui_dir / "robots.txt"
+        if p.exists():
+            return FileResponse(str(p), media_type="text/plain")
+        raise HTTPException(status_code=404)
+
+    @app.get("/sitemap.xml")
+    async def serve_sitemap() -> FileResponse:
+        p = ui_dir / "sitemap.xml"
+        if p.exists():
+            return FileResponse(str(p), media_type="application/xml")
+        raise HTTPException(status_code=404)
+
+    @app.get("/llms.txt")
+    async def serve_llms() -> FileResponse:
+        p = ui_dir / "llms.txt"
+        if p.exists():
+            return FileResponse(str(p), media_type="text/plain")
+        raise HTTPException(status_code=404)
+
     # Serve /icons/* for PWA icons
     icons_dir = ui_dir / "icons"
     if icons_dir.exists():

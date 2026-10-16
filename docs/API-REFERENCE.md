@@ -13,10 +13,27 @@ payload). Formats: `json` (default), `xml`, `markdown`, `html`, `ts`
 
 | Endpoint | Method | Purpose | Formats |
 |---|---|---|---|
-| `/api/research` | POST | Full 7-step research report | json, xml, markdown, ts |
+| `/api/research` | POST | Full 7-step research report | json, xml, markdown, html, ts, csv, pdf |
+| `/api/research/quant` | GET | Quant engine results for a ticker | json |
+| `/api/research/embed` | GET | Standalone embed card for a ticker's report | html |
+| `/api/research/shared/{token}` | GET | A saved scenario's report via its share link (no key) | all research formats |
+| `/api/scenarios` | POST / GET | Save / list your scenarios (key required) | json |
+| `/api/scenarios/{id}` | DELETE | Delete your scenario (kills its share link) | json |
 | `/api/compare` | POST | Multi-ticker comparative (2–5) | json, xml, markdown, html, ts |
 | `/api/resolve` | POST | Ticker/name resolution (+ international `X.NS`) | json, xml, ts |
+| `/api/usage` | GET | Your key's plan, usage, allowance (key required) | json |
+| `/api/telemetry/summary` | GET | Aggregate request counts (operator; admin key) | json |
 | `/api/disclaimer` | GET | Educational disclaimer (v2) | json |
+
+The `csv` and `pdf` formats export the report's own analysis tables —
+never raw source data. The quant endpoint computes over the same
+merged, first-source-led statements as the report and names that set
+in `statements_source`; it also accepts `discount_rate` and a
+URL-encoded JSON `scenarios` array for expected-value computation.
+Saving a scenario takes a flat body (`{name, ticker, report_type?,
+timeframe?, custom_assumptions?}`) and returns a `scenario_id` and a
+`share_token`; the share link is the credential, so treat it like a
+password.
 
 ### Request bodies
 

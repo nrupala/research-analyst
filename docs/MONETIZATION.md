@@ -5,6 +5,21 @@ See LICENSE and COMMERCIAL-LICENSE.md for licensing terms (commercial licenses a
 
 # Research Analyst — Monetization Cut (refinement, not final)
 
+> **STATUS — decided 2026-10-15 (owner), superseding the options and the
+> recommendation below.** Adopted flavors: Free $0 (reports, quant,
+> compare). App: **Pro $19/mo, Team $79/mo**. Metered API (access to
+> RA's analysis): **Pro $58/mo / 100,000 calls, Team $198/mo /
+> 1,000,000 calls**; per-key rate caps 60/min Pro, 300/min Team.
+> White-label from $499/mo, annual. Rail: **Stripe** (one account,
+> decided 2026-10-14; Lemon Squeezy is not used). The paid source-data
+> download was dropped 2026-10-15: data consumed under licence is
+> never sold; the API sells metered analysis only. Billing core
+> (checkout -> webhook -> grant -> claim) is built and proof-cycled
+> in the Stripe sandbox; live charging awaits the production Stripe
+> keys. Everything below this block is the pre-decision working draft,
+> kept for history — where it conflicts with this block, this block
+> governs.
+
 Working draft for "what can we sell with v0.2.0/0.2.1 on?" This is a **refinement pass**: it proposes an
 open-core model, an ICP, a feature-gating map, and **pricing options** — but two things are explicitly
 left for Nrupal to decide (Sections 5 and 6). Nothing here is a committed price or a public number.
@@ -208,5 +223,9 @@ Step (1) of the build order is now implemented in `research_analyst/entitlements
   applied to the comparative HTML export's chrome only — numbers, sources,
   methodology, disclaimers and compliance lines are never altered.
 
-Still future (unchanged): payment webhook → key-gen, UI key entry + feature
-flags, key email delivery.
+Shipped since this draft: payment webhook → grant → claim key issuance
+(proof-cycled in the Stripe sandbox, 2026-10-15), metered keyed lane
+with allowances and rate caps, saved scenarios + share links, CSV/PDF
+exports of the analysis, and the quant endpoint on the same merged
+statements as reports. Still future: live charging (production Stripe
+keys), key email delivery.
