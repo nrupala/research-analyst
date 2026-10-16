@@ -483,6 +483,14 @@ class MacroSnapshot(BaseModel):
     abs_cpi_as_of: date | None = None
     abs_unemployment_rate: float | None = None  # fraction
     abs_unemployment_as_of: date | None = None
+
+    # First-source supplements (source registry step 6, 2026-10-16).
+    # Philippine Statistics Authority (OpenSTAT): CPI YoY and the
+    # unemployment rate, as fractions (fleet convention).
+    psa_cpi_yoy: float | None = None  # fraction
+    psa_cpi_as_of: date | None = None
+    psa_unemployment_rate: float | None = None  # fraction
+    psa_unemployment_as_of: date | None = None
     supplemental_sources: list[str] = Field(default_factory=list)
 
     # Cycle

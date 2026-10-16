@@ -84,6 +84,9 @@ class MarketDataConfig(BaseSettings):
     # host is data.api.abs.gov.au (the transposed api.data.abs.gov.au
     # printed in ABS's beta page does not resolve).
     abs_base_url: str = "https://data.api.abs.gov.au/rest"
+    # First-source provider (source registry step 6, 2026-10-16) —
+    # keyless official API: Philippine Statistics Authority OpenSTAT.
+    psa_base_url: str = "https://openstat.psa.gov.ph/PXWeb/api/v1/en"
     # First-source providers (source registry step 2, 2026-10-14) — all
     # keyless official APIs: ECB + Bundesbank (SDMX), Eurostat, Bank of Japan.
     ecb_base_url: str = "https://data-api.ecb.europa.eu/service"

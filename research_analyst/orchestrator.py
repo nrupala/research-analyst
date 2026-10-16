@@ -101,6 +101,7 @@ _SOURCE_URL_TEMPLATES: list[tuple[str, str]] = [
     ("EIA", "https://www.eia.gov/opendata/"),
     ("Banco Central do Brasil", "https://www.bcb.gov.br/en"),
     ("Australian Bureau of Statistics", "https://www.abs.gov.au"),
+    ("Philippine Statistics Authority", "https://psa.gov.ph"),
     ("EDINET", "https://disclosure2.edinet-fsa.go.jp/"),
     ("CVM", "https://dados.cvm.gov.br"),
     ("Stooq", "https://stooq.com"),
