@@ -76,6 +76,7 @@ from .models import (
     ResearchResponse,
     SourceRecord,
 )
+from .providers.cvm import CVMProvider
 from .providers.market_data import MarketDataProvider
 from .providers.sec_edgar import SECEdgarProvider
 from .providers.technical import TechnicalProvider
@@ -231,6 +232,9 @@ class ResearchOrchestrator:
         macro_task = self._fetch_macro()
         holders_task = self._fetch_holders(ticker)
         dividends_task = self._fetch_dividends(ticker)
+        financials_cvm_task = self._fetch_cvm_financials(
+            ticker, profile.name if profile else ""
+        )
 
         results = await asyncio.gather(
             price_task,
@@ -241,6 +245,7 @@ class ResearchOrchestrator:
             macro_task,
             holders_task,
             dividends_task,
+            financials_cvm_task,
             return_exceptions=True,
         )
 
@@ -257,9 +262,27 @@ class ResearchOrchestrator:
 
         financials_yf = self._safe_result(results[1], [], "yfinance financials", warnings)
         financials_sec = self._safe_result(results[2], [], "SEC XBRL financials", warnings)
+        financials_cvm = self._safe_result(results[8], [], "CVM financials", warnings)
 
-        # Merge financials: prefer yfinance (cleaner), fill gaps with SEC
-        financials = financials_yf if financials_yf else financials_sec
+        # Merge financials: for Brazilian listings the regulator's own
+        # filings (CVM) are the first source and lead — but only over
+        # a completeness floor (newest statement carries revenue AND
+        # net income), so a partial CVM parse can never degrade a
+        # report yfinance would have served whole. Elsewhere yfinance
+        # leads with SEC XBRL as its fallback.
+        cvm_leads = bool(
+            financials_cvm
+            and financials_cvm[0].revenue is not None
+            and financials_cvm[0].net_income is not None
+        )
+        if cvm_leads:
+            financials = financials_cvm
+        elif financials_yf:
+            financials = financials_yf
+        else:
+            financials = financials_sec
+        if cvm_leads:
+            data_sources.append("CVM (financial statements — Brazil regulator filings)")
         if financials_yf:
             data_sources.append("yfinance (financial statements)")
         if financials_sec:
@@ -579,6 +602,16 @@ class ResearchOrchestrator:
                 return await sec.get_financials(ticker)
         except Exception as e:
             logger.debug("SEC financials unavailable for %s: %s", ticker, e)
+            return []
+
+    async def _fetch_cvm_financials(
+        self, ticker: str, company_name: str
+    ) -> list[FinancialStatement]:
+        try:
+            async with CVMProvider() as cvm:
+                return await cvm.get_financials(ticker, company_name)
+        except Exception as e:
+            logger.debug("CVM financials unavailable for %s: %s", ticker, e)
             return []
 
     async def _fetch_estimates(self, ticker: str) -> AnalystEstimates | None:
