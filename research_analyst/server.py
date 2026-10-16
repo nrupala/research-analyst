@@ -363,7 +363,9 @@ def create_app(
     # --- API keys, metering, white-label (injectable for tests) ---
     if key_store is None and settings.billing.api_keys_file:
         key_store = KeyStore(settings.billing.api_keys_file)
-    if grant_store is None and settings.billing.stripe_secret_key:
+    if grant_store is None and (
+        settings.billing.stripe_secret_key or settings.billing.stripe_webhook_secret
+    ):
         grants_path = settings.billing.stripe_grants_file
         if not grants_path and settings.billing.api_keys_file:
             grants_path = str(Path(settings.billing.api_keys_file).parent / "stripe_grants.json")
@@ -936,7 +938,7 @@ def create_app(
         issuance itself happens at claim time, never here.
         """
         billing = settings.billing
-        if not (billing.stripe_secret_key and billing.stripe_webhook_secret):
+        if not billing.stripe_webhook_secret:
             raise HTTPException(status_code=503, detail="Billing is not configured.")
         key_store_state = request.app.state.key_store
         grant_store_state = request.app.state.grant_store
