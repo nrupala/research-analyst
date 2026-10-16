@@ -75,6 +75,7 @@ from .boc import BankOfCanadaProvider
 from .boj import BankOfJapanProvider
 from .eia import EiaProvider
 from .nasdaq import NasdaqProvider
+from .psa import PsaProvider
 from .sdmx import BundesbankProvider, EcbProvider, EurostatProvider
 from .source_registry import fred_series_displayable
 from .stooq import StooqProvider
@@ -1575,7 +1576,7 @@ class MarketDataProvider:
         return got
 
     async def _populate_first_sources(self, snapshot: MacroSnapshot) -> bool:
-        """Populate first-source supplements (source registry steps 1-5).
+        """Populate first-source supplements (source registry steps 1-6).
 
         US Treasury Fiscal Data (average interest rates) and Bank of
         Canada Valet (policy rate, USD/CAD) were wired in step 1; step 2
@@ -1776,6 +1777,28 @@ class MarketDataProvider:
             if contributed:
                 snapshot.supplemental_sources.append(
                     "Australian Bureau of Statistics Data API (CPI, unemployment rate)"
+                )
+                got = True
+
+        # --- Step 6: Philippine Statistics Authority (keyless) -----------
+        try:
+            psa_macro = await PsaProvider().get_latest_macro()
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("PSA population failed: %s", e)
+            psa_macro = None
+        if psa_macro is not None:
+            contributed = False
+            if psa_macro.cpi_yoy_pct is not None:
+                snapshot.psa_cpi_yoy = psa_macro.cpi_yoy_pct / 100.0
+                snapshot.psa_cpi_as_of = psa_macro.cpi_as_of
+                contributed = True
+            if psa_macro.unemployment_pct is not None:
+                snapshot.psa_unemployment_rate = psa_macro.unemployment_pct / 100.0
+                snapshot.psa_unemployment_as_of = psa_macro.unemployment_as_of
+                contributed = True
+            if contributed:
+                snapshot.supplemental_sources.append(
+                    "Philippine Statistics Authority OpenSTAT (CPI, unemployment rate)"
                 )
                 got = True
 

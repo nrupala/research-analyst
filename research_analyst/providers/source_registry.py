@@ -426,6 +426,28 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
         is_primary=True,
     ),
     # ------------------------------------------------------------------
+    # Philippines statistics — PSA OpenSTAT (WIRED 2026-10-16: CPI
+    # YoY + unemployment rate as macro supplements; anonymous
+    # PxWeb. Year codes are index-coded per table and resolved
+    # from table metadata at runtime.)
+    # ------------------------------------------------------------------
+    SourceEntry(
+        dataset="statistics",
+        market="PH",
+        source_name="Philippine Statistics Authority — OpenSTAT",
+        organization="Philippine Statistics Authority",
+        base_url="https://openstat.psa.gov.ph/PXWeb/api/v1/en",
+        access_method="PxWeb REST (metadata-resolved keyed queries)",
+        key_env_var=None,
+        terms_note=(
+            "Philippine open data licence per the registry matrix "
+            "(2026-10-15): free use, reuse and redistribution with "
+            "attribution; RA sells its analysis, never the dataset."
+        ),
+        status=STATUS_WIRED,
+        is_primary=True,
+    ),
+    # ------------------------------------------------------------------
     # Prices — the owner's cascade (2026-10-15). Order: (1) market-
     # direct (Nasdaq for US; TMX designated for Canada, route not yet
     # established), (2) free key services (Tiingo, Alpha Vantage;

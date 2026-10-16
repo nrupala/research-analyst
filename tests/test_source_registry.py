@@ -182,6 +182,7 @@ def test_wired_primaries_are_exactly_the_production_set():
         ("filings", "BR", "CVM Portal de Dados Abertos"),
         ("macro", "BR", "Banco Central do Brasil — SGS (BCData)"),
         ("statistics", "AU", "Australian Bureau of Statistics Data API"),
+        ("statistics", "PH", "Philippine Statistics Authority — OpenSTAT"),
     }
 
 
