@@ -32,6 +32,20 @@ payload). Formats: `json` (default), `xml`, `markdown`, `html`, `ts`
 { "query": "Apple" }
 ```
 
+### API keys, metering and allowances
+
+The analysis endpoints also serve a keyed lane for API plans. Send
+`X-RA-Key: <key>` to attribute calls to your key:
+
+- A valid key without `api.access` gets **403**; an invalid or revoked
+  key gets **401**. Keyless calls use the free public lane, unchanged.
+- API plans carry a monthly call allowance (API Pro 100,000; API Team
+  1,000,000) and a per-key rate cap (60/min Pro, 300/min Team). Served
+  calls count toward the allowance — a call our pipeline fails is never
+  counted. Exceeding either limit returns **429**.
+- `GET /api/usage` with your key returns today's and this month's
+  per-endpoint counts, your plan's allowance, and the remaining calls.
+
 ### Typed schemas
 
 ```bash
