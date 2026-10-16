@@ -10,6 +10,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/); this project use
 Releases are cut by tagging the repo (see `docs/VERSIONING.md`); GitHub auto-generates the per-release notes from merged PRs.
 
 ## [Unreleased]
+### Removed
+- **Paid source-data download retired (owner ruling, 2026-10-15).** `POST /api/research/data`, the `source.data` entitlement, the TWF bundle's source-data unlock, the web UI's *Download data* button, and the bundle exporter (`research_analyst/data_export.py`) are removed. Data RA consumes under license is never sold or redistributed in any format; the paid API sells metered access to RA's own analysis only. The TWF Pro bundle now unlocks RA Pro + `api.access`.
+
 ### Changed
 - **License split (owner decision, 2026-10-11).** The repo's uniform AGPL-3.0 is restructured into a component split: the core engine (`research_analyst/`, `quant/`, engine tests) stays AGPL-3.0, while scaffolding (`deploy/`, `scripts/`, CI, docs) and the UI (`ui/`) move to Apache 2.0. Root `LICENSE` is now a pointer; the full AGPL text — with the project's no-financial-advice additional notice — is preserved verbatim at `LICENSES/AGPL-3.0.txt`, and the Apache text sits at `LICENSES/Apache-2.0.txt`. Commercial licensing still covers the core (see `COMMERCIAL-LICENSE.md`). Source-file header realignment to the split follows in a separate pass.
 

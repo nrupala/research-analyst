@@ -68,14 +68,14 @@ logger = logging.getLogger(__name__)
 
 RA_PRO = "ra.pro"  # RA Pro subscription
 TWF_PRO = "twf.pro"  # TWF Pro bundle (unlocks RA Pro, see below)
-SOURCE_DATA = "source.data"  # legacy flag; never granted by a paid plan (2026-10-15 ruling)
 API_ACCESS = "api.access"  # metered analysis-API access (Stream A): RA's own work product
 WHITE_LABEL = "white.label"  # white-label branding on exports
 
-# TWF Pro is a bundle: carrying twf.pro unlocks the RA Pro surface.
+# TWF Pro is a bundle: carrying twf.pro unlocks the RA Pro surface
+# plus metered analysis-API access (owner flavors, 2026-10-15).
 # (Billing rail: Stripe, decided 2026-10-14; charging is not implemented here.)
 BUNDLE_UNLOCKS: dict[str, set[str]] = {
-    TWF_PRO: {RA_PRO, SOURCE_DATA},
+    TWF_PRO: {RA_PRO, API_ACCESS},
 }
 
 KEY_PREFIX = "ra_live_"

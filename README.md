@@ -382,8 +382,10 @@ license split, the engine and report pipeline are AGPL-3.0 while the
 web/PWA app itself is Apache 2.0 — see [LICENSE](LICENSE).
 
 **Commercial (paid) surfaces** are separate entitlements, not binaries:
-- **Source-data downloads** — the raw CSV/JSON bundle behind any report
-  (`POST /api/research/data`, X-RA-Key gate) for all paid customers.
+- **Analysis API** — metered access to RA's own reports and quant
+  outputs under per-key entitlements. Source data itself is never sold:
+  RA consumes licensed data to produce analysis; only the analysis —
+  RA's own work product — is the product.
 - **API keys / higher volume** — per-key entitlements for B2B integration.
 - **White-label** — branded reports for advisor/enterprise use.
 

@@ -558,10 +558,6 @@ function addExportToolbar(){
     var bar=document.createElement("div");
     bar.id="export-toolbar";bar.className="export-toolbar";
     var defs=[["Download MD",exportMD],["Download HTML",exportHTML],["Download PDF",exportPDF]];
-    // Paid feature (8c-2): source-data bundle (CSV/JSON) behind the report
-    if(typeof activeTicker!=="undefined"&&activeTicker){
-        defs.push(["Download data (CSV/JSON)",downloadSourceData]);
-    }
     defs.forEach(function(d){
         var b=document.createElement("button");
         b.type="button";b.className="btn btn--secondary";b.textContent=d[0];
@@ -569,34 +565,6 @@ function addExportToolbar(){
         bar.appendChild(b)
     });
     dom.reportContent.parentNode.insertBefore(bar,dom.reportContent)
-}
-
-// Paid source-data download (CSV/JSON). The endpoint is gated server-side by
-// X-RA-Key when paid keys are configured; the UI asks for a key if the first
-// attempt is rejected with 401.
-function downloadSourceData(){
-    var ticker=typeof activeTicker!=="undefined"&&activeTicker?activeTicker:(dom.ticker.value||"").trim();
-    if(!ticker){alert("Run a report first, or enter a ticker.");return}
-    var attempt=function(key){
-        var headers={"Content-Type":"application/json"};
-        if(key)headers["X-RA-Key"]=key;
-        fetch("/api/research/data?format=json",{method:"POST",headers:headers,body:JSON.stringify({ticker:ticker,report_type:dom.reportType.value||null})})
-        .then(function(res){
-            if(res.status===401){
-                var k=prompt("This is a paid feature.\nEnter your API key (X-RA-Key):");
-                if(k)attempt(k.trim());
-                return;
-            }
-            if(!res.ok)throw new Error("HTTP "+res.status);
-            return res.json();
-        })
-        .then(function(data){
-            if(!data)return;
-            downloadBlob(JSON.stringify(data,null,2),"application/json",ticker+"_source_data.json");
-        })
-        .catch(function(e){alert("Source-data download failed: "+e.message)});
-    };
-    attempt(null)
 }
 
 // ---- v0.2.0 comparative: multi-ticker input, validation, /api/compare ----
