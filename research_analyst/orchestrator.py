@@ -222,9 +222,17 @@ class ResearchOrchestrator:
                     profile = await sec.get_company_profile(ticker)
                     data_sources.append("SEC EDGAR (company profile)")
             except Exception as e:
+                # The inner error is logged, not surfaced: for an
+                # international symbol it is SEC's US-format validator
+                # text ("must be 1-5 uppercase letters"), which
+                # misleads — the substantive fact is that no listing
+                # was found under this symbol anywhere it was tried.
+                logger.debug("SEC profile fallback failed for %s: %s", ticker, e)
                 raise ValueError(
-                    f"Cannot resolve ticker '{ticker}'. "
-                    f"Neither market data nor SEC returned results: {e}"
+                    f"Cannot resolve ticker '{ticker}'. Neither market data "
+                    "nor SEC EDGAR returned a listing for this symbol. "
+                    "Check the symbol, including its exchange suffix "
+                    "(e.g. .NS, .L, .SA, .T), and try again."
                 ) from e
 
         # --- Parallel data fetching ---
