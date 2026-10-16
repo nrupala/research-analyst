@@ -179,6 +179,24 @@ class BillingConfig(BaseSettings):
     # per-key metering. It does not gate the public research endpoints.
     api_keys_file: str = ""
 
+    # Stripe billing (Stream A). All values come from the environment —
+    # never from code. The billing endpoints stay dormant (503) until
+    # stripe_secret_key and stripe_webhook_secret are both set. Card
+    # data never touches this service: checkout is Stripe-hosted.
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_price_app_pro: str = ""
+    stripe_price_app_team: str = ""
+    stripe_price_api_pro: str = ""
+    stripe_price_api_team: str = ""
+    # Where Stripe sends the buyer after checkout; the success URL must
+    # carry the {CHECKOUT_SESSION_ID} placeholder for the claim flow.
+    stripe_success_url: str = ""
+    stripe_cancel_url: str = ""
+    # Paid-checkout grants (session -> plan, claimed state) persist next
+    # to the key file by default; overridable for tests/ops.
+    stripe_grants_file: str = ""
+
     # White-label branding hooks (evidence is never altered — chrome only).
     white_label_org_name: str = ""
     white_label_prepared_on_url: str = ""

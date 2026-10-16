@@ -68,7 +68,8 @@ logger = logging.getLogger(__name__)
 
 RA_PRO = "ra.pro"  # RA Pro subscription
 TWF_PRO = "twf.pro"  # TWF Pro bundle (unlocks RA Pro, see below)
-SOURCE_DATA = "source.data"  # source-data bundle download
+SOURCE_DATA = "source.data"  # legacy flag; never granted by a paid plan (2026-10-15 ruling)
+API_ACCESS = "api.access"  # metered analysis-API access (Stream A): RA's own work product
 WHITE_LABEL = "white.label"  # white-label branding on exports
 
 # TWF Pro is a bundle: carrying twf.pro unlocks the RA Pro surface.
@@ -100,6 +101,13 @@ class APIKeyRecord:
     entitlements: set[str] = field(default_factory=set)
     revoked: bool = False
     revoked_at_utc: str | None = None
+    # Billing linkage (Stream A): the paid plan that issued this key and
+    # the Stripe objects behind it, so lifecycle webhooks can find and
+    # suspend the key. Ids only — never secrets, never card data.
+    plan: str | None = None
+    stripe_customer_id: str | None = None
+    stripe_subscription_id: str | None = None
+    monthly_call_allowance: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -110,6 +118,10 @@ class APIKeyRecord:
             "entitlements": sorted(self.entitlements),
             "revoked": self.revoked,
             "revoked_at_utc": self.revoked_at_utc,
+            "plan": self.plan,
+            "stripe_customer_id": self.stripe_customer_id,
+            "stripe_subscription_id": self.stripe_subscription_id,
+            "monthly_call_allowance": self.monthly_call_allowance,
         }
 
     @classmethod
@@ -122,6 +134,10 @@ class APIKeyRecord:
             entitlements=set(d.get("entitlements", [])),
             revoked=bool(d.get("revoked", False)),
             revoked_at_utc=d.get("revoked_at_utc"),
+            plan=d.get("plan"),
+            stripe_customer_id=d.get("stripe_customer_id"),
+            stripe_subscription_id=d.get("stripe_subscription_id"),
+            monthly_call_allowance=d.get("monthly_call_allowance"),
         )
 
 
@@ -174,7 +190,16 @@ class KeyStore:
             self._sync_mtime()
 
     # -- issuance ---------------------------------------------------------
-    def create(self, label: str, entitlements: set[str] | None = None) -> tuple[APIKeyRecord, str]:
+    def create(
+        self,
+        label: str,
+        entitlements: set[str] | None = None,
+        *,
+        plan: str | None = None,
+        stripe_customer_id: str | None = None,
+        stripe_subscription_id: str | None = None,
+        monthly_call_allowance: int | None = None,
+    ) -> tuple[APIKeyRecord, str]:
         """Create a key. Returns (record, raw_key); the raw key is shown once."""
         raw_key = KEY_PREFIX + secrets.token_urlsafe(32)
         record = APIKeyRecord(
@@ -183,6 +208,10 @@ class KeyStore:
             label=label,
             created_at_utc=datetime.now(UTC).isoformat(),
             entitlements=set(entitlements or set()),
+            plan=plan,
+            stripe_customer_id=stripe_customer_id,
+            stripe_subscription_id=stripe_subscription_id,
+            monthly_call_allowance=monthly_call_allowance,
         )
         with self._lock:
             self._by_hash[record.key_hash] = record
@@ -230,6 +259,27 @@ class KeyStore:
     def get(self, key_id: str) -> APIKeyRecord | None:
         self._maybe_reload()
         return self._by_id.get(key_id)
+
+    def persist(self, record: APIKeyRecord) -> None:
+        """Save in-place changes to a record (plan / allowance updates)."""
+        with self._lock:
+            if record.key_id in self._by_id:
+                self._save()
+
+    def find_by_subscription(self, subscription_id: str) -> APIKeyRecord | None:
+        """The key issued for a Stripe subscription, if any (Stream A).
+
+        Used by lifecycle webhooks (cancel / lapse) to locate the key
+        that must be suspended. Freshness-checked like verify().
+        """
+        if not subscription_id:
+            return None
+        self._maybe_reload()
+        with self._lock:
+            for record in self._by_id.values():
+                if record.stripe_subscription_id == subscription_id:
+                    return record
+        return None
 
     # -- persistence (hashes only) -------------------------------------------
     def _load(self) -> None:

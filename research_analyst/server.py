@@ -38,6 +38,7 @@ Endpoints:
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import subprocess
@@ -84,6 +85,14 @@ from .models import ResearchRequest
 from .orchestrator import ResearchOrchestrator
 from .providers.market_data import MarketDataProvider
 from .reports.comparative_renderer import render_html, render_markdown
+from .stripe_billing import (
+    PLANS,
+    GrantStore,
+    claim_grant,
+    create_checkout_session,
+    handle_event,
+    verify_signature,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -308,6 +317,7 @@ def create_app(
     rate_limiter: _IPRateLimiter | None = None,
     key_store: KeyStore | None = None,
     metering: MeteringRecorder | None = None,
+    grant_store: GrantStore | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="Research Analyst",
@@ -353,8 +363,14 @@ def create_app(
     # --- API keys, metering, white-label (injectable for tests) ---
     if key_store is None and settings.billing.api_keys_file:
         key_store = KeyStore(settings.billing.api_keys_file)
+    if grant_store is None and settings.billing.stripe_secret_key:
+        grants_path = settings.billing.stripe_grants_file
+        if not grants_path and settings.billing.api_keys_file:
+            grants_path = str(Path(settings.billing.api_keys_file).parent / "stripe_grants.json")
+        grant_store = GrantStore(grants_path or None)
     metering = metering or MeteringRecorder()
     app.state.key_store = key_store
+    app.state.grant_store = grant_store
     app.state.metering = metering
     app.state.white_label = WhiteLabelProfile(
         org_name=settings.billing.white_label_org_name,
@@ -873,6 +889,115 @@ def create_app(
                 "day_utc": metering._today_utc(),
                 "usage": metering.usage(record.key_id),
                 "total_requests": metering.total_requests(record.key_id),
+            }
+        )
+
+    # ================================================================
+    # Stripe billing (Stream A) — dormant until configured
+    # ================================================================
+
+    @app.post("/api/billing/checkout")
+    async def billing_checkout(body: dict[str, Any], request: Request) -> JSONResponse:
+        """Create a Stripe Checkout Session for a paid plan.
+
+        Dormant (503) until Stripe is configured. Card data goes to
+        Stripe's hosted page only; this service receives just the plan.
+        """
+        billing = settings.billing
+        if not billing.stripe_secret_key:
+            raise HTTPException(status_code=503, detail="Billing is not configured.")
+        plan = PLANS.get(str(body.get("plan", "")))
+        if plan is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown plan. Choose one of: {', '.join(sorted(PLANS))}.",
+            )
+        price_id = str(getattr(billing, plan.price_config_attr, "") or "")
+        if not price_id:
+            raise HTTPException(status_code=503, detail=f"Plan {plan.name} is not priced yet.")
+        try:
+            session = create_checkout_session(
+                plan=plan,
+                price_id=price_id,
+                secret_key=billing.stripe_secret_key,
+                success_url=billing.stripe_success_url,
+                cancel_url=billing.stripe_cancel_url,
+            )
+        except Exception:
+            logger.exception("Stripe checkout session creation failed")
+            raise HTTPException(status_code=502, detail="Payment provider unreachable.") from None
+        return JSONResponse({"checkout_url": session.get("url"), "session_id": session.get("id")})
+
+    @app.post("/api/billing/webhook")
+    async def billing_webhook(request: Request) -> JSONResponse:
+        """Stripe webhook: grant on payment, revoke on cancellation.
+
+        The signature is verified before anything is acted on; key
+        issuance itself happens at claim time, never here.
+        """
+        billing = settings.billing
+        if not (billing.stripe_secret_key and billing.stripe_webhook_secret):
+            raise HTTPException(status_code=503, detail="Billing is not configured.")
+        key_store_state = request.app.state.key_store
+        grant_store_state = request.app.state.grant_store
+        if key_store_state is None or grant_store_state is None:
+            raise HTTPException(status_code=503, detail="Billing storage is not configured.")
+        payload = await request.body()
+        signature = request.headers.get("stripe-signature", "")
+        if not verify_signature(payload, signature, billing.stripe_webhook_secret):
+            raise HTTPException(status_code=400, detail="Invalid signature.")
+        try:
+            event = json.loads(payload)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid payload.") from None
+        price_to_plan = {
+            name: str(getattr(billing, p.price_config_attr, "") or "") for name, p in PLANS.items()
+        }
+        outcome = handle_event(
+            event,
+            key_store=key_store_state,
+            grant_store=grant_store_state,
+            price_to_plan=price_to_plan,
+        )
+        return JSONResponse({"received": True, "outcome": outcome})
+
+    @app.get("/api/billing/claim")
+    async def billing_claim(request: Request, session_id: str = Query(...)) -> JSONResponse:
+        """One-time key reveal for a paid checkout session.
+
+        The raw key is returned exactly once, here; only its hash is
+        ever stored. A second claim is refused (support re-issues).
+        """
+        key_store_state = request.app.state.key_store
+        grant_store_state = request.app.state.grant_store
+        if key_store_state is None or grant_store_state is None:
+            raise HTTPException(status_code=503, detail="Billing is not configured.")
+        try:
+            claimed = claim_grant(
+                session_id, key_store=key_store_state, grant_store=grant_store_state
+            )
+        except ValueError:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "This purchase was already claimed. If you lost your key, "
+                    "contact support and we will re-issue it."
+                ),
+            ) from None
+        if claimed is None:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    "No paid checkout found for this session yet. If you just "
+                    "paid, wait a few seconds and retry."
+                ),
+            )
+        raw_key, plan_name = claimed
+        return JSONResponse(
+            {
+                "api_key": raw_key,
+                "plan": plan_name,
+                "note": "Save this key now — it is shown only once and cannot be recovered.",
             }
         )
 
