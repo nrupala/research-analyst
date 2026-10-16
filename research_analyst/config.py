@@ -61,6 +61,10 @@ class MarketDataConfig(BaseSettings):
     # key tier; see providers/tiingo.py). Empty key = step skipped.
     tiingo_api_key: str = ""
     tiingo_base_url: str = "https://api.tiingo.com"
+    # EDINET — first source for Japan filings (free subscription key;
+    # see providers/edinet.py). Empty key = provider dormant.
+    edinet_api_key: str = ""
+    edinet_base_url: str = "https://api.edinet-fsa.go.jp/api/v2"
     # FRED for macro data
     fred_api_key: str = ""
     fred_base_url: str = "https://api.stlouisfed.org/fred"
