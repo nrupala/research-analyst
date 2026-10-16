@@ -464,6 +464,17 @@ class MacroSnapshot(BaseModel):
     eia_brent_as_of: date | None = None
     eia_henry_hub_spot: float | None = None  # USD per MMBtu, Henry Hub spot
     eia_henry_hub_as_of: date | None = None
+
+    # First-source supplements (source registry step 4, 2026-10-16).
+    # Banco Central do Brasil: Selic target and IPCA 12-month as
+    # fractions (fleet convention for rates), USD/BRL PTAX as
+    # published (BRL per USD). Same provenance-only rule.
+    bcb_selic_rate: float | None = None  # fraction per year
+    bcb_selic_as_of: date | None = None
+    bcb_ipca_yoy: float | None = None  # fraction
+    bcb_ipca_as_of: date | None = None
+    bcb_usd_brl: float | None = None  # BRL per USD (PTAX selling rate)
+    bcb_usd_brl_as_of: date | None = None
     supplemental_sources: list[str] = Field(default_factory=list)
 
     # Cycle

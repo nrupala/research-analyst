@@ -99,6 +99,7 @@ _SOURCE_URL_TEMPLATES: list[tuple[str, str]] = [
     ("Eurostat", "https://ec.europa.eu/eurostat"),
     ("Bank of Japan", "https://www.stat-search.boj.or.jp"),
     ("EIA", "https://www.eia.gov/opendata/"),
+    ("Banco Central do Brasil", "https://www.bcb.gov.br/en"),
     ("EDINET", "https://disclosure2.edinet-fsa.go.jp/"),
     ("CVM", "https://dados.cvm.gov.br"),
     ("Stooq", "https://stooq.com"),
