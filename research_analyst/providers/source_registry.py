@@ -351,7 +351,10 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
         is_primary=True,
     ),
     # ------------------------------------------------------------------
-    # Brazil filings — CVM open data (planned)
+    # Brazil filings — CVM open data (WIRED 2026-10-15: DFP annual
+    # statements lead for .SA listings; ticker resolved by company
+    # name against the CVM register, never guessed. ITR quarterly is
+    # a named fast-follow.)
     # ------------------------------------------------------------------
     SourceEntry(
         dataset="filings",
@@ -362,10 +365,11 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
         access_method="Bulk ZIP/TXT via CKAN datasets (DFP/ITR/FRE/FCA)",
         key_env_var=None,
         terms_note=(
-            "Portal filters these datasets under ODbL (license_id=odc-odbl); "
-            "a per-dataset licence line is UNVERIFIED (matrix §1)."
+            "ODbL (license_id=odc-odbl, verified on the DFP dataset's "
+            "own CKAN record 2026-10-15): consume with attribution; "
+            "RA sells its analysis, never the dataset."
         ),
-        status=STATUS_PLANNED,
+        status=STATUS_WIRED,
         is_primary=True,
     ),
     # ------------------------------------------------------------------

@@ -179,6 +179,7 @@ def test_wired_primaries_are_exactly_the_production_set():
         ("statistics", "EU", "Eurostat Statistics API"),
         ("fx_rates", "JP", "Bank of Japan Time-Series API"),
         ("policy_rate", "JP", "Bank of Japan Time-Series API"),
+        ("filings", "BR", "CVM Portal de Dados Abertos"),
     }
 
 
@@ -204,7 +205,6 @@ def test_planned_first_sources_present():
         ("filings", "UK"),
         ("filings", "JP"),
         ("energy", "US"),
-        ("filings", "BR"),
         # TMX: Canada's designated market-direct price primary; its
         # machine route is under probe (owner cascade, 2026-10-15).
         ("price_data", "CA"),
