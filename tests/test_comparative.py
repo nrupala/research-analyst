@@ -157,7 +157,7 @@ def make_response(
         reports=[report],
         metadata=ResearchMetadata(
             data_sources=sources
-            or ["yfinance (company profile)", "yfinance (financial statements)"],
+            or ["Yahoo Finance (company profile)", "Yahoo Finance (financial statements)"],
         ),
     )
 
@@ -453,7 +453,7 @@ class TestComparativeRenderer:
         ko = make_response("KO")
         ko.metadata.source_records = [
             SourceRecord(
-                name="yfinance (company profile)", url="https://finance.yahoo.com/quote/KO"
+                name="Yahoo Finance (company profile)", url="https://finance.yahoo.com/quote/KO"
             ),
             SourceRecord(
                 name="SEC EDGAR (10-K filings)",
@@ -463,7 +463,7 @@ class TestComparativeRenderer:
         report = build_comparative_report([ko, make_response("PEP")])
         assert report.source_records["KO"][0].url == "https://finance.yahoo.com/quote/KO"
         md = render_markdown(report)
-        assert "[yfinance (company profile)](https://finance.yahoo.com/quote/KO)" in md
+        assert "[Yahoo Finance (company profile)](https://finance.yahoo.com/quote/KO)" in md
         assert "SEC EDGAR (10-K filings)" in md
         html_doc = render_html(report)
         assert 'href="https://finance.yahoo.com/quote/KO"' in html_doc

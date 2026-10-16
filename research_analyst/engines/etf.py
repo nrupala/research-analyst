@@ -115,7 +115,7 @@ class ETFEngine:
                 Assumption(
                     label="Assets Under Management",
                     value=str(metadata.aum),
-                    source="yfinance ETF metadata (totalAssets / netAssets)",
+                    source="Yahoo Finance ETF metadata (totalAssets / netAssets)",
                 )
             )
         elif profile.market_cap is not None:
@@ -135,7 +135,7 @@ class ETFEngine:
                 Assumption(
                     label="Expense Ratio",
                     value=str(metadata.expense_ratio),
-                    source="yfinance ETF metadata",
+                    source="Yahoo Finance ETF metadata",
                 )
             )
         if metadata.distribution_yield is not None:
@@ -143,7 +143,7 @@ class ETFEngine:
                 Assumption(
                     label="Distribution Yield",
                     value=str(metadata.distribution_yield),
-                    source="yfinance ETF metadata",
+                    source="Yahoo Finance ETF metadata",
                 )
             )
 
