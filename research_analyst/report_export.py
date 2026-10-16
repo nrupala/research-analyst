@@ -66,12 +66,19 @@ def _pct(value: float | None) -> str:
 
 def _price_source_name(resp: ResearchAPIResponse) -> str:
     """The serving price source's display name, from the declared
-    Data Sources (e.g. "yfinance (price data)" -> "Yahoo Finance").
-    "" when the report declares none — never guessed."""
+    Data Sources. Accepts both declaration shapes: the legacy raw key
+    ("yfinance (price data)") and the canonical display name
+    ("Yahoo Finance (price data)"). "" when the report declares no
+    recognizable price source — never guessed."""
     for entry in resp.metadata.data_sources:
         if "price data" in entry:
-            key = entry.split(" (", 1)[0].strip().lower()
-            return PRICE_SOURCE_LABELS.get(key, key)
+            raw = entry.split(" (", 1)[0].strip()
+            label = PRICE_SOURCE_LABELS.get(raw.lower())
+            if label:
+                return label
+            if raw in PRICE_SOURCE_LABELS.values():
+                return raw
+            return ""
     return ""
 
 

@@ -324,3 +324,22 @@ def test_price_source_label_mapping():
     assert price_source_label("yfinance") == " (source: Yahoo Finance)"
     assert price_source_label("") == ""
     assert price_source_label("legacy-unknown") == ""
+
+
+def test_price_declaration_name_matches_price_line_label():
+    """Release-gate Low (2026-10-15): one canonical name per cascade
+    step. The Data Sources declaration name must equal the name the
+    price lines print — both come from PRICE_SOURCE_LABELS."""
+    from research_analyst.models import PRICE_SOURCE_LABELS
+    from research_analyst.orchestrator import _price_declaration
+
+    for key, name in PRICE_SOURCE_LABELS.items():
+        assert _price_declaration(key).startswith(f"{name} ("), key
+    # The gate's exact case: the last step never declares as "yfinance".
+    assert _price_declaration("yfinance") == "Yahoo Finance (price data)"
+    assert _price_declaration("nasdaq") == (
+        "Nasdaq (price data — exchange-published, end-of-day)"
+    )
+    # Unknown/legacy stamps keep the yfinance-era name, never invent.
+    assert _price_declaration("").startswith("Yahoo Finance (")
+    assert _price_declaration("legacy-cache").startswith("Yahoo Finance (")

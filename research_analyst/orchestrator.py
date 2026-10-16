@@ -59,6 +59,7 @@ from .engines.technical import TechnicalEngine
 from .engines.valuation import ValuationEngine
 from .enums import SecurityType
 from .models import (
+    PRICE_SOURCE_LABELS,
     AnalystEstimates,
     CompanyProfile,
     Competitor,
@@ -117,6 +118,30 @@ def _source_records(ticker: str, data_sources: list[str]) -> list[SourceRecord]:
                 break
         records.append(SourceRecord(name=label, url=url))
     return records
+
+
+# Data Sources declaration per cascade step. The NAME always comes
+# from models.PRICE_SOURCE_LABELS — the same map the price lines use —
+# so a step can never wear two names (release-gate Low, 2026-10-15:
+# "Yahoo Finance" beside the price, "yfinance" in Data Sources).
+_PRICE_DECLARATION_SUFFIXES: dict[str, str] = {
+    "nasdaq": "price data — exchange-published, end-of-day",
+    "tiingo": "price data — end-of-day",
+    "alphavantage": "price data — end-of-day",
+    "stooq": "price data — free end-of-day",
+    "yfinance": "price data",
+}
+
+
+def _price_declaration(data_source: str) -> str:
+    """The Data Sources entry for the cascade step that served.
+
+    An unknown/legacy stamp keeps the yfinance-era declaration name
+    rather than inventing one.
+    """
+    name = PRICE_SOURCE_LABELS.get(data_source, "Yahoo Finance")
+    suffix = _PRICE_DECLARATION_SUFFIXES.get(data_source, "price data")
+    return f"{name} ({suffix})"
 
 
 class ResearchOrchestrator:
@@ -226,20 +251,8 @@ class ResearchOrchestrator:
         ), "price data", warnings)
         if prices.data:
             # Declare the cascade step that actually served the
-            # prices (owner cascade, 2026-10-15); an unknown/legacy
-            # stamp falls back to the generic yfinance-era wording.
-            if prices.data_source == "nasdaq":
-                data_sources.append(
-                    "Nasdaq (price data — exchange-published, end-of-day)"
-                )
-            elif prices.data_source == "tiingo":
-                data_sources.append("Tiingo (price data — end-of-day)")
-            elif prices.data_source == "alphavantage":
-                data_sources.append("Alpha Vantage (price data — end-of-day)")
-            elif prices.data_source == "stooq":
-                data_sources.append("Stooq (price data — free end-of-day)")
-            else:
-                data_sources.append("yfinance (price data)")
+            # prices (owner cascade, 2026-10-15).
+            data_sources.append(_price_declaration(prices.data_source))
             data_freshness["prices"] = prices.period_end.isoformat()
 
         financials_yf = self._safe_result(results[1], [], "yfinance financials", warnings)
