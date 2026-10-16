@@ -178,7 +178,7 @@ limitations under the License.
             <p>The <strong>Quant</strong> tab runs the quantitative engine (growth trends, DuPont decomposition, forensic screens, valuation, allocation) over the same financial statements the report uses. It names that statement set at the top ("Statements: ..."), so the numbers always trace to the same source as the report.</p>
 
             <h2>API access</h2>
-            <p>Paid plans add a metered API: the same analysis, called programmatically with your key in the <code>X-RA-Key</code> header. <code>GET /api/usage</code> shows your plan, this month's calls, and what remains. See the API Reference in the project documentation for endpoints and formats.</p>
+            <p>Paid plans add a metered API: the same analysis, called programmatically with your key in the <code>X-RA-Key</code> header. <code>GET /api/usage</code> shows your plan, this month's calls, and what remains. Your key also owns a <strong>watchlist</strong> (<code>/api/watchlist</code>): add the tickers you follow, and <code>GET /api/watchlist/quotes</code> returns their current prices, each labelled with the source that served it. See the API Reference in the project documentation for endpoints and formats.</p>
 
             <h2>Installing on your device</h2>
             <ul>

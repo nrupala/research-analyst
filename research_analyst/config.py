@@ -232,6 +232,10 @@ class BillingConfig(BaseSettings):
     # by default ("scenarios.json"); overridable for tests/ops.
     scenarios_file: str = ""
 
+    # Watchlists (Stream B / F1.7) persist next to the key file
+    # by default ("watchlists.json"); overridable for tests/ops.
+    watchlists_file: str = ""
+
     # White-label branding hooks (evidence is never altered — chrome only).
     white_label_org_name: str = ""
     white_label_prepared_on_url: str = ""
