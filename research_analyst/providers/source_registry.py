@@ -315,7 +315,9 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
         is_primary=True,
     ),
     # ------------------------------------------------------------------
-    # Japan filings — EDINET (planned; free key not yet obtained)
+    # Japan filings — EDINET (provider built 2026-10-16; arms when the
+    # key is placed in the box env — until then it cannot serve, so
+    # the status stays planned)
     # ------------------------------------------------------------------
     SourceEntry(
         dataset="filings",
@@ -324,10 +326,12 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
         organization="Financial Services Agency (Japan)",
         base_url="https://api.edinet-fsa.go.jp/api/v2",
         access_method="REST",
-        key_env_var="RA_EDINET_API_KEY",
+        key_env_var="RA_MARKET_EDINET_API_KEY",
         terms_note=(
-            "Redistribution terms UNVERIFIED (Japanese-only spec, matrix §9) — "
-            "read before any display."
+            "Free subscription key (obtained 2026-10-14, held in the Secure "
+            "Vault). Filings consumed for analysis and cited as EDINET + "
+            "document ID + filing date; the filings themselves are never "
+            "redistributed."
         ),
         status=STATUS_PLANNED,
         is_primary=True,
