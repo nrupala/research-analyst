@@ -72,7 +72,6 @@ from .config import settings
 from .disclaimer import DISCLAIMER_FULL, DISCLAIMER_SHORT, DISCLAIMER_VERSION
 from .entitlements import (
     RA_PRO,
-    SOURCE_DATA,
     APIKeyRecord,
     KeyStore,
     MeteringRecorder,
@@ -404,9 +403,8 @@ def create_app(
         they arm ONLY in legacy paid-keys mode (RA_BILLING_PAID_KEYS set):
         a valid X-RA-Key is then required — a legacy paid key, or a KeyStore
         key carrying the `ra.pro` entitlement (`twf.pro` unlocks it via the
-        bundle map). A KeyStore file on its own arms only the paid
-        source-data gate (/api/research/data) and /api/usage; configuring
-        the store must never lock the free public surfaces (release-gate
+        bundle map). A KeyStore file on its own arms only
+        /api/usage; configuring the store must never lock the free public surfaces (release-gate
         finding H2, 2026-10-15). Raises 401 otherwise.
         """
         paid_keys = settings.billing.paid_keys
@@ -795,75 +793,6 @@ def create_app(
             ),
             missing_inputs=results["missing_inputs"],
             assumptions=results["assumptions"],
-        )
-
-    @app.post("/api/research/data", response_model=None)
-    async def source_data_download(
-        body: ResearchAPIRequest,
-        request: Request,
-        format: str | None = Query(default=None),
-    ) -> Response:
-        """Paid feature (8c-2): the raw source-data bundle behind a report.
-
-        Gated by a valid X-RA-Key header whenever any key mechanism is
-        configured — RA_BILLING_PAID_KEYS or a KeyStore file (see
-        BillingConfig). When neither is configured (local/demo), the
-        endpoint is open. Returns JSON (canonical) or CSV.
-        """
-        from .data_export import build_bundle, bundle_to_csv
-
-        # --- Paid-key gate ---
-        # Legacy shared-secret keys (RA_BILLING_PAID_KEYS) keep working; hashed,
-        # revocable KeyStore keys (entitlements.py) are also accepted when they
-        # carry the `source.data` entitlement. Open when neither is configured.
-        paid_keys = settings.billing.paid_keys
-        if paid_keys or request.app.state.key_store is not None:
-            provided = request.headers.get("x-ra-key", "")
-            legacy_ok = bool(paid_keys) and provided in paid_keys
-            record = _key_record(request)
-            entitled = has_entitlement(record, SOURCE_DATA)
-            if not (legacy_ok or entitled):
-                raise HTTPException(
-                    status_code=401,
-                    detail=(
-                        "This is a paid feature. Provide a valid X-RA-Key header (or "
-                        "subscribe)."
-                    ),
-                )
-
-        _meter(request, "source_data")
-
-        client_ip = request.client.host if request.client else "unknown"
-        if not rate_limiter.allow(client_ip):
-            raise HTTPException(status_code=429, detail="Rate limit exceeded.")
-
-        # Run the pipeline and keep the typed ResearchResponse (not the API wire model)
-        _result = await _run_pipeline(body)
-        bundle = build_bundle(_result)
-
-        fmt = (format or "json").lower()
-        if fmt not in ("json", "csv"):
-            raise HTTPException(status_code=400, detail="Supported formats: json, csv.")
-
-        if fmt == "csv":
-            csv_text = bundle_to_csv(bundle)
-            return Response(
-                content=csv_text,
-                media_type="text/csv",
-                headers={
-                    "Content-Disposition": (
-                        f'attachment; filename="{body.ticker.upper()}_source_data.csv"'
-                    )
-                },
-            )
-        return Response(
-            content=__import__("json").dumps(bundle, indent=2),
-            media_type="application/json",
-            headers={
-                "Content-Disposition": (
-                    f'attachment; filename="{body.ticker.upper()}_source_data.json"'
-                )
-            },
         )
 
     @app.get("/api/usage")

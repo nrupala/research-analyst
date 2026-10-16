@@ -26,8 +26,8 @@ exists before the claim, and only its hash is ever persisted.
 
 What is sold: RA's own work product — app tiers unlock ``ra.pro``
 features; API tiers grant ``api.access`` with a monthly call allowance.
-Source data is never sold (owner ruling, 2026-10-15): no plan grants
-``source.data``.
+Source data is never sold (owner ruling, 2026-10-15): the
+``source.data`` entitlement is retired and no plan grants it.
 
 Safety properties:
 - Webhook signatures are verified (HMAC-SHA256, timestamp tolerance)

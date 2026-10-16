@@ -27,8 +27,8 @@ import hashlib
 import json
 
 from research_analyst.entitlements import (
+    API_ACCESS,
     RA_PRO,
-    SOURCE_DATA,
     TWF_PRO,
     WHITE_LABEL,
     KeyStore,
@@ -83,7 +83,7 @@ def test_twf_pro_bundle_unlocks_ra_pro():
     verified = store.verify(raw)
     assert has_entitlement(verified, RA_PRO)  # bundle mapping
     assert has_entitlement(verified, TWF_PRO)
-    assert has_entitlement(verified, SOURCE_DATA)  # bundled too
+    assert has_entitlement(verified, API_ACCESS)  # bundled too (2026-10-15 flavors)
     assert not has_entitlement(verified, WHITE_LABEL)
 
 

@@ -17,7 +17,7 @@
 # A separate commercial license is available for uses incompatible with
 # the AGPL-3.0. See COMMERCIAL-LICENSE.md.
 
-"""Server wiring tests for entitlements: source-data gate, /api/usage, metering.
+"""Server wiring tests for entitlements: retired source-data endpoint, /api/usage, metering.
 
 Offline: the pipeline is stubbed to fail fast so gate behavior (401 vs 500)
 can be asserted without running any provider.
@@ -30,8 +30,6 @@ from fastapi.testclient import TestClient
 
 from research_analyst.entitlements import (
     RA_PRO,
-    SOURCE_DATA,
-    TWF_PRO,
     KeyStore,
     MeteringRecorder,
     WhiteLabelProfile,
@@ -58,52 +56,25 @@ def _issue(entitlements):
     return store, raw
 
 
-def test_source_data_open_when_nothing_configured():
+def test_source_data_endpoint_retired():
+    # Owner ruling 2026-10-15: source data is never sold or redistributed.
+    # The endpoint is gone for everyone — keyed or not.
     client = _app()
     r = client.post("/api/research/data", json={"ticker": "AAA"})
-    # Gate passes (open), pipeline booms -> 500, not 401.
-    assert r.status_code == 500
+    assert r.status_code == 404
 
 
-def test_source_data_requires_key_when_store_configured():
-    store, _ = _issue({RA_PRO})
+def test_source_data_endpoint_retired_with_store_and_key():
+    store, raw = _issue({RA_PRO})
     client = _app(key_store=store)
-    r = client.post("/api/research/data", json={"ticker": "AAA"})
-    assert r.status_code == 401
-
-
-def test_source_data_rejects_key_without_entitlement():
-    store, raw = _issue({RA_PRO})  # no source.data
-    client = _app(key_store=store)
-    r = client.post("/api/research/data", json={"ticker": "AAA"}, headers={"x-ra-key": raw})
-    assert r.status_code == 401
-
-
-def test_source_data_accepts_entitled_key():
-    store, raw = _issue({SOURCE_DATA})
-    client = _app(key_store=store)
-    r = client.post("/api/research/data", json={"ticker": "AAA"}, headers={"x-ra-key": raw})
-    assert r.status_code == 500  # gate passed; pipeline boomed
-
-
-def test_source_data_accepts_twf_bundle_key():
-    store, raw = _issue({TWF_PRO})  # twf.pro unlocks source.data via bundle
-    client = _app(key_store=store)
-    r = client.post("/api/research/data", json={"ticker": "AAA"}, headers={"x-ra-key": raw})
-    assert r.status_code == 500
-
-
-def test_source_data_rejects_revoked_key():
-    store = KeyStore()
-    record, raw = store.create("test", {SOURCE_DATA})
-    store.revoke(record.key_id)
-    client = _app(key_store=store)
-    r = client.post("/api/research/data", json={"ticker": "AAA"}, headers={"x-ra-key": raw})
-    assert r.status_code == 401
+    r = client.post(
+        "/api/research/data", json={"ticker": "AAA"}, headers={"x-ra-key": raw}
+    )
+    assert r.status_code == 404
 
 
 def test_public_research_open_when_only_store_configured():
-    # H2 (2026-10-15): a KeyStore arms the paid source-data gate only;
+    # H2 (2026-10-15): a KeyStore arms /api/usage only;
     # the free public endpoints must stay open (the UI carries no key).
     store, _ = _issue({RA_PRO})
     client = _app(key_store=store)

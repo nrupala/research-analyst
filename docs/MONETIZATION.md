@@ -193,15 +193,14 @@ Step (1) of the build order is now implemented in `research_analyst/entitlements
   `RA_BILLING_API_KEYS_FILE`); verification is constant-time; keys are
   revocable and fail closed. Raw keys are returned once at issuance and never
   logged or persisted. The legacy `RA_BILLING_PAID_KEYS` shared-secret list
-  keeps working for `/api/research/data`.
-- **Entitlements**: flags `ra.pro`, `twf.pro`, `source.data`, `white.label`.
-  `twf.pro` is a bundle: it unlocks `ra.pro` + `source.data` (no billing
-  implemented — the Merchant of Record decision, Paddle vs Lemon Squeezy, is
-  still open). Test price anchor remains **$15/mo or $120/yr** (not a
-  public-price commitment).
+  keeps working in legacy paid-keys mode.
+- **Entitlements**: flags `ra.pro`, `twf.pro`, `api.access`, `white.label`.
+  `twf.pro` is a bundle: it unlocks `ra.pro` + `api.access`. (Billing rail:
+  Stripe, decided 2026-10-14. The paid source-data download was retired
+  2026-10-15 — data RA consumes under license is never sold.)
 - **Metering**: `MeteringRecorder` counts requests per key per endpoint per day
   (UTC), with a pluggable sink for a future billing backend. `/api/research`,
-  `/api/compare`, `/api/resolve` and `/api/research/data` are metered;
+  `/api/compare` and `/api/resolve` are metered;
   `GET /api/usage` (key-gated) returns the caller's counts + effective
   entitlements.
 - **White-label**: `WhiteLabelProfile` (org name, prepared-on URL, footer note,

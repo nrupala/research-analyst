@@ -162,10 +162,9 @@ class BillingConfig(BaseSettings):
     Two activation scopes, deliberately separate:
     - RA_BILLING_PAID_KEYS (comma-separated legacy keys) arms every gated
       endpoint, including the metered research/resolve/compare/quant APIs.
-    - A KeyStore file (RA_BILLING_API_KEYS_FILE) arms only the paid
-      source-data download (/api/research/data) and /api/usage, so the
-      free public surfaces stay open while the paid claim is real
-      (release-gate finding H2, 2026-10-15).
+    - A KeyStore file (RA_BILLING_API_KEYS_FILE) arms only /api/usage
+      (per-key metering for the analysis API), so the free public
+      surfaces stay open (release-gate finding H2, 2026-10-15).
     When neither is configured, the operator has not activated paid gating
     and the endpoints stay open (local/demo use). No secrets here.
     """
@@ -173,10 +172,9 @@ class BillingConfig(BaseSettings):
     paid_keys: list[str] = Field(default_factory=list, description="Comma-separated paid API keys.")
 
     # Key-store file for hashed, revocable API keys (see entitlements.py).
-    # Only key hashes are persisted — never raw keys. When set, the
-    # /api/research/data gate arms: KeyStore keys carrying the
-    # `source.data` entitlement are accepted, and /api/usage serves
-    # per-key metering. It does not gate the public research endpoints.
+    # Only key hashes are persisted — never raw keys. When set,
+    # /api/usage serves per-key metering for issued keys. It does not
+    # gate the public research endpoints.
     api_keys_file: str = ""
 
     # Stripe billing (Stream A). All values come from the environment —
