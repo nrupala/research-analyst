@@ -404,6 +404,28 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
         is_primary=True,
     ),
     # ------------------------------------------------------------------
+    # Australia statistics — ABS Data API (WIRED 2026-10-16: CPI YoY
+    # + unemployment rate as macro supplements; keyless. Working
+    # host is data.api.abs.gov.au/rest — the transposed host in the
+    # registry matrix and ABS's own beta page does not resolve.)
+    # ------------------------------------------------------------------
+    SourceEntry(
+        dataset="statistics",
+        market="AU",
+        source_name="Australian Bureau of Statistics Data API",
+        organization="Australian Bureau of Statistics",
+        base_url="https://data.api.abs.gov.au/rest",
+        access_method="SDMX REST (SDMX-CSV), keyed series queries",
+        key_env_var=None,
+        terms_note=(
+            "ABS content is CC BY 4.0 Australia (registry matrix, "
+            "2026-10-15): consume with attribution; RA sells its "
+            "analysis, never the dataset."
+        ),
+        status=STATUS_WIRED,
+        is_primary=True,
+    ),
+    # ------------------------------------------------------------------
     # Prices — the owner's cascade (2026-10-15). Order: (1) market-
     # direct (Nasdaq for US; TMX designated for Canada, route not yet
     # established), (2) free key services (Tiingo, Alpha Vantage;

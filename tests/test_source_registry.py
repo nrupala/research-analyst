@@ -181,6 +181,7 @@ def test_wired_primaries_are_exactly_the_production_set():
         ("policy_rate", "JP", "Bank of Japan Time-Series API"),
         ("filings", "BR", "CVM Portal de Dados Abertos"),
         ("macro", "BR", "Banco Central do Brasil — SGS (BCData)"),
+        ("statistics", "AU", "Australian Bureau of Statistics Data API"),
     }
 
 

@@ -79,6 +79,11 @@ class MarketDataConfig(BaseSettings):
     # First-source provider (source registry step 4, 2026-10-16) —
     # keyless official API: Banco Central do Brasil SGS.
     bcb_base_url: str = "https://api.bcb.gov.br"
+    # First-source provider (source registry step 5, 2026-10-16) —
+    # keyless official API: Australian Bureau of Statistics. NOTE the
+    # host is data.api.abs.gov.au (the transposed api.data.abs.gov.au
+    # printed in ABS's beta page does not resolve).
+    abs_base_url: str = "https://data.api.abs.gov.au/rest"
     # First-source providers (source registry step 2, 2026-10-14) — all
     # keyless official APIs: ECB + Bundesbank (SDMX), Eurostat, Bank of Japan.
     ecb_base_url: str = "https://data-api.ecb.europa.eu/service"
