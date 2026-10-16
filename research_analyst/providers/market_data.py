@@ -83,14 +83,21 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Input validation
 # ---------------------------------------------------------------------------
-_TICKER_RE = re.compile(r"^[A-Z0-9\.\-]{1,10}$")
+_TICKER_RE = re.compile(r"^[A-Z0-9\.\-]{1,20}$")
 
 
 def _sanitize_ticker(ticker: str) -> str:
-    """Validate ticker: 1-10 chars, uppercase alphanumeric + dot/hyphen only."""
+    """Validate ticker: 1-20 chars, uppercase alphanumeric + dot/hyphen only.
+
+    The 20-char cap matches the API layer (api_models ResearchAPIRequest),
+    which was raised to admit suffixed international tickers such as
+    RELIANCE.NS (11) and TATAMOTORS.NS (13). The provider cap stayed at
+    10 and silently rejected those symbols — found live 2026-10-15 when
+    RELIANCE.NS returned "Invalid ticker" while INFY.NS served.
+    """
     cleaned = ticker.strip().upper()
     if not _TICKER_RE.match(cleaned):
-        raise ValueError(f"Invalid ticker: must be 1-10 alphanumeric chars, got '{cleaned}'")
+        raise ValueError(f"Invalid ticker: must be 1-20 alphanumeric chars, got '{cleaned}'")
     return cleaned
 
 
