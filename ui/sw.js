@@ -35,7 +35,7 @@ var PRECACHE = [
     "/icons/favicon-32x32.png"
 ];
 
-var CDN_HOSTS = ["cdn.plot.ly", "cdn.jsdelivr.net", "fonts.googleapis.com", "fonts.gstatic.com"];
+var CDN_HOSTS = ["cdn.plot.ly", "cdn.jsdelivr.net"];
 
 self.addEventListener("install", function (event) {
     event.waitUntil(

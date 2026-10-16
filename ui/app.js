@@ -543,8 +543,6 @@ async function exportHTML(){
     var doc="<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n"+
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n"+
         "<title>"+esc(tickerSlug())+" Research Report</title>\n"+
-        "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n"+
-        "<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap\">\n"+
         "<style>\n"+cssText+"\nbody{background:#fff;color:#0f172a;max-width:960px;margin:0 auto;padding:24px;}\n.report{border:none;box-shadow:none;padding:0;}\n</style>\n"+
         "</head>\n<body>\n<div class=\"report\">"+clone.innerHTML+"</div>\n"+footerHTML()+"\n</body>\n</html>\n";
     downloadBlob(doc,"text/html;charset=utf-8",reportFileBase()+".html")
