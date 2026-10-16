@@ -387,6 +387,41 @@ def _trim_frame_to_period(df: pd.DataFrame, period: str) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 
+# Exchanges that quote in a MINOR currency unit (Yahoo convention):
+# the quote-currency code names the minor unit (GBp = pence) while
+# statements and yfinance's info rate/value fields use the MAJOR unit
+# (GBP). Prices, analyst targets, the info current price and dividend
+# history arrive in the minor unit; left unscaled they inflate every
+# price-relative ratio exactly 100x (an HSBA.L report showed P/E
+# 1185.5x against EPS in pounds, live-probed 2026-10-16). Ingestion
+# normalizes quote-unit figures to the major unit; the profile speaks
+# the major currency code so a report uses one currency throughout.
+_MINOR_UNIT_CURRENCIES: dict[str, tuple[str, int]] = {
+    "GBp": ("GBP", 100),  # London Stock Exchange — pence
+    "ZAc": ("ZAR", 100),  # Johannesburg Stock Exchange — cents
+    "ILA": ("ILS", 100),  # Tel Aviv Stock Exchange — agorot
+}
+
+
+def _minor_unit_factor(currency_code: str | None) -> int:
+    """Scaling divisor for a quote currency (100 for minor units)."""
+    entry = _MINOR_UNIT_CURRENCIES.get((currency_code or "").strip())
+    return entry[1] if entry else 1
+
+
+def _major_currency(currency_code: str | None) -> str:
+    """Major-unit currency code for a (possibly minor) quote code."""
+    entry = _MINOR_UNIT_CURRENCIES.get((currency_code or "").strip())
+    return entry[0] if entry else (currency_code or "USD")
+
+
+def _scale(value: float | None, factor: int) -> float | None:
+    """Divide a quote-unit figure into the major unit (factor 1 = no-op)."""
+    if value is None or factor == 1:
+        return value
+    return value / factor
+
+
 class MarketDataProvider:
     """Async market data provider.
 
@@ -406,6 +441,38 @@ class MarketDataProvider:
             cache_dir=self._cfg.cache_dir,
             ttl_seconds=self._cfg.cache_ttl_seconds,
         )
+        self._quote_factor_cache: dict[str, int] = {}
+
+    async def _quote_factor(self, ticker: str) -> int:
+        """Minor-unit divisor for the ticker's quote currency.
+
+        Resolved from yfinance fast_info (the listing's own quote
+        currency — step-agnostic, unlike the price cascade). Cached
+        per ticker. Any lookup failure yields 1 (no scaling — the
+        pre-2026-10-16 behavior), never a guess from the suffix: some
+        LSE listings quote in USD, and a suffix rule would corrupt
+        exactly those.
+        """
+        if ticker in self._quote_factor_cache:
+            return self._quote_factor_cache[ticker]
+        factor = 1
+        try:
+            yf_ticker = await self._yf_ticker(ticker)
+            code = await asyncio.to_thread(
+                lambda: yf_ticker.fast_info.get("currency")
+            )
+            factor = _minor_unit_factor(code)
+            if factor != 1:
+                logger.info(
+                    "minor-unit quote currency %s for %s: scaling by %d",
+                    code,
+                    ticker,
+                    factor,
+                )
+        except Exception as e:
+            logger.debug("quote currency lookup failed for %s: %s", ticker, e)
+        self._quote_factor_cache[ticker] = factor
+        return factor
 
     # ------------------------------------------------------------------
     # yfinance wrapper — runs blocking calls in thread pool
@@ -695,6 +762,15 @@ class MarketDataProvider:
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
 
+        # Minor-unit quote currencies (GBp/ZAc/ILA): the cascade's
+        # bars are in the minor unit — normalize to the major unit so
+        # prices share a unit with statements and per-share figures.
+        factor = await self._quote_factor(ticker)
+        if factor != 1:
+            for col in ("Open", "High", "Low", "Close", "Adj Close"):
+                if col in df.columns:
+                    df[col] = df[col] / factor
+
         data_points: list[PriceData] = []
         for idx, row in df.iterrows():
             dt = idx.date() if hasattr(idx, "date") else idx
@@ -838,7 +914,10 @@ class MarketDataProvider:
             employees=_safe_int(info.get("fullTimeEmployees")),
             country=info.get("country", ""),
             exchange=info.get("exchange", ""),
-            currency=info.get("currency", "USD"),
+            # The profile speaks the MAJOR currency (GBP, not GBp):
+            # statements, market cap and info rate fields are already
+            # major-unit, and prices are normalized to match.
+            currency=_major_currency(info.get("currency")),
             description=info.get("longBusinessSummary", ""),
             website=info.get("website", ""),
         )
@@ -917,11 +996,15 @@ class MarketDataProvider:
         yf_ticker = await self._yf_ticker(ticker)
         info = await asyncio.to_thread(lambda: yf_ticker.info)
 
+        # Analyst targets are quoted in the listing's quote currency —
+        # the minor unit where applicable (verified: HSBA.L targets
+        # bracket the pence price). Normalize like the price series.
+        factor = await self._quote_factor(ticker)
         estimates = AnalystEstimates(
-            target_price_mean=_safe_float(info.get("targetMeanPrice")),
-            target_price_median=_safe_float(info.get("targetMedianPrice")),
-            target_price_high=_safe_float(info.get("targetHighPrice")),
-            target_price_low=_safe_float(info.get("targetLowPrice")),
+            target_price_mean=_scale(_safe_float(info.get("targetMeanPrice")), factor),
+            target_price_median=_scale(_safe_float(info.get("targetMedianPrice")), factor),
+            target_price_high=_scale(_safe_float(info.get("targetHighPrice")), factor),
+            target_price_low=_scale(_safe_float(info.get("targetLowPrice")), factor),
             num_analysts=_safe_int(info.get("numberOfAnalystOpinions")) or 0,
             recommendation_mean=_safe_float(info.get("recommendationMean")),
             eps_estimate_current_year=_safe_float(info.get("epsCurrentYear")),
@@ -1238,11 +1321,18 @@ class MarketDataProvider:
 
         quote_type = str(info.get("quoteType", "EQUITY")).upper()
         is_etf = quote_type == "ETF"
-        currency = info.get("currency", "USD")
-        current_price = (
+        currency = _major_currency(info.get("currency"))
+        # The info current price and the dividend HISTORY are in the
+        # quote (minor) unit; yfinance's rate/value fields below
+        # (dividendRate, trailingAnnualDividendRate, lastDividendValue)
+        # are already major-unit — verified live on HSBA.L — and are
+        # deliberately NOT scaled.
+        factor = await self._quote_factor(ticker)
+        current_price = _scale(
             _safe_float(info.get("currentPrice"))
             or _safe_float(info.get("regularMarketPrice"))
-            or _safe_float(info.get("previousClose"))
+            or _safe_float(info.get("previousClose")),
+            factor,
         )
 
         # Full per-share dividend history
@@ -1252,7 +1342,7 @@ class MarketDataProvider:
             if div_series is not None and not div_series.empty:
                 for idx, val in div_series.items():
                     d = idx.date() if hasattr(idx, "date") else idx
-                    amt = _safe_float(val)
+                    amt = _scale(_safe_float(val), factor)
                     if isinstance(d, date) and amt is not None and amt > 0:
                         history.append(DividendPayment(ex_date=d, amount=amt))
         except Exception as e:
