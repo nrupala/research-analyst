@@ -36,6 +36,12 @@ Nothing in these Product Terms excludes or limits a right or liability that cann
 
 These Product Terms are governed by the laws of Alberta and the federal laws of Canada applicable in Alberta. Any litigation concerning the product or these terms must be brought exclusively in the courts located in Calgary, Alberta. Any mediation or arbitration concerning the product or these terms, if used, must be seated and conducted solely in Calgary, Alberta, unless the Company agrees otherwise in writing or applicable law requires otherwise.
 
-## 9. Contact
+## 9. Paid tiers, the API, and data licensing
 
-Questions about these Product Terms may be sent to info@pipavia.com.
+Paid tiers (app subscriptions and metered API plans) grant access to Research Analyst's own analysis: reports, quant results, comparisons, and exports of that analysis. API plans carry the monthly call allowance and per-key rate cap stated for the plan; calls the pipeline fails are never counted against an allowance.
+
+Data the product consumes from market and regulator sources is consumed under those sources' licences. It is never sold, redistributed, or exported as raw source data — including through the API and the export features. What you receive and may use is the analysis Research Analyst itself produces.
+
+## 10. Contact
+
+Questions about these Product Terms may be sent to info@aimlds.org.
