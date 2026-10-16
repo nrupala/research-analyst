@@ -190,6 +190,10 @@ class QuantExpectedValuePayload(BaseModel):
 class QuantAPIResponse(BaseModel):
     schema_version: str = SCHEMA_VERSION
     ticker: str
+    # F1.8: the Data Sources label of the statement set these results
+    # were computed over — the same merged, first-source-led set the
+    # research report uses (see orchestrator.fetch_merged_financials).
+    statements_source: str | None = None
     periods: list[str] = Field(default_factory=list)
     currency: str | None = None
     generated_at: datetime

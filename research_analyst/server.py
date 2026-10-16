@@ -1031,7 +1031,9 @@ def create_app(
         under the same activation semantics as the other data endpoints).
 
         Runs the ported quant engine (trends, DuPont, forensics, valuation,
-        allocation) over the provider financial statements. Optional
+        allocation) over the same merged, first-source-led financial
+        statements the research report uses (F1.8); the response declares
+        that set in ``statements_source``. Optional
         ``discount_rate`` query param is an analyst assumption (not observed
         data) enabling the implied-growth inversions. Optional ``scenarios``
         is a URL-encoded JSON array of {label, value, probability} for the
@@ -1050,9 +1052,24 @@ def create_app(
 
         clean = ticker.upper().strip()
 
-        financials_yf = await orchestrator._fetch_yf_financials(clean)
-        financials_sec = await orchestrator._fetch_sec_financials(clean)
-        financials = financials_yf if financials_yf else financials_sec
+        # Profile first: the merged statements path (F1.8) resolves
+        # CVM filings by company name, like the research pipeline.
+        profile = None
+        try:
+            profile = await market_provider.get_company_profile(clean)
+        except Exception as e:
+            logger.debug("Quant endpoint: profile unavailable for %s: %s", clean, e)
+
+        # One statements path for report and quant (F1.8): the merged,
+        # first-source-led set from the orchestrator — never a
+        # quant-only yfinance/SEC shortcut that could disagree with
+        # the report for the same ticker.
+        from .orchestrator import statement_lead_label
+
+        bundle = await orchestrator.fetch_merged_financials(
+            clean, profile.name if profile else "", []
+        )
+        financials = bundle.financials
         if not financials:
             raise HTTPException(
                 status_code=404,
@@ -1069,12 +1086,7 @@ def create_app(
                 detail=f"No usable fiscal periods for '{clean}'.",
             )
 
-        profile = None
         price_now: float | None = None
-        try:
-            profile = await market_provider.get_company_profile(clean)
-        except Exception as e:
-            logger.debug("Quant endpoint: profile unavailable for %s: %s", clean, e)
         try:
             prices = await market_provider.get_price_series(clean, period="1y")
             price_now = float(prices.current_price) if prices.current_price else None
@@ -1146,6 +1158,7 @@ def create_app(
         _meter(request, "quant")
         return QuantAPIResponse(
             ticker=clean,
+            statements_source=statement_lead_label(bundle.lead),
             periods=[p.period for p in series.periods],
             currency=series.currency,
             generated_at=datetime.now(UTC),
