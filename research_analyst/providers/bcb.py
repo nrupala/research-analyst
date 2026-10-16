@@ -55,6 +55,7 @@ import json
 import logging
 import urllib.request
 from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -112,7 +113,7 @@ def parse_sgs_payload(
     return best
 
 
-def _fetch_series(base_url: str, series: int, recent: int) -> list:
+def _fetch_series(base_url: str, series: int, recent: int) -> list[dict[str, Any]]:
     """Fetch recent observations for one SGS series. Stdlib only.
 
     Raises on transport/HTTP errors so the caller can degrade.
