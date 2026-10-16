@@ -222,6 +222,29 @@ class BillingConfig(BaseSettings):
         return v or []
 
 
+class TelemetryConfig(BaseSettings):
+    """First-party telemetry (Stream C) — measurement without tracking.
+
+    Server-side, on-box aggregates + a structured request log (see
+    telemetry.py for the content rules: route path only, key record id
+    only, no IPs, no query strings, nothing shipped anywhere). The
+    operator summary endpoint stays dormant (503) until admin_key is
+    set. Retention default 90 days is the operator proposal; the
+    owner's pick lands here when Stream D settles the privacy text.
+    """
+
+    # State directory for requests-*.jsonl + telemetry.json. Defaults
+    # to the key-store file's directory (the state dir), like metering.
+    directory: str = ""
+
+    # Operator key for GET /api/telemetry/summary (X-RA-Admin-Key).
+    admin_key: str = ""
+
+    retention_days: int = 90
+
+    model_config = {"env_prefix": "RA_TELEMETRY_"}
+
+
 class Settings(BaseSettings):
     """Root settings - aggregates all sub-configs."""
 
@@ -230,6 +253,7 @@ class Settings(BaseSettings):
     analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
     billing: BillingConfig = Field(default_factory=BillingConfig)
+    telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
 
     # Global
     debug: bool = False
