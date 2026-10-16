@@ -172,6 +172,15 @@ class TestGrantClaimLifecycle:
         assert resp.json()["outcome"] == "unpaid-ignored"
         assert grants.get("cs_unpaid") is None
 
+    def test_webhook_arms_on_webhook_secret_alone(self, billing, monkeypatch):
+        # The secret key only creates checkout sessions; receiving and
+        # acting on signed webhooks needs just the webhook secret.
+        client, _keys, grants = billing
+        monkeypatch.setattr(settings.billing, "stripe_secret_key", "")
+        resp = _post_event(client, _completed())
+        assert resp.status_code == 200
+        assert grants.get("cs_test_123") is not None
+
     def test_bad_signature_no_action(self, billing):
         client, _keys, grants = billing
         resp = _post_event(client, _completed(), secret="whsec_forged")
