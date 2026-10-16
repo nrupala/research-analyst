@@ -475,6 +475,14 @@ class MacroSnapshot(BaseModel):
     bcb_ipca_as_of: date | None = None
     bcb_usd_brl: float | None = None  # BRL per USD (PTAX selling rate)
     bcb_usd_brl_as_of: date | None = None
+
+    # First-source supplements (source registry step 5, 2026-10-16).
+    # Australian Bureau of Statistics: CPI YoY and the unemployment
+    # rate, as fractions (fleet convention). Same provenance rule.
+    abs_cpi_yoy: float | None = None  # fraction
+    abs_cpi_as_of: date | None = None
+    abs_unemployment_rate: float | None = None  # fraction
+    abs_unemployment_as_of: date | None = None
     supplemental_sources: list[str] = Field(default_factory=list)
 
     # Cycle

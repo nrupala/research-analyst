@@ -68,6 +68,7 @@ from ..models import (
     SymbolMatch,
 )
 from . import markets
+from .abs import AbsProvider
 from .alphavantage import AlphaVantageProvider
 from .bcb import BcbProvider
 from .boc import BankOfCanadaProvider
@@ -1574,7 +1575,7 @@ class MarketDataProvider:
         return got
 
     async def _populate_first_sources(self, snapshot: MacroSnapshot) -> bool:
-        """Populate first-source supplements (source registry steps 1-4).
+        """Populate first-source supplements (source registry steps 1-5).
 
         US Treasury Fiscal Data (average interest rates) and Bank of
         Canada Valet (policy rate, USD/CAD) were wired in step 1; step 2
@@ -1753,6 +1754,28 @@ class MarketDataProvider:
             if contributed:
                 snapshot.supplemental_sources.append(
                     "Banco Central do Brasil SGS (Selic target, IPCA, USD/BRL PTAX)"
+                )
+                got = True
+
+        # --- Step 5: Australian Bureau of Statistics (keyless) -----------
+        try:
+            abs_macro = await AbsProvider().get_latest_macro()
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("ABS population failed: %s", e)
+            abs_macro = None
+        if abs_macro is not None:
+            contributed = False
+            if abs_macro.cpi_yoy_pct is not None:
+                snapshot.abs_cpi_yoy = abs_macro.cpi_yoy_pct / 100.0
+                snapshot.abs_cpi_as_of = abs_macro.cpi_as_of
+                contributed = True
+            if abs_macro.unemployment_pct is not None:
+                snapshot.abs_unemployment_rate = abs_macro.unemployment_pct / 100.0
+                snapshot.abs_unemployment_as_of = abs_macro.unemployment_as_of
+                contributed = True
+            if contributed:
+                snapshot.supplemental_sources.append(
+                    "Australian Bureau of Statistics Data API (CPI, unemployment rate)"
                 )
                 got = True
 
