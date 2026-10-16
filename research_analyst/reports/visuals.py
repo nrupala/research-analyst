@@ -230,7 +230,11 @@ class VisualEngine:
             title="Scenario-Based Valuation Summary",
             content=valuation.ascii_chart(),
             ties_to="Scenario-based valuation range",
-            caption=f"Current price: {currency_symbol(currency)}{valuation.current_price:.2f}.",
+            caption=(
+                f"Current price: {currency_symbol(currency)}{valuation.current_price:.2f}."
+                if valuation.current_price is not None
+                else "Current price: not available."
+            ),
         )
 
     @staticmethod
@@ -300,7 +304,7 @@ class VisualEngine:
     def table_key_metrics(
         profile: CompanyProfile,
         financials: list[FinancialStatement],
-        current_price: float,
+        current_price: float | None,
         pe_ratio: float | None = None,
     ) -> ReportVisual:
         """Key metrics summary table."""
@@ -314,7 +318,10 @@ class VisualEngine:
         ]
         if profile.market_cap:
             rows.append(f"| **Market Cap** | {sym}{float(profile.market_cap) / 1e9:.1f}B |")
-        rows.append(f"| **Current Price** | {sym}{current_price:.2f} |")
+        if current_price is not None:
+            rows.append(f"| **Current Price** | {sym}{current_price:.2f} |")
+        else:
+            rows.append("| **Current Price** | Not available |")
 
         if latest:
             if latest.revenue:

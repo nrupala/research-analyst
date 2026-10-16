@@ -211,7 +211,7 @@ class TestPriceSeries:
             period_end=date.today(),
         )
         assert ps.data == []
-        assert ps.current_price == 0.0
+        assert ps.current_price is None  # missing stays missing, never 0.0
 
     def test_with_data(self) -> None:
         pd1 = PriceData(
