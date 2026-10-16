@@ -385,7 +385,7 @@ test("regression: single-ticker /api/research still renders + exports", async ()
   const rc = env.el("report-content").innerHTML;
   assert.ok(/Apple/.test(rc) && /Valuation/.test(rc), "single-ticker report rendered");
   const toolbar = env.el("export-toolbar");
-  assert.strictEqual(toolbar.children.length, 4, "single-ticker export toolbar intact (incl. data download)");
+  assert.strictEqual(toolbar.children.length, 3, "single-ticker export toolbar intact (MD/HTML/PDF only — paid source-data download retired 2026-10-15)");
   env.context.exportMD();
   const md = await env.lastBlob().text();
   assert.ok(/Apple/.test(md), "single-ticker MD export has content");

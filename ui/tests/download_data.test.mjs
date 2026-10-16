@@ -13,11 +13,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Headless UI test for Research Analyst — export toolbar + paid source-data download (8c-2)
+// Headless UI test for Research Analyst — paid source-data download RETIRED
+// (owner ruling, 2026-10-15: source data is never sold or redistributed).
 //
 // Runs the REAL ui/app.js offline (same vm + DOM-shim harness) and asserts:
-//   - the export toolbar includes the "Download data (CSV/JSON)" button after a report
-//   - downloadSourceData exists and posts to /api/research/data with X-RA-Key on 401 retry
+//   - downloadSourceData no longer exists
+//   - the export toolbar offers only MD/HTML/PDF (no "Download data" button)
+//   - app.js carries no reference to the retired /api/research/data endpoint
 //
 //   Run:  node ui/tests/download_data.test.mjs
 
@@ -86,12 +88,12 @@ function loadApp(opts = {}) {
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
 
-test("app.js exposes downloadSourceData", () => {
+test("app.js no longer exposes downloadSourceData", () => {
   const { ctx } = loadApp();
-  assert.strictEqual(typeof ctx.downloadSourceData, "function");
+  assert.strictEqual(typeof ctx.downloadSourceData, "undefined");
 });
 
-test("export toolbar includes the data-download button after a report", () => {
+test("export toolbar has no data-download button after a report", () => {
   const { ctx } = loadApp();
   ctx.currentReports = ["# report"];
   ctx.activeTicker = "AAPL";
@@ -104,30 +106,13 @@ test("export toolbar includes the data-download button after a report", () => {
   const bar = ctx.document.getElementById("export-toolbar");
   const texts = bar.children.map((c) => c.textContent);
   assert.ok(texts.includes("Download MD"));
-  assert.ok(texts.includes("Download data (CSV/JSON)"), "paid data button missing: " + texts);
+  assert.ok(!texts.some((t) => t.includes("Download data")), "retired data button still present: " + texts);
+  assert.deepStrictEqual(texts, ["Download MD", "Download HTML", "Download PDF"]);
 });
 
-test("downloadSourceData posts to /api/research/data", async () => {
-  const { ctx, calls } = loadApp();
-  ctx.currentReports = ["# report"];
-  ctx.activeTicker = "AAPL";
-  ctx.dom.ticker.value = "AAPL";
-  await ctx.downloadSourceData();
-  assert.ok(calls.length >= 1, "no fetch call made");
-  const c = calls[0];
-  assert.ok(c.url.includes("/api/research/data"), c.url);
-  assert.ok(!c.init.headers["X-RA-Key"], "no key sent on first attempt when open");
-});
-
-test("downloadSourceData retries with X-RA-Key on 401", async () => {
-  const { ctx, calls } = loadApp({ fetch401: true, prompt: () => "paidkey-1" });
-  ctx.currentReports = ["# report"];
-  ctx.activeTicker = "AAPL";
-  ctx.dom.ticker.value = "AAPL";
-  await ctx.downloadSourceData();
-  assert.ok(calls.length >= 2, "expected a retry after 401");
-  const retry = calls[1];
-  assert.strictEqual(retry.init.headers["X-RA-Key"], "paidkey-1");
+test("app.js carries no reference to the retired endpoint", () => {
+  assert.ok(!APP_JS.includes("/api/research/data"), "retired endpoint still referenced in app.js");
+  assert.ok(!APP_JS.includes("downloadSourceData"), "retired function still referenced in app.js");
 });
 
 (async () => {
