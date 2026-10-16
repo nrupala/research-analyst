@@ -51,7 +51,11 @@ from .enums import (
 class ResearchRequest(BaseModel):
     """Inbound research request from user or API."""
 
-    ticker: str = Field(..., min_length=1, max_length=10, description="Equity or ETF ticker symbol")
+    # 20 chars, matching the API layer and the market-data provider:
+    # suffixed international tickers (RELIANCE.NS = 11, TATAMOTORS.NS
+    # = 13) must fit. The three layers drifted at 10/20/10 and the
+    # tightest silently rejected India — aligned 2026-10-15.
+    ticker: str = Field(..., min_length=1, max_length=20, description="Equity or ETF ticker symbol")
     report_types: list[ReportType] = Field(
         default_factory=lambda: [ReportType.COMPREHENSIVE],
         description="Which report(s) to generate. Default: comprehensive.",

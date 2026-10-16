@@ -79,8 +79,14 @@ class TestResearchRequest:
         assert req.ticker == "MSFT"
 
     def test_ticker_too_long(self) -> None:
+        # Cap is 20 (aligned across API/provider/model 2026-10-15 so
+        # suffixed international tickers like RELIANCE.NS fit).
         with pytest.raises(Exception):
-            ResearchRequest(ticker="A" * 11)
+            ResearchRequest(ticker="A" * 21)
+
+    def test_ticker_international_suffix_fits(self) -> None:
+        req = ResearchRequest(ticker="RELIANCE.NS")
+        assert req.ticker == "RELIANCE.NS"
 
     def test_ticker_empty(self) -> None:
         with pytest.raises(Exception):
