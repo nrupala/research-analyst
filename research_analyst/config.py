@@ -205,6 +205,10 @@ class BillingConfig(BaseSettings):
     # to the key file by default; overridable for tests/ops.
     stripe_grants_file: str = ""
 
+    # Saved scenarios (Stream B / F1.5) persist next to the key file
+    # by default ("scenarios.json"); overridable for tests/ops.
+    scenarios_file: str = ""
+
     # White-label branding hooks (evidence is never altered — chrome only).
     white_label_org_name: str = ""
     white_label_prepared_on_url: str = ""

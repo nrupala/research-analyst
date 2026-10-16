@@ -87,6 +87,7 @@ from .orchestrator import ResearchOrchestrator
 from .providers.market_data import MarketDataProvider
 from .report_export import embed_card_html, research_csv, research_pdf
 from .reports.comparative_renderer import render_html, render_markdown
+from .scenarios import MAX_SCENARIOS_PER_KEY, ScenarioStore, scenario_public
 from .stripe_billing import (
     PLANS,
     GrantStore,
@@ -370,6 +371,7 @@ def create_app(
     metering: MeteringRecorder | None = None,
     grant_store: GrantStore | None = None,
     telemetry: TelemetryRecorder | None = None,
+    scenario_store: ScenarioStore | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="Research Analyst",
@@ -447,10 +449,20 @@ def create_app(
             directory=telemetry_dir or None,
             retention_days=settings.telemetry.retention_days,
         )
+    if scenario_store is None and key_store is not None:
+        # Saved scenarios need key identity; without a key store the
+        # feature stays dormant (503), like the billing endpoints.
+        scenarios_path = settings.billing.scenarios_file
+        if not scenarios_path and settings.billing.api_keys_file:
+            scenarios_path = str(
+                Path(settings.billing.api_keys_file).parent / "scenarios.json"
+            )
+        scenario_store = ScenarioStore(path=scenarios_path or None)
     app.state.key_store = key_store
     app.state.grant_store = grant_store
     app.state.metering = metering
     app.state.telemetry = telemetry
+    app.state.scenario_store = scenario_store
     app.state.key_rate_limiter = _KeyRateLimiter()
     app.state.white_label = WhiteLabelProfile(
         org_name=settings.billing.white_label_org_name,
@@ -745,6 +757,133 @@ def create_app(
             content=embed_card_html(api_response, app_url=app_url),
             media_type="text/html",
             headers={"X-RA-Frame-Policy": "embed"},
+        )
+
+    # ================================================================
+    # Saved scenarios + shareable links (Stream B / F1.5)
+    # ================================================================
+
+    def _require_scenario_store(request: Request) -> ScenarioStore:
+        store = request.app.state.scenario_store
+        if store is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Saved scenarios are not configured (no API key store).",
+            )
+        return cast("ScenarioStore", store)
+
+    def _require_key_record(request: Request) -> APIKeyRecord:
+        record = _key_record(request)
+        if record is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Provide a valid X-RA-Key header.",
+            )
+        return record
+
+    @app.post("/api/scenarios", status_code=201)
+    async def create_scenario(body: dict[str, Any], request: Request) -> JSONResponse:
+        """Save a named research setup under the caller's key."""
+        store = _require_scenario_store(request)
+        record = _require_key_record(request)
+        name = str(body.get("name", "")).strip()
+        if not (1 <= len(name) <= 80):
+            raise HTTPException(status_code=400, detail="name must be 1-80 characters.")
+        try:
+            probe = ResearchAPIRequest(
+                ticker=str(body.get("ticker", "")),
+                report_type=body.get("report_type"),
+                timeframe=str(body.get("timeframe", "1Y")),
+                custom_assumptions=body.get("custom_assumptions") or {},
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid scenario: {e}") from e
+        scenario = store.create(
+            key_id=record.key_id,
+            name=name,
+            ticker=probe.ticker.upper().strip(),
+            report_type=probe.report_type,
+            timeframe=probe.timeframe,
+            custom_assumptions=probe.custom_assumptions,
+        )
+        if scenario is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Scenario limit reached ({MAX_SCENARIOS_PER_KEY} per key).",
+            )
+        return JSONResponse(scenario_public(scenario), status_code=201)
+
+    @app.get("/api/scenarios")
+    async def list_scenarios(request: Request) -> JSONResponse:
+        """The caller's saved scenarios — never anyone else's."""
+        store = _require_scenario_store(request)
+        record = _require_key_record(request)
+        return JSONResponse(
+            {"scenarios": [scenario_public(s) for s in store.list_for_key(record.key_id)]}
+        )
+
+    @app.delete("/api/scenarios/{scenario_id}")
+    async def delete_scenario(scenario_id: str, request: Request) -> JSONResponse:
+        """Delete the caller's own scenario; its share link dies with
+        it. Foreign and missing ids are the same 404 (no existence
+        leak across keys)."""
+        store = _require_scenario_store(request)
+        record = _require_key_record(request)
+        if not store.delete(scenario_id, record.key_id):
+            raise HTTPException(status_code=404, detail="Scenario not found.")
+        return JSONResponse({"deleted": True, "scenario_id": scenario_id})
+
+    @app.get("/api/research/shared/{share_token}")
+    async def shared_research(
+        share_token: str,
+        request: Request,
+        format: str | None = Query(default=None),
+    ) -> Response:
+        """Replay a saved scenario via its share link. No key: the
+        link is the credential. Runs land on the owner's report-cache
+        key, so repeat views are cache-served; an uncached run meters
+        to the owner as "shared". All F1.6 formats work here too."""
+        store = request.app.state.scenario_store
+        if store is None:
+            raise HTTPException(status_code=503, detail="Share links are not configured.")
+        client_ip = request.client.host if request.client else "unknown"
+        if not rate_limiter.allow(client_ip):
+            raise HTTPException(status_code=429, detail="Rate limit exceeded.")
+        scenario = store.by_share_token(share_token)
+        if scenario is None:
+            raise HTTPException(
+                status_code=404,
+                detail="This share link does not exist or was deleted.",
+            )
+        body = ResearchAPIRequest(
+            ticker=scenario.ticker,
+            report_type=scenario.report_type,
+            timeframe=scenario.timeframe,
+            custom_assumptions=scenario.custom_assumptions,
+        )
+        api_response = await _serve_research(body, str(uuid.uuid4())[:8])
+        request.app.state.metering.record(scenario.key_id, "shared")
+        fmt = negotiate_format(format, request.headers.get("accept", ""))
+        if fmt == "html":
+            raise HTTPException(
+                status_code=400,
+                detail="html is not available for shared links (use markdown).",
+            )
+        markdown = (
+            "\n\n---\n\n".join(api_response.reports_markdown)
+            if fmt in ("markdown", "pdf")
+            else None
+        )
+        return _render_payload(
+            api_response.model_dump(mode="json"),
+            fmt,
+            "research",
+            markdown=markdown,
+            csv_text=research_csv(api_response) if fmt == "csv" else None,
+            pdf_bytes=research_pdf(api_response) if fmt == "pdf" else None,
+            download_name=(
+                f"research-{api_response.ticker}" if fmt in ("csv", "pdf") else None
+            ),
         )
 
     async def _run_pipeline(body: ResearchAPIRequest) -> Any:
