@@ -69,6 +69,7 @@ from ..models import (
 )
 from . import markets
 from .alphavantage import AlphaVantageProvider
+from .bcb import BcbProvider
 from .boc import BankOfCanadaProvider
 from .boj import BankOfJapanProvider
 from .eia import EiaProvider
@@ -1573,7 +1574,7 @@ class MarketDataProvider:
         return got
 
     async def _populate_first_sources(self, snapshot: MacroSnapshot) -> bool:
-        """Populate first-source supplements (source registry steps 1-3).
+        """Populate first-source supplements (source registry steps 1-4).
 
         US Treasury Fiscal Data (average interest rates) and Bank of
         Canada Valet (policy rate, USD/CAD) were wired in step 1; step 2
@@ -1726,6 +1727,32 @@ class MarketDataProvider:
             if contributed:
                 snapshot.supplemental_sources.append(
                     "EIA Open Data API (WTI, Brent, Henry Hub spot prices)"
+                )
+                got = True
+
+        # --- Step 4: Banco Central do Brasil (keyless) -------------------
+        try:
+            bcb = await BcbProvider().get_latest_macro()
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("BCB population failed: %s", e)
+            bcb = None
+        if bcb is not None:
+            contributed = False
+            if bcb.selic_target_pct is not None:
+                snapshot.bcb_selic_rate = bcb.selic_target_pct / 100.0
+                snapshot.bcb_selic_as_of = bcb.selic_as_of
+                contributed = True
+            if bcb.ipca_12m_pct is not None:
+                snapshot.bcb_ipca_yoy = bcb.ipca_12m_pct / 100.0
+                snapshot.bcb_ipca_as_of = bcb.ipca_as_of
+                contributed = True
+            if bcb.usd_brl_ptax is not None:
+                snapshot.bcb_usd_brl = bcb.usd_brl_ptax
+                snapshot.bcb_usd_brl_as_of = bcb.usd_brl_as_of
+                contributed = True
+            if contributed:
+                snapshot.supplemental_sources.append(
+                    "Banco Central do Brasil SGS (Selic target, IPCA, USD/BRL PTAX)"
                 )
                 got = True
 

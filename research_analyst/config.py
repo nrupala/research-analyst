@@ -76,6 +76,9 @@ class MarketDataConfig(BaseSettings):
     # keyless official APIs: US Treasury Fiscal Data + Bank of Canada Valet.
     treasury_base_url: str = "https://api.fiscaldata.treasury.gov/services/api/fiscal_service"
     boc_base_url: str = "https://www.bankofcanada.ca/valet"
+    # First-source provider (source registry step 4, 2026-10-16) —
+    # keyless official API: Banco Central do Brasil SGS.
+    bcb_base_url: str = "https://api.bcb.gov.br"
     # First-source providers (source registry step 2, 2026-10-14) — all
     # keyless official APIs: ECB + Bundesbank (SDMX), Eurostat, Bank of Japan.
     ecb_base_url: str = "https://data-api.ecb.europa.eu/service"

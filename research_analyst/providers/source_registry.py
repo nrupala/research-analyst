@@ -382,6 +382,28 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
         is_primary=True,
     ),
     # ------------------------------------------------------------------
+    # Brazil macro — Banco Central do Brasil SGS (WIRED 2026-10-16:
+    # Selic target, IPCA 12-month, USD/BRL PTAX as macro supplements;
+    # keyless. The Selic series is a forward strip — the provider
+    # takes the newest row dated today or earlier.)
+    # ------------------------------------------------------------------
+    SourceEntry(
+        dataset="macro",
+        market="BR",
+        source_name="Banco Central do Brasil — SGS (BCData)",
+        organization="Banco Central do Brasil",
+        base_url="https://api.bcb.gov.br",
+        access_method="REST JSON series API (bcdata.sgs.{code})",
+        key_env_var=None,
+        terms_note=(
+            "ODbL per BCB's open-data resource pages (registry matrix, "
+            "2026-10-15): consume with attribution; RA sells its "
+            "analysis, never the dataset."
+        ),
+        status=STATUS_WIRED,
+        is_primary=True,
+    ),
+    # ------------------------------------------------------------------
     # Prices — the owner's cascade (2026-10-15). Order: (1) market-
     # direct (Nasdaq for US; TMX designated for Canada, route not yet
     # established), (2) free key services (Tiingo, Alpha Vantage;
