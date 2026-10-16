@@ -102,11 +102,11 @@ class ValuationEngine:
             ValuationRange with all three scenarios populated.
         """
         current_price = prices.current_price
-        if current_price <= 0:
-            logger.warning("Current price is zero or negative for %s", profile.ticker)
+        if current_price is None or current_price <= 0:
+            logger.warning("Current price unavailable for %s", profile.ticker)
             return ValuationRange(
                 ticker=profile.ticker,
-                current_price=0.0,
+                current_price=None,
                 primary_methodology="Insufficient Data",
             )
 

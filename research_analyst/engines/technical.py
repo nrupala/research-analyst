@@ -73,7 +73,7 @@ class TechnicalAnalysis:
     signals: list[TechnicalSignal] = field(default_factory=list)
 
     # Price context
-    current_price: float = 0.0
+    current_price: float | None = None  # None = no price data from the source
     distance_from_52w_high_pct: float = 0.0
     distance_from_52w_low_pct: float = 0.0
 
@@ -133,11 +133,11 @@ class TechnicalEngine:
             return result
 
         # ---- Price context ----
-        if series.price_52w_high > 0:
+        if series.current_price and series.price_52w_high:
             result.distance_from_52w_high_pct = (
                 series.current_price - series.price_52w_high
             ) / series.price_52w_high
-        if series.price_52w_low > 0:
+        if series.current_price and series.price_52w_low:
             result.distance_from_52w_low_pct = (
                 series.current_price - series.price_52w_low
             ) / series.price_52w_low
@@ -191,7 +191,12 @@ class TechnicalEngine:
 
         # 52-week position
         trend_max += 20
-        if series.price_52w_high > series.price_52w_low:
+        if (
+            series.current_price
+            and series.price_52w_high
+            and series.price_52w_low
+            and series.price_52w_high > series.price_52w_low
+        ):
             position = (series.current_price - series.price_52w_low) / (
                 series.price_52w_high - series.price_52w_low
             )
@@ -268,11 +273,12 @@ class TechnicalEngine:
 
         # YTD return momentum
         mom_max += 30
-        if series.ytd_return > 0.15:
+        ytd_return = series.ytd_return if series.ytd_return is not None else 0.0
+        if ytd_return > 0.15:
             mom_points += 30
-        elif series.ytd_return > 0:
+        elif ytd_return > 0:
             mom_points += 20
-        elif series.ytd_return > -0.10:
+        elif ytd_return > -0.10:
             mom_points += 10
         else:
             mom_points += 0

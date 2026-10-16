@@ -155,13 +155,17 @@ class PriceSeries(BaseModel):
     data: list[PriceData]
     period_start: date
     period_end: date
-    current_price: float = 0.0
-    price_52w_high: float = 0.0
-    price_52w_low: float = 0.0
+    # Price fields are None when the source returned no data — missing
+    # stays missing, never a fabricated 0.0 (owner doctrine; a report
+    # rendered "Current Price: $0.00" for META on 2026-10-15 when Stooq
+    # returned an empty frame). Consumers must handle None explicitly.
+    current_price: float | None = None
+    price_52w_high: float | None = None
+    price_52w_low: float | None = None
     avg_volume_30d: float = 0.0
     avg_volume_90d: float = 0.0
-    ytd_return: float = 0.0
-    total_return_1y: float = 0.0
+    ytd_return: float | None = None
+    total_return_1y: float | None = None
     # Which source served these prices: "stooq" (production) or
     # "yfinance" (dev fallback only). "" for legacy cache entries.
     # The orchestrator declares it in the report's Data Sources list.
@@ -588,7 +592,7 @@ class ValuationRange(BaseModel):
     """Scenario-based valuation — mandatory in every report."""
 
     ticker: str
-    current_price: float
+    current_price: float | None = None  # None = price unavailable from the source
     scenarios: list[ValuationScenario] = Field(default_factory=list)
     primary_methodology: str = ""  # "DCF" / "Relative" / "Sum-of-Parts" / "Hybrid"
     variant_perception: VariantPerception | None = None
@@ -862,7 +866,10 @@ class ReportOutput(BaseModel):
         # Valuation ASCII chart — mandatory
         if self.valuation:
             parts.append("## Scenario-Based Valuation Range\n")
-            parts.append(f"**Current Price:** ${self.valuation.current_price:.2f}\n")
+            if self.valuation.current_price is not None:
+                parts.append(f"**Current Price:** ${self.valuation.current_price:.2f}\n")
+            else:
+                parts.append("**Current Price:** Not available (no price data from the source)\n")
             parts.append(f"```\n{self.valuation.ascii_chart()}\n```\n")
 
             # #72: the step sections already develop the variant perception

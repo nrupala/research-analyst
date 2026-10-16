@@ -63,13 +63,18 @@ def currency_symbol(code: str | None) -> str:
     return _CURRENCY_SYMBOLS.get(key, f"{key} ")
 
 
-def money(value: float | Decimal, code: str | None = "USD", decimals: int = 2) -> str:
+def money(value: float | Decimal | None, code: str | None = "USD", decimals: int = 2) -> str:
     """Format ``value`` as money in the currency named by ``code``.
 
     Equivalent to ``f"{currency_symbol(code)}{value:.{decimals}f}"``. With the
     default USD this yields e.g. "$12.34" — byte-identical to the previous
     hardcoded formatting.
+
+    None renders as "Not available": a missing price must never be
+    formatted as money (it used to surface as a fabricated $0.00).
     """
+    if value is None:
+        return "Not available"
     return f"{currency_symbol(code)}{value:.{decimals}f}"
 
 

@@ -527,7 +527,7 @@ class ReportRenderer:
 
         # Price context
         parts.append(f"**Current Price:** {money(prices.current_price, profile.currency)}")
-        if prices.price_52w_high > 0:
+        if prices.price_52w_high and prices.price_52w_low:
             parts.append(
                 f"**52-Week Range:** {money(prices.price_52w_low, profile.currency)} - "
                 f"{money(prices.price_52w_high, profile.currency)}"
@@ -539,7 +539,12 @@ class ReportRenderer:
         # Key metrics table
         pe = None
         latest_stmt = VisualEngine._latest_statement(financials)
-        if latest_stmt and latest_stmt.eps_diluted and latest_stmt.eps_diluted > 0:
+        if (
+            latest_stmt
+            and latest_stmt.eps_diluted
+            and latest_stmt.eps_diluted > 0
+            and prices.current_price
+        ):
             pe = prices.current_price / latest_stmt.eps_diluted
 
         table = VisualEngine.table_key_metrics(profile, financials, prices.current_price, pe)
@@ -1674,7 +1679,7 @@ class ReportRenderer:
             gaps.extend(etf_gaps)
 
         parts.append(f"**Current Price:** {money(prices.current_price, profile.currency)}")
-        if prices.price_52w_high > 0:
+        if prices.current_price and prices.price_52w_high:
             pct_from_high = (prices.current_price - prices.price_52w_high) / prices.price_52w_high
             parts.append(
                 f"**52-Week Range:** {money(prices.price_52w_low, profile.currency)} - "
@@ -1696,7 +1701,12 @@ class ReportRenderer:
         latest_stmt = VisualEngine._latest_statement(ctx["financials"])
         pe_ratio = (
             prices.current_price / latest_stmt.eps_diluted
-            if latest_stmt and latest_stmt.eps_diluted and latest_stmt.eps_diluted > 0
+            if (
+                latest_stmt
+                and latest_stmt.eps_diluted
+                and latest_stmt.eps_diluted > 0
+                and prices.current_price
+            )
             else None
         )
         table = VisualEngine.table_key_metrics(
