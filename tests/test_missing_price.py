@@ -80,13 +80,20 @@ class TestMissingPriceModel:
 
 
 class TestMissingPriceProvider:
-    def test_stooq_empty_frame_yields_none_price(self, monkeypatch):
-        class _NoDataStooq:
-            async def get_daily_history(self, ticker):  # noqa: ARG002
-                return None
+    def test_empty_cascade_yields_none_price(self, monkeypatch, tmp_path):
+        # Every cascade step misses (the 2026-10-15 cascade replaced
+        # the single-source Stooq path this test originally stubbed):
+        # the price surfaces as None — never a fabricated 0.0.
+        import pandas as pd
 
-        monkeypatch.setattr(market_data, "StooqProvider", _NoDataStooq)
+        async def _empty_cascade(self, ticker, period="1y", interval="1d"):  # noqa: ARG001
+            return pd.DataFrame(), ""
+
+        monkeypatch.setattr(
+            market_data.MarketDataProvider, "_cascade_download", _empty_cascade
+        )
         provider = market_data.MarketDataProvider()
+        provider._cache = market_data._DiskCache(tmp_path, ttl_seconds=3600)
         series = asyncio.run(provider.get_price_series("META", period="1y"))
         assert series.data == []
         assert series.current_price is None

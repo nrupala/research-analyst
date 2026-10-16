@@ -46,6 +46,7 @@ from ..models import (
     StructuredRisk,
     TechnicalIndicators,
     ValuationRange,
+    price_source_label,
 )
 from ..quant import to_bps
 from . import diagrams, svg_charts
@@ -306,6 +307,7 @@ class VisualEngine:
         financials: list[FinancialStatement],
         current_price: float | None,
         pe_ratio: float | None = None,
+        data_source: str = "",
     ) -> ReportVisual:
         """Key metrics summary table."""
         latest = VisualEngine._latest_statement(financials)
@@ -319,7 +321,10 @@ class VisualEngine:
         if profile.market_cap:
             rows.append(f"| **Market Cap** | {sym}{float(profile.market_cap) / 1e9:.1f}B |")
         if current_price is not None:
-            rows.append(f"| **Current Price** | {sym}{current_price:.2f} |")
+            rows.append(
+                f"| **Current Price** | {sym}{current_price:.2f}"
+                f"{price_source_label(data_source)} |"
+            )
         else:
             rows.append("| **Current Price** | Not available |")
 

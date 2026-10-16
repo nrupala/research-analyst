@@ -55,6 +55,7 @@ from ..models import (
     RiskMatrix,
     TechnicalIndicators,
     ValuationRange,
+    price_source_label,
 )
 from ..quant import fmt_bps, fmt_pp
 from .currency import compact_money, money
@@ -526,7 +527,10 @@ class ReportRenderer:
             gaps.extend(etf_gaps)
 
         # Price context
-        parts.append(f"**Current Price:** {money(prices.current_price, profile.currency)}")
+        parts.append(
+            f"**Current Price:** {money(prices.current_price, profile.currency)}"
+            f"{price_source_label(prices.data_source)}"
+        )
         if prices.price_52w_high and prices.price_52w_low:
             parts.append(
                 f"**52-Week Range:** {money(prices.price_52w_low, profile.currency)} - "
@@ -547,7 +551,9 @@ class ReportRenderer:
         ):
             pe = prices.current_price / latest_stmt.eps_diluted
 
-        table = VisualEngine.table_key_metrics(profile, financials, prices.current_price, pe)
+        table = VisualEngine.table_key_metrics(
+            profile, financials, prices.current_price, pe, prices.data_source
+        )
         visuals.append(table)
 
         # Phase 4: educational context — per-metric "what it means / what it
@@ -1410,6 +1416,7 @@ class ReportRenderer:
         if valuation and valuation.scenarios:
             parts.append(
                 f"**Current Price:** {money(valuation.current_price, ctx['profile'].currency)}"
+                f"{price_source_label(ctx['prices'].data_source) if ctx.get('prices') else ''}"
             )
             parts.append(f"**Primary Methodology:** {valuation.primary_methodology}")
             parts.append("")
@@ -1678,7 +1685,10 @@ class ReportRenderer:
             assumptions.extend(etf_assumptions)
             gaps.extend(etf_gaps)
 
-        parts.append(f"**Current Price:** {money(prices.current_price, profile.currency)}")
+        parts.append(
+            f"**Current Price:** {money(prices.current_price, profile.currency)}"
+            f"{price_source_label(prices.data_source)}"
+        )
         if prices.current_price and prices.price_52w_high:
             pct_from_high = (prices.current_price - prices.price_52w_high) / prices.price_52w_high
             parts.append(
@@ -1710,7 +1720,7 @@ class ReportRenderer:
             else None
         )
         table = VisualEngine.table_key_metrics(
-            profile, ctx["financials"], prices.current_price, pe_ratio
+            profile, ctx["financials"], prices.current_price, pe_ratio, prices.data_source
         )
         visuals.append(table)
 
@@ -2026,6 +2036,7 @@ class ReportRenderer:
 
         parts.append(
             f"**Current Price:** {money(valuation.current_price, ctx['profile'].currency)}"
+                f"{price_source_label(ctx['prices'].data_source) if ctx.get('prices') else ''}"
         )
         parts.append(f"**Methodology:** {valuation.primary_methodology}")
         parts.append("")

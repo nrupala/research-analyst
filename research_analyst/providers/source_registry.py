@@ -59,6 +59,12 @@ ROLE_PRODUCTION_EOD = (
     "owner-designated production price source — free EOD, "
     "not an exchange first source"
 )
+# Price cascade roles (owner directive, 2026-10-15): every price is
+# served by the declared cascade and labeled with the serving source.
+ROLE_CASCADE_1 = "price cascade step 1 — market-direct (exchange-published)"
+ROLE_CASCADE_2 = "price cascade step 2 — free key service"
+ROLE_CASCADE_3 = "price cascade step 3 — free EOD aggregator"
+ROLE_CASCADE_4 = "price cascade step 4 — last resort"
 
 
 @dataclass(frozen=True)
@@ -363,11 +369,110 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
         is_primary=True,
     ),
     # ------------------------------------------------------------------
-    # Prices — Stooq free EOD (owner-designated production source,
-    # 2026-10-14). NOT a first source: the exchange first source below
-    # is paid-only and stays declared out_of_scope; the owner chose
-    # Stooq's free EOD as the production price source, labeled and
-    # disclosed wherever it appears.
+    # Prices — the owner's cascade (2026-10-15). Order: (1) market-
+    # direct (Nasdaq for US; TMX designated for Canada, route not yet
+    # established), (2) free key services (Tiingo, Alpha Vantage;
+    # Twelve Data and FMP join as their providers land), (3) Stooq,
+    # (4) yfinance last. The serving step is stamped on the series and
+    # labeled next to the price. The declared first source (exchange
+    # tape) stays out_of_scope below: it is paid-only.
+    # ------------------------------------------------------------------
+    SourceEntry(
+        dataset="price_data",
+        market="US",
+        source_name="Nasdaq",
+        organization="Nasdaq",
+        base_url="https://api.nasdaq.com",
+        access_method="Public quote API (historical, keyless)",
+        key_env_var=None,
+        terms_note=(
+            "The listing exchange's own published end-of-day data — "
+            "the closest free window on the first source. Split-"
+            "adjusted only (verified numerically 2026-10-15: AAPL "
+            "2020-01-02 $75.0875 = $300.35 / 4), NOT dividend-adjusted; "
+            "consumed under Nasdaq's published terms with attribution; "
+            "an input to RA's analysis, never sold as data."
+        ),
+        status=STATUS_WIRED,
+        is_primary=False,
+        role=ROLE_CASCADE_1,
+    ),
+    SourceEntry(
+        dataset="price_history",
+        market="US",
+        source_name="Nasdaq",
+        organization="Nasdaq",
+        base_url="https://api.nasdaq.com",
+        access_method="Public quote API (historical, keyless)",
+        key_env_var=None,
+        terms_note=(
+            "As Nasdaq (price_data): the same historical fetch serves "
+            "the full price history and the latest EOD close."
+        ),
+        status=STATUS_WIRED,
+        is_primary=False,
+        role=ROLE_CASCADE_1,
+    ),
+    SourceEntry(
+        dataset="price_data",
+        market="CA",
+        source_name="TMX",
+        organization="TMX Group",
+        base_url="https://www.tmx.com",
+        access_method="Exchange-published quotes (route under probe)",
+        key_env_var=None,
+        terms_note=(
+            "Canada's market-direct primary, designated by the owner "
+            "(2026-10-15). The exchange site answers from the "
+            "production host but no keyless machine route is verified "
+            "yet; until one lands, Canada's cascade secondaries serve "
+            "(owner's Canada rule), labeled."
+        ),
+        status=STATUS_PLANNED,
+        is_primary=True,
+    ),
+    SourceEntry(
+        dataset="price_data",
+        market="GLOBAL",
+        source_name="Tiingo",
+        organization="Tiingo",
+        base_url="https://api.tiingo.com",
+        access_method="REST API (daily prices, free key tier)",
+        key_env_var="RA_MARKET_TIINGO_API_KEY",
+        terms_note=(
+            "Cascade step 2, first key service. Split- and dividend-"
+            "adjusted EOD (adjClose basis). Canada coverage thin. "
+            "Dormant until its key is configured; consumed under "
+            "Tiingo's terms as an analysis input, never sold as data."
+        ),
+        status=STATUS_WIRED,
+        is_primary=False,
+        role=ROLE_CASCADE_2,
+    ),
+    SourceEntry(
+        dataset="price_data",
+        market="GLOBAL",
+        source_name="Alpha Vantage",
+        organization="Alpha Vantage",
+        base_url="https://www.alphavantage.co",
+        access_method="REST API (TIME_SERIES_DAILY, free key tier)",
+        key_env_var="RA_MARKET_ALPHA_VANTAGE_KEY",
+        terms_note=(
+            "Cascade step 2 gap-filler: the free tier is capped at "
+            "~25 requests/day and serves as-traded (unadjusted) daily "
+            "prices — the ADJUSTED variant is premium. Dormant until "
+            "its key is configured; basis disclosed wherever it serves."
+        ),
+        status=STATUS_WIRED,
+        is_primary=False,
+        role=ROLE_CASCADE_2,
+    ),
+    # ------------------------------------------------------------------
+    # Prices cascade step 3 — Stooq free EOD. An aggregator, NOT a
+    # first source (owner, 2026-10-15); redistribution consent under
+    # its terms §5.3 is still being sought. Its bot gate refuses the
+    # production host's egress today, so in practice this step falls
+    # through until access lands — the cascade makes that non-fatal.
     # ------------------------------------------------------------------
     SourceEntry(
         dataset="price_data",
@@ -378,12 +483,13 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
         access_method="CSV download (daily history, /q/d/l/)",
         key_env_var=None,
         terms_note=(
-            "Free end-of-day data published by Stooq — not an exchange "
-            "first source; declared on every report that uses it."
+            "Free end-of-day data published by Stooq — an aggregator, "
+            "not an exchange first source; declared on every report "
+            "that uses it. Redistribution consent (terms §5.3) pending."
         ),
         status=STATUS_WIRED,
         is_primary=False,
-        role=ROLE_PRODUCTION_EOD,
+        role=ROLE_CASCADE_3,
     ),
     SourceEntry(
         dataset="price_history",
@@ -399,7 +505,7 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
         ),
         status=STATUS_WIRED,
         is_primary=False,
-        role=ROLE_PRODUCTION_EOD,
+        role=ROLE_CASCADE_3,
     ),
     # ------------------------------------------------------------------
     # Declared primaries that are paid-only — out of scope, never filled
@@ -465,10 +571,12 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
             "etf_metadata",
         )
     ),
-    # yfinance for prices is a development backup ONLY: production
-    # prices are served by Stooq (owner decision, 2026-10-14) and this
-    # path runs solely behind the RA_DEV_FALLBACK_YFINANCE dev flag —
-    # never as a silent fallback when Stooq has no data.
+    # yfinance for prices is the cascade's LAST RESORT (owner
+    # directive, 2026-10-15): it serves only when market-direct, the
+    # key services, and Stooq have all failed for a ticker, and every
+    # price it serves is labeled "Yahoo Finance" next to the price.
+    # Supersedes the 2026-10-14 development-backup-only posture and
+    # the retired RA_DEV_FALLBACK_YFINANCE dev flag.
     SourceEntry(
         dataset="price_data",
         market="GLOBAL",
@@ -478,14 +586,14 @@ SOURCE_REGISTRY: tuple[SourceEntry, ...] = (
         access_method="Library scrape (unofficial)",
         key_env_var=None,
         terms_note=(
-            "Development backup ONLY for prices — production prices "
-            "are served by Stooq (owner decision, 2026-10-14); this "
-            "path runs solely behind the RA_DEV_FALLBACK_YFINANCE "
-            "dev flag and is never silently substituted."
+            "Cascade step 4 — last resort (owner directive, "
+            "2026-10-15). Unofficial source; labeled non-primary "
+            "wherever it appears; never the sole basis for a claim "
+            "the steps above could have served."
         ),
         status=STATUS_WIRED,
         is_primary=False,
-        role=ROLE_DEV_BACKUP,
+        role=ROLE_CASCADE_4,
     ),
 )
 
