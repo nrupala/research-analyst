@@ -61,6 +61,11 @@ class ResearchAPIResponse(BaseModel):
     ticker: str
     company_name: str
     security_type: str
+    # Trading currency of the report's figures (from the company
+    # profile). Consumers could not learn this from the payload
+    # before — added for the F1.6 exports, which must label money
+    # correctly (a ₹ price stamped USD would be a fabrication).
+    currency: str = "USD"
     reports: list[ReportOutput]
     metadata: ResearchMetadata
     reports_markdown: list[str]

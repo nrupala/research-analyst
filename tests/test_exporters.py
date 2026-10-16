@@ -366,6 +366,9 @@ def test_wire_payload_unchanged_by_typing():
         "ticker": "AAPL",
         "company_name": "Stub Corp",
         "security_type": "EQUITY",
+        # F1.6: report currency joined the wire contract (exports must
+        # label money correctly; consumers could not learn it before).
+        "currency": "USD",
         "reports": [
             {
                 "report_type": "comprehensive",
