@@ -208,6 +208,19 @@ a.sr-only:focus {
 .card--form { margin-bottom: var(--sp-6); }
 .card--error { background: var(--c-error-bg); border-color: var(--c-error); }
 
+/* Transaction-page standard: seller strip, pricing, checkout return */
+.seller-strip { margin-top: var(--sp-2); }
+.seller-strip a { color: var(--c-primary); }
+.price-line { font-size: var(--fs-lg); }
+.buy-status { min-height: 1.2em; font-size: var(--fs-sm); color: var(--c-text-2); }
+.checkout-result { margin-bottom: var(--sp-6); }
+.checkout-result__key {
+    display: block; margin: var(--sp-3) 0; padding: var(--sp-3);
+    background: var(--c-bg); border: 1px solid var(--c-border);
+    border-radius: var(--r-lg); font-size: var(--fs-base);
+    word-break: break-all; user-select: all;
+}
+
 .form-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--sp-4); }
 @media (max-width: 640px) { .form-row { grid-template-columns: 1fr; } }
 .form-group { display: flex; flex-direction: column; gap: var(--sp-1); }

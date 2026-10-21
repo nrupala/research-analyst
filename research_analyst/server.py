@@ -1530,6 +1530,20 @@ def create_app(
             return FileResponse(str(p), media_type="text/html")
         raise HTTPException(status_code=404)
 
+    @app.get("/pricing.html")
+    async def serve_pricing() -> FileResponse:
+        p = ui_dir / "pricing.html"
+        if p.exists():
+            return FileResponse(str(p), media_type="text/html")
+        raise HTTPException(status_code=404)
+
+    @app.get("/terms.html")
+    async def serve_terms() -> FileResponse:
+        p = ui_dir / "terms.html"
+        if p.exists():
+            return FileResponse(str(p), media_type="text/html")
+        raise HTTPException(status_code=404)
+
     @app.get("/theme.js")
     async def serve_theme_js() -> FileResponse:
         p = ui_dir / "theme.js"

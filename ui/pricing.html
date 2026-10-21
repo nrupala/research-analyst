@@ -1,0 +1,172 @@
+<!--
+Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+SPDX-License-Identifier: Apache-2.0
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <meta name="description" content="Research Analyst - Pricing">
+    <meta property="og:title" content="Pricing - Research Analyst">
+    <meta property="og:description" content="Plans for Research Analyst: free reports on the site, subscriber features for the app, and metered API access to the analysis.">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Research Analyst">
+    <meta property="og:image" content="https://ra.devinfo.dev/og-image.png">
+    <meta name="theme-color" content="#0f172a">
+    <title>Pricing - Research Analyst</title>
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+    <script src="/theme.js"></script>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <a href="#main" class="sr-only">Skip to main content</a>
+
+    <header class="header" role="banner">
+        <div class="header__inner">
+            <div class="header__brand">
+                <div class="header__logo" aria-hidden="true"><img src="/icons/icon-96x96.png" alt="" width="40" height="40"></div>
+                <div>
+                    <h1 class="header__title">Research Analyst</h1>
+                    <p class="header__subtitle">Pricing</p>
+                </div>
+            </div>
+            <nav class="header__nav" aria-label="Primary">
+                <a href="/" class="btn btn--ghost back-link" aria-label="Back to the app">&larr; Back to app</a>
+            </nav>
+        </div>
+    </header>
+
+    <main id="main" class="main">
+        <section class="card">
+            <h2>Research you can check, priced plainly</h2>
+            <p>Every report names its data sources and shows its working. The free tier is the full research product on this site. Paid plans add the subscriber features and programmatic access to the same analysis.</p>
+        </section>
+
+        <section class="card">
+            <h2>Free</h2>
+            <p class="price-line"><strong>$0</strong> &mdash; forever.</p>
+            <p>Full research reports, quant analysis, and comparisons on the site, with the data sources declared on every report. No account, no key.</p>
+            <p><a href="/" class="btn btn--ghost">Open the app</a></p>
+        </section>
+
+        <section class="card">
+            <h2>App Pro &mdash; $19 USD/month</h2>
+            <p>The subscriber features, licensed to your API key: exports of our analysis (CSV and PDF), embed cards, saved scenarios with shareable links, and watchlists with live quotes.</p>
+            <p>Think With Finance Pro subscribers: your subscription already unlocks App Pro here.</p>
+            <p><button type="button" class="btn btn--primary" data-plan="app_pro">Buy App Pro</button></p>
+            <p class="buy-status" role="status"></p>
+        </section>
+
+        <section class="card">
+            <h2>App Team &mdash; $79 USD/month</h2>
+            <p>The same subscriber features as App Pro, on the team tier &mdash; one subscription for a team or organization standardizing on Research Analyst.</p>
+            <p><button type="button" class="btn btn--primary" data-plan="app_team">Buy App Team</button></p>
+            <p class="buy-status" role="status"></p>
+        </section>
+
+        <section class="card">
+            <h2>API Pro &mdash; $58 USD/month</h2>
+            <p>Metered programmatic access to Research Analyst&rsquo;s analysis &mdash; reports, quant, and comparisons as structured responses. 100,000 calls per month, up to 60 calls per minute. Your own usage counts are visible any time at <code>GET /api/usage</code> with your key.</p>
+            <p><button type="button" class="btn btn--primary" data-plan="api_pro">Buy API Pro</button></p>
+            <p class="buy-status" role="status"></p>
+        </section>
+
+        <section class="card">
+            <h2>API Team &mdash; $198 USD/month</h2>
+            <p>The same metered API access at team volume: 1,000,000 calls per month, up to 300 calls per minute.</p>
+            <p><button type="button" class="btn btn--primary" data-plan="api_team">Buy API Team</button></p>
+            <p class="buy-status" role="status"></p>
+        </section>
+
+        <section class="card">
+            <h2>How buying works</h2>
+            <p>Checkout is handled by Stripe. When your payment completes, you return to this site and your API key is revealed once, on screen &mdash; save it; only a hash of it is stored. Your plan is active on the key from that moment, and renews monthly until you cancel. Cancel anytime; you keep paid access until the end of the billing period.</p>
+
+            <h2>Buying, in plain terms</h2>
+
+            <h3>Who am I buying from?</h3>
+            <p><strong>2351485 ALBERTA INC.</strong>, operating as AIMLDS, is the seller of record. Stripe processes your payment and hosts the checkout &mdash; we never see or store your card. Support: <a href="mailto:info@aimlds.org">info@aimlds.org</a>.</p>
+
+            <h3>What am I buying?</h3>
+            <p>A monthly subscription licensed to your API key: the App plans license the subscriber features, the API plans license metered programmatic access with the monthly call allowance stated for the plan. Your plan activates on the key automatically when the payment completes, and renews monthly until you cancel. If you lose your key, contact support and we will re-issue it.</p>
+
+            <h3>Refunds</h3>
+            <p>Contact <a href="mailto:info@aimlds.org">info@aimlds.org</a> &mdash; refund requests are reviewed case by case. The full terms are in the <a href="/terms.html">Terms</a>.</p>
+
+            <h3>Privacy and releases</h3>
+            <p>How your data is handled: the <a href="/privacy.html">privacy policy</a>. What changed in each release: the <a href="https://aimlds.org/changelog">release log</a>.</p>
+        </section>
+
+        <section class="card">
+            <h2>FAQ</h2>
+
+            <h3>What counts as an API call?</h3>
+            <p>One request to a metered API endpoint (research, quant, comparison, resolution, and the other keyed routes). Calls the pipeline fails are never counted against your allowance.</p>
+
+            <h3>What happens when I reach my monthly allowance?</h3>
+            <p>Further calls are refused with the count you have used, until the month rolls over. <code>GET /api/usage</code> shows your plan, your usage, and what remains, any time.</p>
+
+            <h3>Can I cancel?</h3>
+            <p>Yes, anytime &mdash; email <a href="mailto:info@aimlds.org">info@aimlds.org</a> and we cancel the same business day. You keep paid access until the end of the billing period; after that the key stops working and the free site keeps working as before.</p>
+
+            <h3>What am I not buying?</h3>
+            <p>The underlying market data. Paid plans license Research Analyst&rsquo;s own analysis. Source data is consumed under its own licences and is never sold, redistributed, or exported raw &mdash; including through the API and the export features.</p>
+
+            <h3>Is this financial advice?</h3>
+            <p>No. Research Analyst is a research and education tool. Nothing it produces is a recommendation to buy or sell any security.</p>
+
+            <p class="modal__disclaimer"><strong>Disclaimer:</strong> For informational and educational purposes only. Not financial advice or a recommendation to buy or sell any security.</p>
+        </section>
+    </main>
+
+    <footer class="footer" role="contentinfo">
+        <p class="seller-strip">Sold by 2351485 ALBERTA INC. (AIMLDS) &middot; Payments by Stripe &middot; <a href="/pricing.html">Pricing</a> &middot; <a href="/terms.html">Terms</a> &middot; <a href="/privacy.html">Privacy</a> &middot; <a href="https://aimlds.org/changelog">Releases</a> &middot; <a href="mailto:info@aimlds.org">Contact</a></p>
+    </footer>
+
+    <script>
+    // Buy buttons: ask the server for a Stripe-hosted checkout session
+    // and hand the buyer over to it. Any failure answers in plain words
+    // here — never a provider's raw error.
+    (function () {
+        var buttons = document.querySelectorAll('button[data-plan]');
+        buttons.forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var status = btn.closest('.card').querySelector('.buy-status');
+                btn.disabled = true;
+                if (status) status.textContent = 'Opening checkout…';
+                fetch('/api/billing/checkout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plan: btn.getAttribute('data-plan') })
+                }).then(function (res) {
+                    if (!res.ok) throw new Error('checkout unavailable');
+                    return res.json();
+                }).then(function (data) {
+                    if (!data || !data.checkout_url) throw new Error('checkout unavailable');
+                    window.location = data.checkout_url;
+                }).catch(function () {
+                    btn.disabled = false;
+                    if (status) status.textContent = 'We could not open checkout just now. Please try again in a few minutes — or email info@aimlds.org and we will help you buy directly.';
+                });
+            });
+        });
+    })();
+    </script>
+</body>
+</html>
