@@ -147,6 +147,7 @@ limitations under the License.
                 <button id="btn-contact" class="btn btn--ghost" type="button">Contact</button>
                 <button id="btn-getapp" class="btn btn--ghost" type="button">Get the App</button>
                 <a href="/help.html" class="btn btn--ghost help-link">Help</a>
+                <a href="/pricing.html" class="btn btn--ghost help-link">Pricing</a>
                 <a href="/privacy.html" class="btn btn--ghost help-link">Privacy</a>
                 <a href="https://buymeacoffee.com/nrupalakolt" class="btn btn--ghost bmc-link" target="_blank" rel="noopener noreferrer">Buy Me a Coffee</a>
             </nav>
@@ -154,6 +155,13 @@ limitations under the License.
     </header>
 
     <main id="main" class="main">
+        <section id="checkout-result" class="card checkout-result" hidden aria-live="polite">
+            <h2 id="checkout-result-title"></h2>
+            <p id="checkout-result-body"></p>
+            <code id="checkout-result-key" class="checkout-result__key" hidden></code>
+            <p id="checkout-result-actions"></p>
+        </section>
+
         <section class="card card--form" aria-label="Research request">
             <div class="mode-toggle" role="tablist" aria-label="Research mode">
                 <button type="button" id="mode-single" class="mode-btn mode-btn--active" role="tab" aria-selected="true" aria-controls="research-form">Single Ticker</button>
@@ -336,6 +344,7 @@ limitations under the License.
 
     <footer class="footer" role="contentinfo">
         <p>Research Analyst v0.4.0 - For informational and educational purposes only. Not financial advice.</p>
+        <p class="seller-strip">Sold by 2351485 ALBERTA INC. (AIMLDS) &middot; Payments by Stripe &middot; <a href="/pricing.html" style="color: var(--c-primary);">Pricing</a> &middot; <a href="/terms.html" style="color: var(--c-primary);">Terms</a> &middot; <a href="/privacy.html" style="color: var(--c-primary);">Privacy</a> &middot; <a href="https://aimlds.org/changelog" style="color: var(--c-primary);">Releases</a> &middot; <a href="mailto:info@aimlds.org" style="color: var(--c-primary);">Contact</a></p>
         <p><a href="https://devinfo.dev" style="color: var(--c-primary);">&larr; Back to devinfo.dev</a> &middot; <a href="https://buymeacoffee.com/nrupalakolt" target="_blank" rel="noopener noreferrer" style="color: var(--c-primary);">Buy Me a Coffee</a> &middot; <a href="mailto:nrupalakolkar@gmail.com?subject=Research%20Analyst%20partnership%20inquiry" style="color: var(--c-primary);">Partnerships</a></p>
     </footer>
 
@@ -346,6 +355,78 @@ limitations under the License.
         <button id="ra-gate-accept" class="btn btn--primary" type="button">I understand — continue</button>
       </div>
     </section>
+    <script>
+      // Checkout return: Stripe sends buyers back here with
+      // ?checkout=success&session_id=... (or ?checkout=cancelled).
+      // On success, claim the purchase: the API key is revealed exactly
+      // once, here. Copy is set via textContent — the key is data,
+      // never markup.
+      (function () {
+        var params = new URLSearchParams(window.location.search);
+        var outcome = params.get("checkout");
+        if (!outcome) return;
+        var panel = document.getElementById("checkout-result");
+        var title = document.getElementById("checkout-result-title");
+        var body = document.getElementById("checkout-result-body");
+        var keyBox = document.getElementById("checkout-result-key");
+        var actions = document.getElementById("checkout-result-actions");
+        if (!panel || !title || !body) return;
+        // Keep the session id out of the address bar, bookmarks, and
+        // any link the buyer copies from here on.
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState({}, "", window.location.pathname);
+        }
+        panel.hidden = false;
+        if (outcome === "cancelled") {
+          title.textContent = "Checkout cancelled";
+          body.textContent = "Nothing was charged. You can choose a plan any time on the Pricing page.";
+          actions.innerHTML = '<a href="/pricing.html" class="btn btn--ghost">See pricing</a>';
+          return;
+        }
+        if (outcome !== "success") return;
+        var sessionId = params.get("session_id");
+        title.textContent = "Thank you — your purchase is complete";
+        if (!sessionId) {
+          body.textContent = "We could not find your checkout session. If you were charged, email info@aimlds.org and we will issue your key.";
+          return;
+        }
+        body.textContent = "Preparing your API key…";
+        function claim() {
+          body.textContent = "Preparing your API key…";
+          actions.innerHTML = "";
+          fetch("/api/billing/claim?session_id=" + encodeURIComponent(sessionId))
+            .then(function (res) {
+              if (res.status === 404) {
+                body.textContent = "Stripe has confirmed your payment; your key is still being prepared. Give it a few seconds, then try again.";
+                actions.innerHTML = "";
+                var retry = document.createElement("button");
+                retry.type = "button";
+                retry.className = "btn btn--primary";
+                retry.textContent = "Try again";
+                retry.addEventListener("click", claim);
+                actions.appendChild(retry);
+                return null;
+              }
+              if (res.status === 409) {
+                body.textContent = "This purchase was already claimed, and its key was shown once at that time. If you lost it, email info@aimlds.org and we will re-issue it.";
+                return null;
+              }
+              if (!res.ok) throw new Error("claim failed");
+              return res.json();
+            })
+            .then(function (data) {
+              if (!data) return;
+              body.textContent = "Your plan (" + data.plan + ") is active on this key. Save it now — it is shown only once and cannot be recovered. Send it as the X-API-Key header, or enter it where the app asks for your key.";
+              keyBox.textContent = data.api_key;
+              keyBox.hidden = false;
+            })
+            .catch(function () {
+              body.textContent = "Something went wrong while preparing your key. Your payment is safe with Stripe — email info@aimlds.org and we will sort it out.";
+            });
+        }
+        claim();
+      })();
+    </script>
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", function () {
