@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+# Copyright (C) 2026 2351485 ALBERTA INC.
 # SPDX-License-Identifier: Apache-2.0
 # See LICENSE and LICENSES/Apache-2.0.txt for licensing terms.
 """Deploy a research-analyst Cloudflare Worker — SIGNED ONLY.

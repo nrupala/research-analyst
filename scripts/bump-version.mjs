@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com>
+// Copyright (C) 2026 2351485 ALBERTA INC.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
