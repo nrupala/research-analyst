@@ -1,11 +1,11 @@
 <!--
-Copyright (C) 2026 Nrupal Akolkar <nrupalakolkar@gmail.com> — SPDX-License-Identifier: AGPL-3.0-or-later
+Copyright (C) 2026 2351485 ALBERTA INC. — SPDX-License-Identifier: AGPL-3.0-or-later
 See LICENSE and COMMERCIAL-LICENSE.md for licensing terms (commercial licenses available).
 -->
 
 # NOTICE
 
-Owned by [Nrupal Akolkar](https://nrupalakolkar.com) · Built with [Muse by Meta](https://muse.ai/join) — join Muse, then redeem code **101EEK** in Settings within 48 hours of joining and we both earn tokens.
+Owned by [2351485 ALBERTA INC.](https://nrupalakolkar.com) · Built with [Muse by Meta](https://muse.ai/join) — join Muse, then redeem code **101EEK** in Settings within 48 hours of joining and we both earn tokens.
 
 Research Analyst is mixed-licensed — see LICENSE for the component
 mapping. The engine, the TUI, and the core — including reports — are
