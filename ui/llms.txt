@@ -1,7 +1,7 @@
 # Research Analyst
 
-> Institutional-grade equity and ETF research agent producing decision-intelligence
-> research comparable to top-tier sell-side and buy-side analysts.
+> Research Analyst is an attempt to provide institutional-grade equity and ETF
+> research.
 
 Research Analyst synthesizes fundamentals, technicals, macro context, competitor
 dynamics, and valuation frameworks into structured 7-step research reports for
