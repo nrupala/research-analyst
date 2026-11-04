@@ -307,6 +307,34 @@ function qlist(items){
     return"<ul>"+items.map(function(i){return"<li>"+esc(i)+"</li>"}).join("")+"</ul>";
 }
 
+// Quant Lab Phase 1: chart panel scaffold. The figure div carries the
+// accessible name (chart + default view); the view line under it names the
+// default view and is rewritten by renderPlotlyCharts() as the reader
+// zooms / toggles series (PLAYBOOK rule 31). The note line carries
+// panel-missing, caption and not-available text. Tables remain the
+// accessible artefact — panels are additive, never a replacement.
+function qchartPanel(id,viewName,ariaLabel){
+    return '<div class="quant-chart-panel"><div class="quant-chart" id="qchart-'+id+'" role="img" aria-label="'+esc(ariaLabel)+'"></div>'+
+        '<p class="quant-chart-view" id="qchart-'+id+'-view">Default view: '+esc(viewName)+'</p>'+
+        '<p class="quant-chart-note" id="qchart-'+id+'-note" hidden></p></div>';
+}
+function qchartChips(f){
+    var chips=[];
+    (f.altman_missing||[]).forEach(function(m){chips.push("Altman input missing: "+m)});
+    (f.beneish_missing||[]).forEach(function(m){chips.push("Beneish input missing: "+m)});
+    if(!chips.length)return"";
+    return '<p class="quant-chart-chips">'+chips.map(function(c){return '<span class="quant-chip">'+esc(c)+"</span>"}).join(" ")+"</p>";
+}
+function qchartNotAvailable(a){
+    var fields=[["debt_interest_coverage","interest coverage"],["incremental_roic_average","incremental ROIC"],
+        ["operating_tax_rate_latest","operating tax rate"],["dividend_payout_on_earnings","dividend payout on earnings"],
+        ["dividend_payout_on_fcf","dividend payout on FCF"],["debt_net_debt_to_ebit","net debt / EBIT"],
+        ["buyback_shares_cagr","buyback shares CAGR"]];
+    var missing=fields.filter(function(fd){return a[fd[0]]===null||a[fd[0]]===undefined}).map(function(fd){return fd[1]});
+    if(!missing.length)return"";
+    return '<p class="quant-chart-note">Not available: '+esc(missing.join(", "))+" — missing stays missing, never zero-filled.</p>";
+}
+
 async function renderQuantTab(){
     activeTabIndex=quantTabIndex();
     syncTabPanel();
@@ -339,9 +367,14 @@ function renderQuantData(data){
     h+='<form id="quant-dr-form" class="quant-dr"><label for="quant-dr">Discount rate (for implied-growth inversions, as a decimal):</label> '+
         '<input id="quant-dr" type="number" step="0.001" min="0" max="1" value="'+esc(quantCache.discountRate||"")+'" placeholder="e.g. 0.09"> '+
         '<button type="submit">Apply</button></form>';
+    h+='<p class="quant-chart-note" id="qchart-vendor-note" hidden></p>';
 
     var t=data.trends||{};
-    h+='<h3>Growth &amp; Margins</h3>'+qtable(["Metric","Value","Formula"],
+    h+='<h3>Growth &amp; Margins</h3>'+qchartPanel("trends","Full statement window — margins and YoY growth, linear scale","Trends chart — full statement window, margins and YoY growth, linear scale")+
+        '<p class="status__text">Revenue CAGR '+qfmt(t.revenue_cagr,true)+" · EPS CAGR "+qfmt(t.eps_cagr,true)+
+        " · FCF CAGR "+qfmt(t.fcf_cagr,true)+" · latest YoY revenue growth "+qfmt(t.yoy_revenue_growth_latest,true)+
+        " · latest gross margin "+qfmt(t.gross_margin_latest,true)+" · latest net margin "+qfmt(t.net_margin_latest,true)+".</p>"+
+        qtable(["Metric","Value","Formula"],
         [["Revenue CAGR",qfmt(t.revenue_cagr,true),"(last/first)^(1/periods) − 1"],
          ["Diluted EPS CAGR",qfmt(t.eps_cagr,true),"(last/first)^(1/periods) − 1"],
          ["Free cash flow CAGR",qfmt(t.fcf_cagr,true),"(last/first)^(1/periods) − 1"],
@@ -352,7 +385,9 @@ function renderQuantData(data){
 
     var d=data.dupont||{},dl=d.latest||{},attr=d.attribution||{};
     var drows=(d.rows||[]).map(function(r){return[r.period,qfmt(r.roe,true),qfmt(r.net_margin,true),qfmt(r.asset_turnover),qfmt(r.leverage)]});
-    h+='<h3>DuPont ROE Decomposition</h3>'+qtable(["Period","ROE","Net margin","Asset turnover","Leverage"],drows,
+    h+='<h3>DuPont ROE Decomposition</h3>'+qchartPanel("dupont","Full statement window — ROE and its components, linear scale","DuPont chart — full statement window, ROE and its components, linear scale")+
+        qchartPanel("dupont-waterfall","Latest period vs prior period — ROE attribution, linear scale","DuPont attribution waterfall — latest period vs prior period, linear scale")+
+        qtable(["Period","ROE","Net margin","Asset turnover","Leverage"],drows,
         "ROE = net margin × asset turnover × leverage; averages are (current + prior) / 2.");
     if(attr.roe_change_pp!==null&&attr.roe_change_pp!==undefined){
         h+='<p class="status__text">ROE change: '+attr.roe_change_pp.toFixed(1)+'pp — margin '+
@@ -363,6 +398,7 @@ function renderQuantData(data){
     var f=data.forensics||{};
     h+='<h3>Forensic Screens</h3>';
     h+='<p class="status__text">Altman Z and Beneish M are statistical screens, not verdicts. A flag means “look closer”, never “this company will fail / is fraudulent”.</p>';
+    h+=qchartPanel("forensics","Latest period — forensic screens against printed thresholds","Forensic screens chart — latest period, screens against printed thresholds")+qchartChips(f);
     h+=qtable(["Screen","Value","Reading"],
         [["Altman Z-score",qfmt(f.altman_z),(f.altman_zone||"n/a")+" — safe > 2.99, grey 1.81–2.99, distress < 1.81"],
          ["Beneish M-score",qfmt(f.beneish_m),f.beneish_flag===null||f.beneish_flag===undefined?"n/a":(f.beneish_flag?"FLAGGED (M > −1.78)":"not flagged")],
@@ -371,7 +407,7 @@ function renderQuantData(data){
         "Earnings-quality screens; zones and thresholds shown with each value.");
 
     var v=data.valuation||{};
-    h+='<h3>Valuation Checks</h3>'+qtable(["Metric","Value","Formula"],
+    h+='<h3>Valuation Checks</h3>'+qchartPanel("valuation","Assumption grid — discount rate × perpetual growth, base cell marked","DCF sensitivity heatmap — discount rate by perpetual growth, base cell marked")+qtable(["Metric","Value","Formula"],
         [["Graham number",qfmt(v.graham_number)+" "+cur,"√(22.5 × EPS × BVPS)"],
          ["Lynch fair value (PEG = 1)",qfmt(v.lynch_fair_value)+" "+cur,"EPS × EPS-growth-%"],
          ["Implied explicit-stage growth",qfmt(v.implied_explicit_stage_growth,true),"reverse DCF bisection: constant g over 5 explicit years + Gordon terminal, solved for current EV"],
@@ -379,7 +415,7 @@ function renderQuantData(data){
         "Two distinct implied-growth models — never a bare “implied growth”.");
 
     var a=data.allocation||{};
-    h+='<h3>Capital Allocation</h3>'+qtable(["Metric","Value","Formula"],
+    h+='<h3>Capital Allocation</h3>'+qchartPanel("allocation","Latest period — capital allocation ratios, linear scale","Capital allocation chart — latest period, allocation ratios, linear scale")+qchartNotAvailable(a)+qtable(["Metric","Value","Formula"],
         [["Average incremental ROIC",qfmt(a.incremental_roic_average,true),"ΔNOPAT / Δinvested capital (operating tax rate t = tax_expense / (ebit − interest_expense))"],
          ["Operating tax rate (latest)",qfmt(a.operating_tax_rate_latest,true),"t = tax_expense / (ebit − interest_expense)"],
          ["Dividend payout on earnings",qfmt(a.dividend_payout_on_earnings,true),"dividends_paid / net_income"],
@@ -395,6 +431,9 @@ function renderQuantData(data){
     if(data.assumptions&&data.assumptions.length){
         h+='<h3>Assumptions</h3>'+qlist(data.assumptions);
     }
+    if(data.expected_value){
+        h+=qchartPanel("expected","Scenario contributions — expected value marked","Scenario contributions chart — expected value marked");
+    }
     if(data.expected_value&&data.expected_value.reason){
         h+='<p class="status__text">Expected value: '+esc(data.expected_value.reason)+'</p>';
     }
@@ -407,29 +446,477 @@ function renderQuantData(data){
         quantCache.data=null;quantCache.ticker="";
         renderQuantTab();
     })}
+    renderPlotlyCharts(data);
 }
 
-// Phase F: charts AND diagrams are server-rendered static SVG — nothing to
-// instantiate. Kept as named no-ops for export/print stripping hooks.
-function renderPlotlyCharts(){
-    return
-}
+// Phase F: the report body's charts AND diagrams are server-rendered static
+// SVG — nothing to instantiate there. renderMermaidDiagrams stays a named
+// no-op for export/print stripping hooks.
 function renderMermaidDiagrams(){
     return
 }
 
-// ---- Phase G: on-demand interactive chart view (lazy Plotly, never on the
-// main page — the report stays zero-JS/stable; the modal loads Plotly only
-// when an analyst asks for it) ----
+// ---- Quant Lab Phase 1: in-house chart layer over the quant payload ----
+// Our engine computes, these builders emit the figure spec, and the
+// vendored Plotly.js partial bundle (ui/vendor/, MIT, same-origin — never
+// a CDN, never Plotly's hosted anything) renders it as SVG. Builders are
+// pure payload → spec functions: they never mutate the payload, never
+// invent a value, and pass nulls through as null — no zero-fill, no
+// forward-fill, no bridging (connectgaps is false on every scatter and
+// rangebreaks appear nowhere). The tables remain the artefact; a figure
+// that cannot be built or rendered degrades to a named note, panel by
+// panel, and the tables stand exactly as before.
+var QUANT_BRASS = "#b08d2f";
+var QUANT_INK = "#0f172a";
+var QUANT_INK_2 = "#334155";
+var QUANT_INK_3 = "#64748b";
+var QUANT_INK_4 = "#94a3b8";
+var AIMLDS_INK_BRASS_TEMPLATE = {
+    layout: {
+        font: {color: QUANT_INK, size: 12},
+        paper_bgcolor: "#ffffff",
+        plot_bgcolor: "#ffffff",
+        colorway: [QUANT_BRASS, QUANT_INK_2, QUANT_INK_3, QUANT_INK_4, QUANT_INK],
+        xaxis: {gridcolor: "#e2e8f0", linecolor: QUANT_INK, zerolinecolor: QUANT_INK_4},
+        yaxis: {gridcolor: "#e2e8f0", linecolor: QUANT_INK, zerolinecolor: QUANT_INK_4},
+        hovermode: "x unified"
+    },
+    data: {
+        scatter: [{line: {width: 2}, marker: {size: 6}}],
+        bar: [{marker: {line: {width: 0}}}]
+    }
+};
+function qchartLayout(extra){
+    var L = {template: AIMLDS_INK_BRASS_TEMPLATE, margin: {l: 58, r: 18, t: 12, b: 42},
+        hovermode: "x unified", showlegend: true,
+        legend: {orientation: "h", x: 0, y: 1.15}};
+    if(extra){for(var k in extra){L[k] = extra[k]}}
+    return L;
+}
+function qchartConfig(){
+    // No toImage: a current-view PNG export is excluded in Phase 1 (spec
+    // §7) — export stays with the app's own report export, where the
+    // tables are the artefact.
+    return {responsive: true, displaylogo: false, modeBarButtonsToRemove: ["toImage"]};
+}
+function qprov(periods, unit, source){
+    return (periods || []).map(function(p){ return [p, unit, source] });
+}
+function qstmtSource(data){
+    return data.statements_source || "reported financial statements";
+}
+
+function buildTrendsFigure(data){
+    var t = data.trends || {};
+    var periods = data.periods || [];
+    var ms = t.margin_series || {}, ys = t.yoy_series || {};
+    var gross = ms.gross || [], net = ms.net || [], yoy = ys.revenue || [];
+    var hasValue = [gross, net, yoy].some(function(arr){
+        return arr.some(function(val){ return val !== null && val !== undefined });
+    });
+    if(!periods.length || !hasValue){
+        return {figure: null, note: "Trend series unavailable — no per-period values in payload; the table below is complete."};
+    }
+    var src = qstmtSource(data);
+    var traces = [
+        {type: "bar", name: "YoY revenue growth", x: periods, y: yoy,
+            marker: {color: QUANT_INK_3},
+            customdata: qprov(periods, "YoY growth (fraction)", src),
+            hovertemplate: "%{y:.1%} · %{customdata[1]} · %{customdata[2]}<extra>YoY revenue growth</extra>"},
+        {type: "scatter", mode: "lines+markers", name: "Gross margin", x: periods, y: gross,
+            connectgaps: false, line: {color: QUANT_BRASS, width: 2.5},
+            customdata: qprov(periods, "margin (fraction of revenue)", src),
+            hovertemplate: "%{y:.1%} · %{customdata[1]} · %{customdata[2]}<extra>Gross margin</extra>"},
+        {type: "scatter", mode: "lines+markers", name: "Net margin", x: periods, y: net,
+            connectgaps: false, line: {color: QUANT_INK_2},
+            customdata: qprov(periods, "margin (fraction of revenue)", src),
+            hovertemplate: "%{y:.1%} · %{customdata[1]} · %{customdata[2]}<extra>Net margin</extra>"}
+    ];
+    var layout = qchartLayout({
+        xaxis: {type: "category", showspikes: true, spikemode: "across", spikecolor: QUANT_INK_4, title: {text: "Fiscal period"}},
+        yaxis: {tickformat: ".0%", title: {text: "Fraction of revenue / growth"}}
+    });
+    return {figure: {data: traces, layout: layout, config: qchartConfig()}, note: null};
+}
+
+function buildDupontFigure(data){
+    var d = data.dupont || {};
+    var rows = d.rows || [];
+    if(!rows.length){
+        return {figure: null, note: "DuPont panel unavailable — decomposition not in payload; the table below is complete."};
+    }
+    var periods = rows.map(function(r){ return r.period });
+    var col = function(key){ return rows.map(function(r){ return (r[key] === null || r[key] === undefined) ? null : r[key] }) };
+    var src = "computed by RA";
+    var traces = [
+        {type: "scatter", mode: "lines+markers", name: "ROE", x: periods, y: col("roe"), connectgaps: false,
+            line: {color: QUANT_BRASS, width: 2.5}, customdata: qprov(periods, "ROE (fraction)", src),
+            hovertemplate: "%{y:.1%} · %{customdata[1]} · %{customdata[2]}<extra>ROE</extra>"},
+        {type: "scatter", mode: "lines+markers", name: "Net margin", x: periods, y: col("net_margin"), connectgaps: false,
+            line: {color: QUANT_INK_2}, customdata: qprov(periods, "margin (fraction)", src),
+            hovertemplate: "%{y:.1%} · %{customdata[1]} · %{customdata[2]}<extra>Net margin</extra>"},
+        {type: "scatter", mode: "lines+markers", name: "Asset turnover", x: periods, y: col("asset_turnover"), connectgaps: false, yaxis: "y2",
+            line: {color: QUANT_INK_3}, customdata: qprov(periods, "turnover (× revenue / avg assets)", src),
+            hovertemplate: "%{y:.2f} · %{customdata[1]} · %{customdata[2]}<extra>Asset turnover</extra>"},
+        {type: "scatter", mode: "lines+markers", name: "Leverage", x: periods, y: col("leverage"), connectgaps: false, yaxis: "y2",
+            line: {color: QUANT_INK_4}, customdata: qprov(periods, "leverage (× avg assets / avg equity)", src),
+            hovertemplate: "%{y:.2f} · %{customdata[1]} · %{customdata[2]}<extra>Leverage</extra>"}
+    ];
+    var layout = qchartLayout({
+        xaxis: {type: "category", showspikes: true, spikemode: "across", spikecolor: QUANT_INK_4, title: {text: "Fiscal period"}},
+        yaxis: {tickformat: ".0%", title: {text: "ROE / margin"}},
+        yaxis2: {overlaying: "y", side: "right", title: {text: "Turnover / leverage (×)"}, gridcolor: "rgba(0,0,0,0)"}
+    });
+    return {figure: {data: traces, layout: layout, config: qchartConfig()}, note: null};
+}
+
+function buildDupontWaterfall(data){
+    var d = data.dupont || {};
+    var attr = d.attribution || {};
+    var rows = d.rows || [];
+    var latest = d.latest || (rows.length ? rows[rows.length - 1] : {});
+    var latestRoe = (latest.roe === null || latest.roe === undefined) ? null : latest.roe;
+    var parts = [attr.margin_contribution_pp, attr.turnover_contribution_pp, attr.leverage_contribution_pp];
+    var complete = attr.roe_change_pp !== null && attr.roe_change_pp !== undefined && latestRoe !== null &&
+        parts.every(function(p){ return p !== null && p !== undefined });
+    if(!complete){
+        // Conditional by design (§3.2): no figure and no note — the table
+        // area already carries the state.
+        return {figure: null, note: null};
+    }
+    var start = latestRoe - attr.roe_change_pp / 100;
+    var m = parts[0] / 100, tu = parts[1] / 100, lv = parts[2] / 100;
+    var pp = function(x){ return (x >= 0 ? "+" : "") + (x * 100).toFixed(1) + "pp" };
+    var periodLabel = latest.period || "latest";
+    var labels = ["Prior ROE", "Margin", "Turnover", "Leverage", "Latest ROE"];
+    var trace = {type: "waterfall", name: "ROE attribution", orientation: "v",
+        x: labels, y: [start, m, tu, lv, latestRoe],
+        measure: ["absolute", "relative", "relative", "relative", "total"],
+        text: [qfmt(start, true), pp(m), pp(tu), pp(lv), qfmt(latestRoe, true)], textposition: "outside",
+        connector: {line: {color: QUANT_INK_4}},
+        increasing: {marker: {color: QUANT_BRASS}},
+        decreasing: {marker: {color: QUANT_INK_3}},
+        totals: {marker: {color: QUANT_INK}},
+        customdata: labels.map(function(){ return [periodLabel, "ROE (fraction)", "computed by RA"] }),
+        hovertemplate: "%{text} · %{customdata[1]} · %{customdata[2]}<extra>%{x}</extra>"};
+    var layout = qchartLayout({showlegend: false, hovermode: "closest",
+        xaxis: {type: "category", title: {text: "Attribution step"}},
+        yaxis: {tickformat: ".0%", title: {text: "ROE"}}});
+    return {figure: {data: [trace], layout: layout, config: qchartConfig()}, note: null};
+}
+function buildForensicsFigure(data){
+    var f = data.forensics || {};
+    var periods = data.periods || [];
+    var latestPeriod = periods.length ? periods[periods.length - 1] : "latest";
+    var defs = [
+        {key: "altman_z", label: "Altman Z-score", fmt: function(v){ return v.toFixed(2) }},
+        {key: "beneish_m", label: "Beneish M-score", fmt: function(v){ return v.toFixed(2) }},
+        {key: "sloan_accruals", label: "Sloan accruals ratio", fmt: function(v){ return v.toFixed(3) }},
+        {key: "cash_conversion", label: "Cash conversion", fmt: function(v){ return v.toFixed(2) }}
+    ];
+    var present = defs.filter(function(df){ return f[df.key] !== null && f[df.key] !== undefined });
+    var missing = defs.filter(function(df){ return f[df.key] === null || f[df.key] === undefined })
+        .map(function(df){ return df.label });
+    if(!present.length){
+        return {figure: null, note: "Forensic screens unavailable — screens not in payload; the table below is complete."};
+    }
+    // One panel, one row per screen, each row on its own axis: the four
+    // scales are incompatible, and the threshold geometry (bands, flag
+    // line, reference line) belongs to each screen's own axis. Bars and
+    // printed thresholds — no gauge dials (a verdict needle is a verdict).
+    var traces = [], shapes = [], annotations = [];
+    var layout = qchartLayout({showlegend: false, hovermode: "closest",
+        height: 120 * present.length + 30,
+        grid: {rows: present.length, cols: 1, pattern: "independent", roworder: "top to bottom"}});
+    present.forEach(function(df, i){
+        var n = i + 1, xs = n === 1 ? "x" : "x" + n, ys = n === 1 ? "y" : "y" + n;
+        var val = f[df.key];
+        traces.push({type: "bar", orientation: "h", name: df.label, x: [val], y: [""],
+            xaxis: xs, yaxis: ys, marker: {color: QUANT_BRASS},
+            text: [df.fmt(val)], textposition: "outside",
+            customdata: [[latestPeriod, df.label, "computed by RA"]],
+            hovertemplate: "%{text} · %{customdata[1]} · %{customdata[2]}<extra></extra>"});
+        var xa = {title: {text: df.label}, zerolinecolor: QUANT_INK_4};
+        if(df.key === "altman_z"){
+            var hi = Math.max(6, val * 1.15);
+            xa.range = [0, hi];
+            [[0, 1.81, "rgba(185,28,28,0.10)", "distress < 1.81"],
+             [1.81, 2.99, "rgba(100,116,139,0.12)", "grey 1.81–2.99"],
+             [2.99, hi, "rgba(176,141,47,0.14)", "safe > 2.99"]].forEach(function(b){
+                shapes.push({type: "rect", xref: xs, yref: ys + " domain", x0: b[0], x1: b[1], y0: 0, y1: 1,
+                    fillcolor: b[2], line: {width: 0}, layer: "below"});
+                annotations.push({x: (b[0] + b[1]) / 2, y: 0.06, xref: xs, yref: ys + " domain",
+                    text: b[3], showarrow: false, font: {size: 10, color: QUANT_INK_2}});
+            });
+        }
+        if(df.key === "beneish_m"){
+            xa.range = [Math.min(-4, val - 0.4), Math.max(0.4, val + 0.4)];
+            shapes.push({type: "line", xref: xs, yref: ys + " domain", x0: -1.78, x1: -1.78, y0: 0, y1: 1,
+                line: {color: "#b91c1c", width: 2, dash: "dash"}});
+            annotations.push({x: -1.78, y: 1, xref: xs, yref: ys + " domain", yanchor: "bottom",
+                text: "flag threshold (M > −1.78)", showarrow: false, xanchor: "left",
+                font: {size: 10, color: "#b91c1c"}});
+        }
+        if(df.key === "sloan_accruals"){
+            var s = Math.max(0.1, Math.abs(val) * 1.4);
+            xa.range = [-s, s];
+            xa.zerolinewidth = 2;
+            xa.zerolinecolor = QUANT_INK;
+        }
+        if(df.key === "cash_conversion"){
+            xa.range = [0, Math.max(2, val * 1.2)];
+            shapes.push({type: "line", xref: xs, yref: ys + " domain", x0: 1, x1: 1, y0: 0, y1: 1,
+                line: {color: QUANT_INK_2, width: 2, dash: "dash"}});
+            annotations.push({x: 1, y: 1, xref: xs, yref: ys + " domain", yanchor: "bottom",
+                text: "cash = earnings", showarrow: false, xanchor: "left",
+                font: {size: 10, color: QUANT_INK_2}});
+        }
+        layout[n === 1 ? "xaxis" : "xaxis" + n] = xa;
+        layout[n === 1 ? "yaxis" : "yaxis" + n] = {visible: false};
+    });
+    layout.shapes = shapes;
+    layout.annotations = annotations;
+    var note = missing.length
+        ? "Not available: " + missing.join(", ") + " — see Missing inputs below; missing stays missing."
+        : null;
+    return {figure: {data: traces, layout: layout, config: qchartConfig()}, note: note};
+}
+
+function qnearestIndex(values, target){
+    var best = 0, bd = Infinity;
+    values.forEach(function(v, i){ var d = Math.abs(v - target); if(d < bd){ bd = d; best = i } });
+    return best;
+}
+function qaxisStep(values){
+    var diffs = [];
+    for(var i = 1; i < values.length; i++){ var d = Math.abs(values[i] - values[i - 1]); if(d > 0) diffs.push(d) }
+    return diffs.length ? Math.min.apply(null, diffs) : 0.005;
+}
+
+function buildValuationHeatmap(data){
+    var v = data.valuation || {};
+    var s = v.sensitivity;
+    if(!s || !s.values || !s.values.length || !s.rows || !s.cols){
+        return {figure: null, note: "Sensitivity grid unavailable — grid not in payload; the table below is complete."};
+    }
+    var cur = data.currency || "";
+    var rows = s.rows.values, cols = s.cols.values, base = s.base || {};
+    var text = s.values.map(function(row){
+        return row.map(function(c){ return (c === null || c === undefined) ? "n/a" : c.toFixed(2) });
+    });
+    var trace = {type: "heatmap", z: s.values, x: cols, y: rows, text: text, texttemplate: "%{text}",
+        colorscale: [[0, "#f1f5f9"], [1, QUANT_BRASS]], showscale: true,
+        colorbar: {title: {text: (cur ? cur + " " : "") + "/ share"}},
+        customdata: rows.map(function(){ return cols.map(function(){ return ["DCF sensitivity grid", "model value per share", "computed by RA"] }) }),
+        hovertemplate: "discount %{y:.2%} · perpetual growth %{x:.2%} → %{z:.2f} " + cur + "/share · %{customdata[2]}<extra></extra>"};
+    var shapes = [], annotations = [];
+    if(base.discount_rate !== null && base.discount_rate !== undefined &&
+       base.perpetual_growth !== null && base.perpetual_growth !== undefined){
+        var bi = qnearestIndex(rows, base.discount_rate), bj = qnearestIndex(cols, base.perpetual_growth);
+        var rs = qaxisStep(rows), cs = qaxisStep(cols);
+        shapes.push({type: "rect", xref: "x", yref: "y",
+            x0: cols[bj] - cs / 2, x1: cols[bj] + cs / 2, y0: rows[bi] - rs / 2, y1: rows[bi] + rs / 2,
+            line: {color: QUANT_INK, width: 2}, fillcolor: "rgba(0,0,0,0)"});
+        annotations.push({x: cols[bj], y: rows[bi], xref: "x", yref: "y", text: "assumption used",
+            showarrow: true, arrowhead: 2, ax: 0, ay: -30, font: {size: 11, color: QUANT_INK}});
+    }
+    var layout = qchartLayout({showlegend: false, hovermode: "closest", shapes: shapes, annotations: annotations,
+        xaxis: {tickformat: ".1%", title: {text: "Perpetual growth (terminal assumption)"}},
+        yaxis: {tickformat: ".1%", title: {text: "Discount rate"}}});
+    var caption = "Computed model output over assumed inputs — not observed market data.";
+    if(base.explicit_growth !== null && base.explicit_growth !== undefined){
+        caption += " Explicit-stage growth held at the implied value " + qfmt(base.explicit_growth, true) + " over 5 years.";
+    }
+    (data.assumptions || []).filter(function(x){ return /discount rate/i.test(x) }).forEach(function(x){
+        caption += " " + x;
+    });
+    return {figure: {data: [trace], layout: layout, config: qchartConfig()}, note: null, caption: caption};
+}
+function buildExpectedFigure(data){
+    var ev = data.expected_value || {};
+    if(ev.expected === null || ev.expected === undefined || !ev.contributions || !ev.contributions.length){
+        // Spec §10 resolution (2026-11-03): the live contributions payload
+        // is scenario value × probability per scenario — it carries no
+        // low/high outputs, so a tornado would require fabricating them.
+        // Phase 1 renders the contributions themselves; the tornado waits
+        // for a payload that carries tornado rows. When expected is null
+        // there is no figure and the payload's reason line stands alone.
+        return {figure: null, note: null};
+    }
+    var cur = data.currency || "";
+    var labels = ev.contributions.map(function(c){ return String(c.label) }).reverse();
+    var vals = ev.contributions.map(function(c){ return c.contribution }).reverse();
+    var trace = {type: "bar", orientation: "h", name: "Scenario contribution",
+        y: labels, x: vals,
+        marker: {color: vals.map(function(x){ return x >= 0 ? QUANT_BRASS : QUANT_INK_3 })},
+        customdata: labels.map(function(l){ return [l, "contribution (" + (cur || "value") + ")", "computed by RA"] }),
+        hovertemplate: "%{customdata[0]}: %{x:.2f} · %{customdata[1]} · %{customdata[2]}<extra></extra>"};
+    var layout = qchartLayout({showlegend: false, hovermode: "closest",
+        shapes: [{type: "line", xref: "x", yref: "paper", x0: ev.expected, x1: ev.expected, y0: 0, y1: 1,
+            line: {color: QUANT_INK, width: 2, dash: "dash"}}],
+        annotations: [{x: ev.expected, y: 1, xref: "x", yref: "paper", yanchor: "bottom",
+            text: "expected value " + ev.expected.toFixed(2), showarrow: false,
+            font: {size: 11, color: QUANT_INK}}],
+        xaxis: {title: {text: "Contribution to expected value" + (cur ? " (" + cur + ")" : "")}},
+        yaxis: {title: {text: "Scenario"}}});
+    return {figure: {data: [trace], layout: layout, config: qchartConfig()}, note: null};
+}
+
+function buildAllocationFigure(data){
+    var a = data.allocation || {};
+    var periods = data.periods || [];
+    var latestPeriod = periods.length ? periods[periods.length - 1] : "latest";
+    var src = qstmtSource(data);
+    var fields = [
+        {key: "dividend_payout_on_earnings", label: "Dividend payout on earnings", pct: true, prov: src},
+        {key: "dividend_payout_on_fcf", label: "Dividend payout on FCF", pct: true, prov: src},
+        {key: "debt_net_debt_to_ebit", label: "Net debt / EBIT", pct: false, prov: src},
+        {key: "debt_interest_coverage", label: "Interest coverage", pct: false, prov: src},
+        {key: "buyback_shares_cagr", label: "Buyback: shares CAGR", pct: true, prov: src},
+        {key: "incremental_roic_average", label: "Avg incremental ROIC", pct: true, prov: "computed by RA"},
+        {key: "operating_tax_rate_latest", label: "Operating tax rate (latest)", pct: true, prov: "computed by RA"}
+    ];
+    var present = fields.filter(function(fd){ return a[fd.key] !== null && a[fd.key] !== undefined });
+    if(!present.length){
+        return {figure: null, note: "Allocation panel unavailable — ratios not in payload; the table below is complete."};
+    }
+    var ordered = present.slice().reverse();
+    var trace = {type: "bar", orientation: "h", name: "Capital allocation (latest)",
+        y: ordered.map(function(fd){ return fd.label }),
+        x: ordered.map(function(fd){ return a[fd.key] }),
+        marker: {color: QUANT_BRASS},
+        text: ordered.map(function(fd){ return qfmt(a[fd.key], fd.pct) }), textposition: "outside",
+        customdata: ordered.map(function(fd){ return [latestPeriod, fd.pct ? "ratio (fraction)" : "ratio (×)", fd.prov] }),
+        hovertemplate: "%{y}: %{text} · %{customdata[1]} · %{customdata[2]}<extra></extra>"};
+    var layout = qchartLayout({showlegend: false, hovermode: "closest",
+        xaxis: {title: {text: "Ratio (latest period)"}}});
+    return {figure: {data: [trace], layout: layout, config: qchartConfig()}, note: null};
+}
+
+var QUANT_PANEL_VIEWS = {
+    "trends": "Full statement window — margins and YoY growth, linear scale",
+    "dupont": "Full statement window — ROE and its components, linear scale",
+    "dupont-waterfall": "Latest period vs prior period — ROE attribution, linear scale",
+    "forensics": "Latest period — forensic screens against printed thresholds",
+    "valuation": "Assumption grid — discount rate × perpetual growth, base cell marked",
+    "allocation": "Latest period — capital allocation ratios, linear scale",
+    "expected": "Scenario contributions — expected value marked"
+};
+function buildQuantChartSpecs(data){
+    data = data || {};
+    var builders = [
+        ["trends", buildTrendsFigure], ["dupont", buildDupontFigure],
+        ["dupont-waterfall", buildDupontWaterfall], ["forensics", buildForensicsFigure],
+        ["valuation", buildValuationHeatmap], ["allocation", buildAllocationFigure],
+        ["expected", buildExpectedFigure]
+    ];
+    return builders.map(function(pair){
+        var built = pair[1](data);
+        return {id: pair[0], viewName: QUANT_PANEL_VIEWS[pair[0]], templateName: "aimlds_ink_brass",
+            periods: data.periods || [], figure: built.figure, note: built.note || null,
+            caption: built.caption || null};
+    });
+}
+
+// The period/scale line under each figure (PLAYBOOK rule 31): the default
+// view by name, updated from the live graph state when the reader zooms
+// or hides a series — a changed view is always labelled as changed.
+function quantViewLine(spec, gd){
+    var hidden = [];
+    ((gd && gd.data) || []).forEach(function(tr){
+        if(tr.visible === "legendonly" || tr.visible === false) hidden.push(tr.name);
+    });
+    var win = null;
+    var lay = (gd && gd.layout) || {};
+    if(lay.xaxis && lay.xaxis.range && spec.periods && spec.periods.length){
+        // Category axis: category i occupies [i − 0.5, i + 0.5], so the
+        // visible index span is the range shifted by half a category.
+        var r0 = Math.max(0, Math.floor(lay.xaxis.range[0] + 0.5));
+        var r1 = Math.min(spec.periods.length - 1, Math.ceil(lay.xaxis.range[1] - 0.5));
+        if(r0 > 0 || r1 < spec.periods.length - 1) win = spec.periods[r0] + " – " + spec.periods[r1];
+    }
+    if(!win && !hidden.length) return "Default view: " + spec.viewName;
+    var s = "View: " + (win ? "window " + win : "full window");
+    if(hidden.length) s += " · hidden: " + hidden.join(", ");
+    return s + " · (default: " + spec.viewName + ")";
+}
+
+function renderPlotlyCharts(data){
+    var specs = buildQuantChartSpecs(data || {});
+    var vendorEl = document.getElementById("qchart-vendor-note");
+    var P = (typeof window !== "undefined" && window.Plotly) ? window.Plotly : null;
+    if(!P){
+        // Vendor-failed (§1.1): every table stands exactly as today; one
+        // named line says charts are unavailable. No retry, no fallback.
+        var anyFigure = false;
+        specs.forEach(function(spec){
+            var el = document.getElementById("qchart-" + spec.id);
+            var viewEl = document.getElementById("qchart-" + spec.id + "-view");
+            if(el) el.hidden = true;
+            if(viewEl) viewEl.hidden = true;
+            if(spec.figure) anyFigure = true;
+            if(!spec.figure && spec.note){
+                var n = document.getElementById("qchart-" + spec.id + "-note");
+                if(n){ n.textContent = spec.note; n.hidden = false }
+            }
+        });
+        if(anyFigure && vendorEl){
+            vendorEl.textContent = "Charts unavailable — data tables below are complete.";
+            vendorEl.hidden = false;
+        }
+        return;
+    }
+    if(vendorEl) vendorEl.hidden = true;
+    specs.forEach(function(spec){
+        var el = document.getElementById("qchart-" + spec.id);
+        var noteEl = document.getElementById("qchart-" + spec.id + "-note");
+        var viewEl = document.getElementById("qchart-" + spec.id + "-view");
+        if(!el) return;
+        if(!spec.figure){
+            el.hidden = true;
+            if(viewEl) viewEl.hidden = true;
+            if(noteEl && spec.note){ noteEl.textContent = spec.note; noteEl.hidden = false }
+            return;
+        }
+        var caption = spec.caption || spec.note;
+        if(noteEl && caption){ noteEl.textContent = caption; noteEl.hidden = false }
+        var degrade = function(){
+            el.hidden = true;
+            if(viewEl) viewEl.hidden = true;
+            if(noteEl){
+                noteEl.textContent = "Chart failed to render — data tables below are complete.";
+                noteEl.hidden = false;
+            }
+        };
+        try{
+            var p = P.newPlot(el, spec.figure.data, spec.figure.layout, spec.figure.config);
+            var attach = function(gd){
+                if(gd && typeof gd.on === "function"){
+                    var upd = function(){ if(viewEl) viewEl.textContent = quantViewLine(spec, gd) };
+                    gd.on("plotly_relayout", upd);
+                    gd.on("plotly_restyle", upd);
+                }
+            };
+            if(p && typeof p.then === "function"){ p.then(attach).catch(degrade) }
+            else attach(el);
+        }catch(e){ degrade() }
+    });
+}
+
+// ---- Phase G: on-demand interactive chart view. Plotly comes from the
+// vendored same-origin partial bundle (ui/vendor/, loaded with the page);
+// ensurePlotly only remains as the resolver for callers that predate the
+// vendored load, and its fallback path points at the same vendored file —
+// no CDN anywhere (Quant Lab Phase 1 removed the last external script). ----
 var raPlotlyPromise = null;
 function ensurePlotly(){
     if (typeof window.Plotly !== "undefined") return Promise.resolve(window.Plotly);
     if (raPlotlyPromise) return raPlotlyPromise;
     raPlotlyPromise = new Promise(function(resolve, reject){
         var s = document.createElement("script");
-        s.src = "https://cdn.plot.ly/plotly-2.32.0.min.js";
+        s.src = "/vendor/plotly-2.32.0.min.js";
         s.onload = function(){ resolve(window.Plotly); };
-        s.onerror = function(){ reject(new Error("Plotly CDN failed to load")); };
+        s.onerror = function(){ reject(new Error("Plotly failed to load")); };
         document.head.appendChild(s);
     });
     return raPlotlyPromise;
@@ -482,7 +969,7 @@ function openInteractiveView(button){
             overlay.querySelector(".chart-modal__plot").textContent = "Could not render interactive view.";
         }
     }).catch(function(e){
-        alert("Interactive view requires the Plotly library (CDN blocked?).");
+        alert("Interactive view requires the Plotly library (failed to load).");
     });
 }
 

@@ -111,6 +111,19 @@ API_RESPONSE_MODELS: dict[str, type[BaseModel]] = {
 # ---------------------------------------------------------------------------
 
 
+class QuantMarginSeries(BaseModel):
+    """P1-B1: per-period margin fractions, aligned to ``periods[]``."""
+
+    gross: list[float | None] = Field(default_factory=list)
+    net: list[float | None] = Field(default_factory=list)
+
+
+class QuantYoySeries(BaseModel):
+    """P1-B1: per-period YoY growth fractions, aligned to ``periods[]``."""
+
+    revenue: list[float | None] = Field(default_factory=list)
+
+
 class QuantTrendsPayload(BaseModel):
     revenue_cagr: float | None = None
     eps_cagr: float | None = None
@@ -118,6 +131,10 @@ class QuantTrendsPayload(BaseModel):
     yoy_revenue_growth_latest: float | None = None
     gross_margin_latest: float | None = None
     net_margin_latest: float | None = None
+    # Quant Lab Phase 1 (P1-B1): additive per-period series behind the
+    # scalars above — same engine calls, nulls preserved element-for-element.
+    margin_series: QuantMarginSeries = Field(default_factory=QuantMarginSeries)
+    yoy_series: QuantYoySeries = Field(default_factory=QuantYoySeries)
 
 
 class QuantDupontRow(BaseModel):
@@ -152,12 +169,37 @@ class QuantForensicsPayload(BaseModel):
     cash_conversion: float | None = None
 
 
+class QuantSensitivityAxis(BaseModel):
+    label: str
+    values: list[float] = Field(default_factory=list)
+
+
+class QuantSensitivityBase(BaseModel):
+    discount_rate: float | None = None
+    perpetual_growth: float | None = None
+    explicit_growth: float | None = None
+
+
+class QuantSensitivityPayload(BaseModel):
+    """P1-B2: DCF sensitivity grid — rows = discount rate, cols = perpetual
+    growth, cell = model value per share; unevaluable cells stay null."""
+
+    rows: QuantSensitivityAxis
+    cols: QuantSensitivityAxis
+    values: list[list[float | None]] = Field(default_factory=list)
+    base: QuantSensitivityBase = Field(default_factory=QuantSensitivityBase)
+
+
 class QuantValuationPayload(BaseModel):
     graham_number: float | None = None
     lynch_fair_value: float | None = None
     implied_explicit_stage_growth: float | None = None
     implied_perpetual_growth: float | None = None
     discount_rate_used: float | None = None
+    # Quant Lab Phase 1 (P1-B2): additive sensitivity grid; null when the
+    # model inputs (discount rate, FCF, implied growth, net debt, shares)
+    # are not all present — the gap is named in missing_inputs instead.
+    sensitivity: QuantSensitivityPayload | None = None
 
 
 class QuantAllocationPayload(BaseModel):

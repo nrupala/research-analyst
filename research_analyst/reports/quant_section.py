@@ -70,6 +70,14 @@ def _fmt(value: float | None, *, pct: bool = False, digits: int = 2) -> str:
     return f"{v:.{digits}f}{'%' if pct else ''}"
 
 
+def _aligned(values: list[float | None], n: int) -> list[float | None]:
+    """Force a series to exactly ``n`` entries (Quant Lab P1-B1/B2):
+    truncate extras, pad with None — missing stays missing, never 0."""
+    out = list(values[:n])
+    out.extend([None] * (n - len(out)))
+    return out
+
+
 def _period_range(series: StatementSeries) -> str:
     if not series.periods:
         return "no periods"
@@ -101,9 +109,15 @@ def compute_quant_results(
     rev_cagr = trends.series_cagr(series.revenue)
     eps_cagr = trends.series_cagr(series.eps_diluted)
     fcf_cagr = trends.series_cagr(series.free_cash_flow)
-    gross_m = guards.last_value(trends.margin_series(series.gross_profit, series.revenue))
-    net_m = guards.last_value(trends.margin_series(series.net_income, series.revenue))
-    yoy_rev_latest = guards.last_value(trends.yoy_growth(series.revenue))
+    # P1-B1 (Quant Lab Phase 1): the per-period series behind the scalars,
+    # exposed for the chart layer. Same engine calls the scalars come from;
+    # nulls preserved element-for-element, aligned to periods[].
+    gross_series = trends.margin_series(series.gross_profit, series.revenue)
+    net_series = trends.margin_series(series.net_income, series.revenue)
+    yoy_rev_series = trends.yoy_growth(series.revenue)
+    gross_m = guards.last_value(gross_series)
+    net_m = guards.last_value(net_series)
+    yoy_rev_latest = guards.last_value(yoy_rev_series)
 
     # ---- DuPont ----
     dupont_rows = dupont.dupont_series(series)
@@ -190,6 +204,7 @@ def compute_quant_results(
 
     explicit_g: float | None = None
     perpetual_g: float | None = None
+    sensitivity: dict[str, Any] | None = None
     if discount_rate is not None:
         assumptions.append(
             f"Discount rate r = {_fmt(discount_rate, pct=True)} (analyst assumption, "
@@ -207,6 +222,58 @@ def compute_quant_results(
             missing.append(
                 "implied_perpetual_growth (needs enterprise_value, free_cash_flow, discount_rate)"
             )
+        # P1-B2 (Quant Lab Phase 1): DCF sensitivity grid — discount rate
+        # (rows) × perpetual growth (cols), cell = model value per share.
+        # The model is the engine's own dcf() with the explicit stage held
+        # at the implied explicit-stage growth ([g] * years — the same
+        # convention reverse_dcf uses), centred on discount_rate_used and
+        # _TERMINAL_GROWTH. Cells the model cannot evaluate stay None.
+        net_debt = market.get("net_debt")
+        if explicit_g is None or fcf_last is None:
+            missing.append(
+                "sensitivity_grid (needs free_cash_flow and implied explicit-stage growth)"
+            )
+        elif net_debt is None or not sh_last or sh_last <= 0:
+            missing.append("sensitivity_grid (needs net_debt and shares_outstanding)")
+        else:
+            net_debt_f = float(net_debt)
+
+            def _dcf_per_share(inputs: dict[str, float | None]) -> float | None:
+                res = valuation.dcf(
+                    fcf_last,
+                    [explicit_g] * _EXPLICIT_YEARS,
+                    inputs["discount_rate"],
+                    inputs["perpetual_growth"],
+                )
+                if res is None:
+                    return None
+                return (res.enterprise_value - net_debt_f) / sh_last
+
+            grid = valuation.sensitivity_grid(
+                {"discount_rate": discount_rate, "perpetual_growth": _TERMINAL_GROWTH},
+                (
+                    "discount_rate",
+                    [
+                        discount_rate + d
+                        for d in (-0.02, -0.015, -0.01, -0.005, 0.0, 0.005, 0.01, 0.015, 0.02)
+                    ],
+                ),
+                (
+                    "perpetual_growth",
+                    [_TERMINAL_GROWTH + d for d in (-0.01, -0.005, 0.0, 0.005, 0.01)],
+                ),
+                _dcf_per_share,
+            )
+            sensitivity = {
+                "rows": {"label": "discount_rate", "values": grid.row_labels},
+                "cols": {"label": "perpetual_growth", "values": grid.col_labels},
+                "values": grid.values,
+                "base": {
+                    "discount_rate": discount_rate,
+                    "perpetual_growth": _TERMINAL_GROWTH,
+                    "explicit_growth": explicit_g,
+                },
+            }
     else:
         missing.append("discount_rate (analyst assumption) — implied-growth rows need it")
 
@@ -248,6 +315,11 @@ def compute_quant_results(
             "yoy_revenue_growth_latest": yoy_rev_latest,
             "gross_margin_latest": gross_m,
             "net_margin_latest": net_m,
+            "margin_series": {
+                "gross": _aligned(gross_series, n),
+                "net": _aligned(net_series, n),
+            },
+            "yoy_series": {"revenue": _aligned(yoy_rev_series, n)},
         },
         "dupont": {
             "rows": dupont_all,
@@ -270,6 +342,7 @@ def compute_quant_results(
             "implied_explicit_stage_growth": explicit_g,
             "implied_perpetual_growth": perpetual_g,
             "discount_rate_used": discount_rate,
+            "sensitivity": sensitivity,
         },
         "allocation": {
             "incremental_roic_average": iroic.average,
