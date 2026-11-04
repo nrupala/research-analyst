@@ -1,7 +1,7 @@
 {
     "name": "Research Analyst",
     "short_name": "ResearchAnalyst",
-    "description": "Institutional-grade equity and ETF research agent.",
+    "description": "An attempt to provide institutional-grade equity and ETF research.",
     "version": "0.4.0",
     "start_url": "/",
     "scope": "/",
