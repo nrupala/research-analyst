@@ -30,6 +30,7 @@ Security:
 
 Endpoints:
   POST /api/research         - Run research pipeline, return structured response
+  POST /mcp                  - MCP tools surface (streamable HTTP, JSON-RPC 2.0)
   GET  /api/health           - Health check
   GET  /                     - Serve browser UI (static files)
 """
@@ -1119,35 +1120,18 @@ def create_app(
             html=api_response.report_html if fmt == "html" else None,
         )
 
-    @app.get("/api/research/quant", response_model=QuantAPIResponse)
-    async def get_quant(
-        request: Request,
-        ticker: str = Query(..., min_length=1, max_length=20),
-        discount_rate: float | None = Query(default=None),
-        scenarios: str | None = Query(default=None),
+    async def _serve_quant(
+        ticker: str,
+        discount_rate: float | None,
+        scenarios: str | None,
     ) -> QuantAPIResponse:
-        """Quant engine results for a ticker (metered; X-RA-Key gate applies
-        under the same activation semantics as the other data endpoints).
-
-        Runs the ported quant engine (trends, DuPont, forensics, valuation,
-        allocation) over the same merged, first-source-led financial
-        statements the research report uses (F1.8); the response declares
-        that set in ``statements_source``. Optional
-        ``discount_rate`` query param is an analyst assumption (not observed
-        data) enabling the implied-growth inversions. Optional ``scenarios``
-        is a URL-encoded JSON array of {label, value, probability} for the
-        expected-value computation; when absent, expected_value is null with
-        a reason.
-        """
+        """Compute for a quant request (shared by /api/research/quant
+        and the MCP quant tool, so both serve the identical study).
+        Raises HTTPException for the no-data and bad-input cases,
+        exactly as the route raised them when this ran inline."""
         from .quant_engine.adapter import from_financial_statements
         from .quant_engine.expected import ScenarioInput, expected_value
         from .reports.quant_section import compute_quant_results
-
-        client_ip = request.client.host if request.client else "unknown"
-        if not rate_limiter.allow(client_ip):
-            raise HTTPException(status_code=429, detail="Rate limit exceeded.")
-        _require_api_key(request)
-        _api_access_gate(request)
 
         clean = ticker.upper().strip()
 
@@ -1254,7 +1238,6 @@ def create_app(
         else:
             ev_reason = "no scenarios provided"
 
-        _meter(request, "quant")
         return QuantAPIResponse(
             ticker=clean,
             statements_source=statement_lead_label(bundle.lead),
@@ -1278,6 +1261,396 @@ def create_app(
             missing_inputs=results["missing_inputs"],
             assumptions=results["assumptions"],
         )
+
+
+    @app.get("/api/research/quant", response_model=QuantAPIResponse)
+    async def get_quant(
+        request: Request,
+        ticker: str = Query(..., min_length=1, max_length=20),
+        discount_rate: float | None = Query(default=None),
+        scenarios: str | None = Query(default=None),
+    ) -> QuantAPIResponse:
+        """Quant engine results for a ticker (metered; X-RA-Key gate applies
+        under the same activation semantics as the other data endpoints).
+
+        Runs the ported quant engine (trends, DuPont, forensics, valuation,
+        allocation) over the same merged, first-source-led financial
+        statements the research report uses (F1.8); the response declares
+        that set in ``statements_source``. Optional
+        ``discount_rate`` query param is an analyst assumption (not observed
+        data) enabling the implied-growth inversions. Optional ``scenarios``
+        is a URL-encoded JSON array of {label, value, probability} for the
+        expected-value computation; when absent, expected_value is null with
+        a reason.
+        """
+
+        client_ip = request.client.host if request.client else "unknown"
+        if not rate_limiter.allow(client_ip):
+            raise HTTPException(status_code=429, detail="Rate limit exceeded.")
+        _require_api_key(request)
+        _api_access_gate(request)
+
+        api_response = await _serve_quant(ticker, discount_rate, scenarios)
+        _meter(request, "quant")
+        return api_response
+
+    # ================================================================
+    # MCP surface — streamable HTTP (JSON-RPC 2.0) at POST /mcp
+    # ================================================================
+    # The tools surface for agent clients (first consumer: Sail's
+    # raclient). A thin protocol shell over the SAME pipeline and
+    # gates as the REST API — no MCP-only computation exists:
+    # - Auth resolves through the same KeyStore.verify as REST:
+    #   X-RA-Key (REST's header) or Authorization: Bearer (the MCP
+    #   client convention; Sail sends Bearer). One key store, one
+    #   verification path.
+    # - A KeyStore key governs by the keyed-lane rules of
+    #   _api_access_gate: `api.access` required, the same per-key
+    #   rate cap, the same monthly allowance.
+    # - Successful tools/call invocations meter through the same
+    #   MeteringRecorder under the "mcp" endpoint label, so
+    #   /api/usage reports them beside the REST labels.
+    # - The research tool serves _serve_research's payload and the
+    #   quant tool serves _serve_quant's, verbatim.
+    # Stateless per request: no session id is issued or required.
+
+    _mcp_protocol_versions = ("2025-03-26", "2025-06-18", "2024-11-05")
+    _mcp_tools: list[dict[str, Any]] = [
+        {
+            "name": "research",
+            "description": (
+                "Run Research Analyst's research pipeline for one ticker and "
+                "return the structured report: fundamentals, technicals, macro "
+                "context, competitor dynamics, and valuation, each with named "
+                "sources and stated assumptions. Research and education only — "
+                "decision intelligence with provenance for the reader's own "
+                "decision; not investment advice and not a recommendation."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "ticker": {
+                        "type": "string",
+                        "description": "Ticker symbol, e.g. AAPL or RELIANCE.NS.",
+                    },
+                },
+                "required": ["ticker"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "quant",
+            "description": (
+                "Quantitative study for one ticker, computed from the same "
+                "merged financial statements as the research report: growth "
+                "trends, DuPont decomposition, forensic screens, valuation "
+                "models, and capital allocation, with the statement source "
+                "declared. Missing inputs are reported as missing, never "
+                "filled in. Research and education only — not investment "
+                "advice and not a recommendation."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "ticker": {
+                        "type": "string",
+                        "description": "Ticker symbol, e.g. AAPL.",
+                    },
+                    "discount_rate": {
+                        "type": "number",
+                        "description": (
+                            "Optional analyst assumption (not observed data) "
+                            "enabling the implied-growth inversions."
+                        ),
+                    },
+                    "scenarios": {
+                        "type": "array",
+                        "description": (
+                            "Optional scenarios for the expected-value computation."
+                        ),
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "label": {"type": "string"},
+                                "value": {"type": "number"},
+                                "probability": {"type": "number"},
+                            },
+                            "required": ["label"],
+                        },
+                    },
+                },
+                "required": ["ticker"],
+                "additionalProperties": False,
+            },
+        },
+    ]
+    _mcp_tool_names = {tool["name"] for tool in _mcp_tools}
+
+    def _mcp_error(
+        req_id: Any, code: int, message: str, *, status: int = 200
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status,
+            content={
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "error": {"code": code, "message": message},
+            },
+        )
+
+    def _mcp_result(req_id: Any, result: dict[str, Any]) -> JSONResponse:
+        return JSONResponse(content={"jsonrpc": "2.0", "id": req_id, "result": result})
+
+    def _mcp_authenticate(request: Request) -> APIKeyRecord | None:
+        """Authenticate an /mcp request against the REST key store.
+
+        Returns the KeyStore record, or None for a legacy paid key
+        (settings.billing.paid_keys — no record exists for those).
+        Raises HTTPException with the keyed lane's statuses.
+
+        Posture: /mcp is an API-only surface (no public UI lane), so
+        when a key store is configured a valid key is REQUIRED —
+        unlike the public REST endpoints, which stay open for the
+        keyless UI. With no key store configured, _require_api_key's
+        activation semantics apply unchanged (the gate arms only in
+        legacy paid-keys mode), so local development matches REST.
+        """
+        raw = request.headers.get("x-ra-key", "")
+        if not raw:
+            authorization = request.headers.get("authorization", "")
+            if authorization.lower().startswith("bearer "):
+                raw = authorization[7:].strip()
+        store = request.app.state.key_store
+        if store is None:
+            if raw:
+                if raw in settings.billing.paid_keys:
+                    return None
+                raise HTTPException(
+                    status_code=401, detail="The API key provided is not valid."
+                )
+            if settings.billing.paid_keys:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Provide a valid API key to use the MCP endpoint.",
+                )
+            return None
+        if not raw:
+            raise HTTPException(
+                status_code=401,
+                detail=(
+                    "Provide a valid API key (X-RA-Key or Authorization: "
+                    "Bearer) to use the MCP endpoint."
+                ),
+            )
+        if raw in settings.billing.paid_keys:
+            return None
+        record = cast("APIKeyRecord | None", store.verify(raw))
+        if record is None:
+            raise HTTPException(
+                status_code=401, detail="The API key provided is not valid."
+            )
+        if not has_entitlement(record, API_ACCESS):
+            raise HTTPException(
+                status_code=403,
+                detail="This API key does not include API access.",
+            )
+        return record
+
+    def _mcp_call_limits(request: Request, record: APIKeyRecord | None) -> None:
+        """Per-key rate cap + monthly allowance for tools/call — the
+        tail of _api_access_gate, with its wording unchanged."""
+        if record is None:
+            return
+        cap = _PLAN_RATE_CAPS_PER_MIN.get(
+            record.plan or "", _DEFAULT_KEY_RATE_CAP_PER_MIN
+        )
+        if not request.app.state.key_rate_limiter.allow(record.key_id, cap):
+            raise HTTPException(
+                status_code=429,
+                detail="Rate limit exceeded for this API key. Slow down and retry.",
+            )
+        if record.monthly_call_allowance is not None:
+            used = request.app.state.metering.month_total(record.key_id)
+            if used >= record.monthly_call_allowance:
+                raise HTTPException(
+                    status_code=429,
+                    detail=(
+                        "Monthly API call allowance reached for this key. "
+                        "It resets on the 1st of next month (UTC)."
+                    ),
+                )
+
+    async def _mcp_tool_research(ticker: str) -> dict[str, Any]:
+        """The research tool: _serve_research's payload, verbatim.
+
+        structuredContent carries the REST payload (agent clients —
+        Sail included — accept RA's REST shape); the text blocks carry
+        the rendered markdown and the same payload as JSON.
+        """
+        body = ResearchAPIRequest(ticker=ticker)
+        api_response = await _serve_research(body, str(uuid.uuid4())[:8])
+        payload = api_response.model_dump(mode="json")
+        content: list[dict[str, Any]] = []
+        markdown = "\n\n---\n\n".join(api_response.reports_markdown)
+        if markdown:
+            content.append({"type": "text", "text": markdown})
+        content.append({"type": "text", "text": json.dumps(payload)})
+        return {"content": content, "structuredContent": payload, "isError": False}
+
+    async def _mcp_tool_quant(
+        ticker: str, arguments: dict[str, Any]
+    ) -> dict[str, Any]:
+        """The quant tool: _serve_quant's payload, verbatim."""
+        discount = arguments.get("discount_rate")
+        scenarios = arguments.get("scenarios")
+        api_response = await _serve_quant(
+            ticker,
+            float(discount) if isinstance(discount, (int, float)) else None,
+            json.dumps(scenarios) if scenarios is not None else None,
+        )
+        payload = api_response.model_dump(mode="json")
+        return {
+            "content": [{"type": "text", "text": json.dumps(payload)}],
+            "structuredContent": payload,
+            "isError": False,
+        }
+
+    async def _mcp_tools_call(
+        request: Request,
+        record: APIKeyRecord | None,
+        req_id: Any,
+        params: dict[str, Any],
+    ) -> JSONResponse:
+        name = params.get("name")
+        if not isinstance(name, str) or not name:
+            return _mcp_error(
+                req_id, -32602, "Invalid params: tools/call requires a tool name."
+            )
+        if name not in _mcp_tool_names:
+            return _mcp_error(req_id, -32601, f"Unknown tool: {name}")
+        arguments = params.get("arguments")
+        if arguments is None:
+            arguments = {}
+        if not isinstance(arguments, dict):
+            return _mcp_error(
+                req_id, -32602, "Invalid params: arguments must be an object."
+            )
+        ticker = arguments.get("ticker")
+        if not isinstance(ticker, str) or not (1 <= len(ticker.strip()) <= 20):
+            return _mcp_error(
+                req_id,
+                -32602,
+                "Invalid params: 'ticker' must be a string of 1-20 characters.",
+            )
+        if name == "quant":
+            discount = arguments.get("discount_rate")
+            if discount is not None and (
+                isinstance(discount, bool) or not isinstance(discount, (int, float))
+            ):
+                return _mcp_error(
+                    req_id, -32602, "Invalid params: 'discount_rate' must be a number."
+                )
+            scenarios = arguments.get("scenarios")
+            if scenarios is not None and not isinstance(scenarios, list):
+                return _mcp_error(
+                    req_id, -32602, "Invalid params: 'scenarios' must be an array."
+                )
+        try:
+            _mcp_call_limits(request, record)
+        except HTTPException as e:
+            return _mcp_error(req_id, -32002, str(e.detail), status=e.status_code)
+        try:
+            if name == "research":
+                result = await _mcp_tool_research(ticker)
+            else:
+                result = await _mcp_tool_quant(ticker, arguments)
+        except HTTPException as e:
+            # Tool-level failure (unknown ticker, no statements, a
+            # pipeline failure): an isError result per MCP convention —
+            # the REST detail text, never a stack trace, never
+            # fabricated data. Failed calls are not metered.
+            return _mcp_result(
+                req_id,
+                {
+                    "content": [{"type": "text", "text": str(e.detail)}],
+                    "isError": True,
+                },
+            )
+        request.app.state.metering.record(
+            record.key_id if record else "anonymous", "mcp"
+        )
+        return _mcp_result(req_id, result)
+
+    @app.post("/mcp")
+    async def mcp_endpoint(request: Request) -> Response:
+        """Streamable-HTTP MCP endpoint (JSON-RPC 2.0, stateless).
+
+        Methods: initialize, ping, tools/list, tools/call.
+        Notifications are tolerated (202, no body). GET is not
+        offered (no server-initiated stream), so it answers 405.
+        """
+        client_ip = request.client.host if request.client else "unknown"
+        if not rate_limiter.allow(client_ip):
+            return _mcp_error(None, -32002, "Rate limit exceeded.", status=429)
+        try:
+            record = _mcp_authenticate(request)
+        except HTTPException as e:
+            return _mcp_error(None, -32001, str(e.detail), status=e.status_code)
+        try:
+            msg = json.loads(await request.body())
+        except ValueError:
+            return _mcp_error(
+                None, -32700, "Parse error: the body is not valid JSON.", status=400
+            )
+        if (
+            not isinstance(msg, dict)
+            or msg.get("jsonrpc") != "2.0"
+            or not isinstance(msg.get("method"), str)
+        ):
+            return _mcp_error(
+                None,
+                -32600,
+                "Invalid Request: expected a JSON-RPC 2.0 object with a method.",
+                status=400,
+            )
+        if "id" not in msg:
+            # A notification (e.g. notifications/initialized): the
+            # protocol sends no response; accept and move on.
+            return Response(status_code=202)
+        req_id = msg.get("id")
+        method = msg["method"]
+        params = msg.get("params")
+        if params is None:
+            params = {}
+        if not isinstance(params, dict):
+            return _mcp_error(req_id, -32602, "Invalid params: expected an object.")
+        if method == "initialize":
+            requested = params.get("protocolVersion")
+            version = (
+                requested
+                if isinstance(requested, str) and requested in _mcp_protocol_versions
+                else _mcp_protocol_versions[0]
+            )
+            return _mcp_result(
+                req_id,
+                {
+                    "protocolVersion": version,
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "research-analyst", "version": __version__},
+                    "instructions": (
+                        "Research Analyst is research and education only: "
+                        "decision intelligence with provenance for the "
+                        "reader's own decision, never investment advice."
+                    ),
+                },
+            )
+        if method == "ping":
+            return _mcp_result(req_id, {})
+        if method == "tools/list":
+            return _mcp_result(req_id, {"tools": _mcp_tools})
+        if method == "tools/call":
+            return await _mcp_tools_call(request, record, req_id, params)
+        return _mcp_error(req_id, -32601, f"Method not found: {method}")
 
     @app.get("/api/usage")
     async def usage_summary(request: Request) -> JSONResponse:
