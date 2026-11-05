@@ -15,8 +15,9 @@ equities and ETFs.
 - API: POST /api/research, /api/compare, /api/resolve, /api/disclaimer — response
   formats json, xml, markdown, html, ts via ?format= or Accept header;
   every payload carries a schema_version.
-- MCP (streamable HTTP, JSON-RPC 2.0): POST /mcp — tools `research` and
-  `quant`; an API key is required (X-RA-Key header or Authorization: Bearer).
+- MCP (streamable HTTP, JSON-RPC 2.0): POST
+  https://analyst.thinkvalue.org/api/mcp — tools `research` and `quant`;
+  an API key is required (X-RA-Key header or Authorization: Bearer).
 
 ## Data sources
 

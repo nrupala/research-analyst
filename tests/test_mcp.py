@@ -105,17 +105,17 @@ def _issue(store, entitlements=None, **kwargs):  # noqa: ANN001, ANN202
     return store.create("mcp-test", entitlements or {API_ACCESS}, **kwargs)
 
 
-def _rpc(client, payload, raw=None, via="bearer"):  # noqa: ANN001, ANN202
+def _rpc(client, payload, raw=None, via="bearer", path="/mcp"):  # noqa: ANN001, ANN202
     headers = {}
     if raw:
         if via == "bearer":
             headers["Authorization"] = f"Bearer {raw}"
         else:
             headers["x-ra-key"] = raw
-    return client.post("/mcp", json=payload, headers=headers)
+    return client.post(path, json=payload, headers=headers)
 
 
-def _initialize(client, raw=None, version="2025-03-26", via="bearer"):  # noqa: ANN001, ANN202
+def _initialize(client, raw=None, version="2025-03-26", via="bearer", path="/mcp"):  # noqa: ANN001, ANN202
     return _rpc(
         client,
         {
@@ -130,10 +130,11 @@ def _initialize(client, raw=None, version="2025-03-26", via="bearer"):  # noqa: 
         },
         raw=raw,
         via=via,
+        path=path,
     )
 
 
-def _call(client, name, arguments, raw=None, req_id=2):  # noqa: ANN001, ANN202
+def _call(client, name, arguments, raw=None, req_id=2, path="/mcp"):  # noqa: ANN001, ANN202
     return _rpc(
         client,
         {
@@ -143,6 +144,7 @@ def _call(client, name, arguments, raw=None, req_id=2):  # noqa: ANN001, ANN202
             "params": {"name": name, "arguments": arguments},
         },
         raw=raw,
+        path=path,
     )
 
 
@@ -523,3 +525,50 @@ def test_mcp_quant_no_statements_is_error_result():
     result = r.json()["result"]
     assert result["isError"] is True
     assert "No financial statements available for 'ZZZ'" in result["content"][0]["text"]
+
+
+# ---------------------------------------------------------------------------
+# /api/mcp alias — the same handler behind the /api/* Worker routes
+# (the public hosts proxy only /api/* to the origin, so /mcp alone
+# is unreachable there; the alias is the published endpoint)
+# ---------------------------------------------------------------------------
+
+
+def test_mcp_api_alias_initialize_and_tools_list():
+    store = KeyStore()
+    _, raw = _issue(store)
+    client = _client(store=store)
+    r = _initialize(client, raw, path="/api/mcp")
+    assert r.status_code == 200
+    result = r.json()["result"]
+    assert result["serverInfo"]["name"] == "research-analyst"
+    assert result["protocolVersion"] == "2025-03-26"
+    r = _rpc(
+        client,
+        {"jsonrpc": "2.0", "id": 3, "method": "tools/list"},
+        raw=raw,
+        path="/api/mcp",
+    )
+    tools = r.json()["result"]["tools"]
+    assert [t["name"] for t in tools] == ["research", "quant"]
+
+
+def test_mcp_api_alias_tools_call_research():
+    store = KeyStore()
+    record, raw = _issue(store)
+    metering = MeteringRecorder()
+    client = _client(store=store, metering=metering)
+    r = _call(client, "research", {"ticker": "AAPL"}, raw=raw, path="/api/mcp")
+    assert r.status_code == 200
+    result = r.json()["result"]
+    assert result["isError"] is False
+    assert result["structuredContent"]["ticker"] == "AAPL"
+    # The alias is the same handler: metering lands under "mcp" too.
+    assert metering.usage(record.key_id) == {"mcp": 1}
+
+
+def test_mcp_api_alias_missing_key_is_32001():
+    client = _client(store=KeyStore())
+    r = _initialize(client, path="/api/mcp")
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == -32001
