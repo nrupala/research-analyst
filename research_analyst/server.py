@@ -1582,6 +1582,7 @@ def create_app(
         return _mcp_result(req_id, result)
 
     @app.post("/mcp")
+    @app.post("/api/mcp")
     async def mcp_endpoint(request: Request) -> Response:
         """Streamable-HTTP MCP endpoint (JSON-RPC 2.0, stateless).
 
