@@ -5,7 +5,7 @@ See LICENSE and COMMERCIAL-LICENSE.md for licensing terms (commercial licenses a
 
 # NOTICE
 
-Owned by [2351485 ALBERTA INC.](https://nrupalakolkar.com) · Built with [Muse by Meta](https://muse.ai/join) — join Muse, then redeem code **101EEK** in Settings within 48 hours of joining and we both earn tokens.
+Owned by [2351485 ALBERTA INC.](https://nrupalakolkar.com) · Built with [Muse by Meta](https://muse.ai/join).
 
 Research Analyst is mixed-licensed — see LICENSE for the component
 mapping. The engine, the TUI, and the core — including reports — are
