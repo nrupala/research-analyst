@@ -43,6 +43,15 @@ Security properties (do not weaken):
 - Verification uses constant-time comparison.
 - Keys are revocable; revoked keys fail closed.
 - No secrets in code, tests or fixtures.
+
+Key classes (Release-Readiness Standard §6, 2026-11-07): a key is a
+customer key (default; every pre-class record reads as one) or an
+internal operator key (``kind="internal"``). Internal keys run the same
+pipeline and the same checks, but their usage is metered into a separate
+internal bucket: no allowance debit, no billing sink, excluded from
+customer/revenue aggregations, and reported on its own in the operator
+telemetry summary. There is no HTTP route that mints any key; minting
+happens only through this module by whoever holds the key file.
 """
 # Module: research_analyst/entitlements.py | Version: 1.0 | Updated: 2026-09-25
 
@@ -80,6 +89,20 @@ BUNDLE_UNLOCKS: dict[str, set[str]] = {
 
 KEY_PREFIX = "ra_live_"
 
+# Key classes (Release-Readiness Standard §6, 2026-11-07): every key is
+# either a customer key (the default — metered into the customer bucket
+# and debited against its monthly allowance) or an internal/operator key.
+# An internal key runs the FULL production pipeline — same auth, same
+# entitlement checks, same product checks — but pays no toll: its usage
+# is recorded in a separate internal bucket, it debits no allowance, and
+# it is excluded from customer and revenue aggregations. Internal keys
+# are minted only through the operator's own KeyStore access (there is
+# no HTTP mint route); the Stripe claim path mints customer keys only.
+# Mirrors the Sanity Check internal key class (api_keys.kind='internal').
+KEY_KIND_CUSTOMER = "customer"
+KEY_KIND_INTERNAL = "internal"
+KEY_KINDS = frozenset({KEY_KIND_CUSTOMER, KEY_KIND_INTERNAL})
+
 
 # ---------------------------------------------------------------------------
 # API keys — hashed at rest, revocable, never logged
@@ -108,6 +131,9 @@ class APIKeyRecord:
     stripe_customer_id: str | None = None
     stripe_subscription_id: str | None = None
     monthly_call_allowance: int | None = None
+    # Key class (§6): "customer" (default) or "internal". Records written
+    # before the class existed carry no kind and read as customer.
+    kind: str = KEY_KIND_CUSTOMER
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -122,10 +148,17 @@ class APIKeyRecord:
             "stripe_customer_id": self.stripe_customer_id,
             "stripe_subscription_id": self.stripe_subscription_id,
             "monthly_call_allowance": self.monthly_call_allowance,
+            "kind": self.kind,
         }
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> APIKeyRecord:
+        # A missing kind reads as customer (every pre-class record), and
+        # an unrecognized value also reads as customer: the class fails
+        # toward the toll, never away from it.
+        kind = d.get("kind") or KEY_KIND_CUSTOMER
+        if kind not in KEY_KINDS:
+            kind = KEY_KIND_CUSTOMER
         return cls(
             key_id=d["key_id"],
             key_hash=d["key_hash"],
@@ -138,6 +171,7 @@ class APIKeyRecord:
             stripe_customer_id=d.get("stripe_customer_id"),
             stripe_subscription_id=d.get("stripe_subscription_id"),
             monthly_call_allowance=d.get("monthly_call_allowance"),
+            kind=kind,
         )
 
 
@@ -199,8 +233,24 @@ class KeyStore:
         stripe_customer_id: str | None = None,
         stripe_subscription_id: str | None = None,
         monthly_call_allowance: int | None = None,
+        kind: str = KEY_KIND_CUSTOMER,
     ) -> tuple[APIKeyRecord, str]:
-        """Create a key. Returns (record, raw_key); the raw key is shown once."""
+        """Create a key. Returns (record, raw_key); the raw key is shown once.
+
+        ``kind`` is the key class (§6). Minting an internal key is an
+        operator act: this method is reachable only by whoever holds the
+        key file itself (the operator on the box) — no HTTP route mints
+        keys — and it fails closed: an unknown kind, or an internal key
+        carrying an allowance (a toll an internal key must never pay),
+        raises instead of minting.
+        """
+        if kind not in KEY_KINDS:
+            raise ValueError(f"unknown key kind: {kind!r}")
+        if kind == KEY_KIND_INTERNAL and monthly_call_allowance is not None:
+            raise ValueError(
+                "internal keys carry no monthly_call_allowance: the "
+                "internal pathway debits nothing"
+            )
         raw_key = KEY_PREFIX + secrets.token_urlsafe(32)
         record = APIKeyRecord(
             key_id="key_" + secrets.token_hex(6),
@@ -212,12 +262,15 @@ class KeyStore:
             stripe_customer_id=stripe_customer_id,
             stripe_subscription_id=stripe_subscription_id,
             monthly_call_allowance=monthly_call_allowance,
+            kind=kind,
         )
         with self._lock:
             self._by_hash[record.key_hash] = record
             self._by_id[record.key_id] = record
             self._save()
-        logger.info("API key issued: key_id=%s label=%s", record.key_id, label)
+        logger.info(
+            "API key issued: key_id=%s label=%s kind=%s", record.key_id, label, kind
+        )
         return record, raw_key
 
     # -- verification ------------------------------------------------------
@@ -332,6 +385,11 @@ def has_entitlement(record: APIKeyRecord | None, flag: str) -> bool:
     return flag in effective_entitlements(record)
 
 
+def is_internal(record: APIKeyRecord | None) -> bool:
+    """True for an internal/operator key (§6). None record -> False."""
+    return record is not None and record.kind == KEY_KIND_INTERNAL
+
+
 # ---------------------------------------------------------------------------
 # Metering — usage foundation (counts per key per endpoint per day)
 # ---------------------------------------------------------------------------
@@ -343,8 +401,18 @@ class MeteringRecorder:
     """Record API usage. Counters per (key, endpoint, day), a pluggable
     sink, and optional JSON-file persistence.
 
+    Two buckets, by key class (§6): customer counts — the billing truth,
+    read by monthly allowance enforcement and /api/usage — and internal
+    counts, recorded for operator runs and reported separately. Internal
+    usage never enters the customer bucket, so it can never debit an
+    allowance or pollute a customer/revenue aggregation. Usage recorded
+    before the class existed lives in the customer bucket (files written
+    before the split carry only "counts") and is never rewritten.
+
     The sink lets a future billing backend receive usage events without
-    changing call sites. The default sink is a no-op.
+    changing call sites. It fires for CUSTOMER usage only — internal
+    events must never reach a billing backend. The default sink is a
+    no-op.
 
     Persistence (Stream B / F1.2): monthly allowance enforcement and
     /api/usage read these counters, so when a path is configured the
@@ -356,10 +424,16 @@ class MeteringRecorder:
         self, sink: MeterSink | None = None, path: str | Path | None = None
     ) -> None:
         self._counts: dict[tuple[str, str, str], int] = {}
+        self._internal_counts: dict[tuple[str, str, str], int] = {}
         self._sink = sink or (lambda key_id, endpoint, day: None)
         self._path = Path(path) if path else None
         if self._path is not None:
             self._load()
+
+    def _bucket(self, kind: str) -> dict[tuple[str, str, str], int]:
+        return (
+            self._internal_counts if kind == KEY_KIND_INTERNAL else self._counts
+        )
 
     def _load(self) -> None:
         assert self._path is not None
@@ -368,17 +442,21 @@ class MeteringRecorder:
         except (OSError, ValueError):
             return
         cutoff = (datetime.now(UTC) - timedelta(days=92)).strftime("%Y-%m-%d")
-        for compound, count in (raw.get("counts") or {}).items():
-            parts = compound.split("|")
-            if len(parts) != 3:
-                continue
-            key_id, endpoint, day = parts
-            if day < cutoff:
-                continue
-            try:
-                self._counts[(key_id, endpoint, day)] = int(count)
-            except (TypeError, ValueError):
-                continue
+        for field_name, target in (
+            ("counts", self._counts),
+            ("internal_counts", self._internal_counts),
+        ):
+            for compound, count in (raw.get(field_name) or {}).items():
+                parts = compound.split("|")
+                if len(parts) != 3:
+                    continue
+                key_id, endpoint, day = parts
+                if day < cutoff:
+                    continue
+                try:
+                    target[(key_id, endpoint, day)] = int(count)
+                except (TypeError, ValueError):
+                    continue
 
     def _save(self) -> None:
         if self._path is None:
@@ -386,7 +464,11 @@ class MeteringRecorder:
         data = {
             "counts": {
                 f"{k}|{e}|{d}": c for (k, e, d), c in sorted(self._counts.items())
-            }
+            },
+            "internal_counts": {
+                f"{k}|{e}|{d}": c
+                for (k, e, d), c in sorted(self._internal_counts.items())
+            },
         }
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -400,43 +482,92 @@ class MeteringRecorder:
     def _today_utc() -> str:
         return datetime.now(UTC).strftime("%Y-%m-%d")
 
-    def record(self, key_id: str, endpoint: str, *, day: str | None = None) -> None:
+    def record(
+        self,
+        key_id: str,
+        endpoint: str,
+        *,
+        day: str | None = None,
+        kind: str = KEY_KIND_CUSTOMER,
+    ) -> None:
+        """Record one served call in the bucket of the key's class.
+
+        Customer is the default: every pre-class call site, and every
+        anonymous call, lands exactly where it always did. The billing
+        sink fires for customer usage only.
+        """
         day = day or self._today_utc()
+        bucket = self._bucket(kind)
         k = (key_id, endpoint, day)
-        self._counts[k] = self._counts.get(k, 0) + 1
+        bucket[k] = bucket.get(k, 0) + 1
         self._save()
+        if kind == KEY_KIND_INTERNAL:
+            return
         try:
             self._sink(key_id, endpoint, day)
         except Exception as e:
             logger.warning("Metering sink failed: %s", e)
 
-    def usage(self, key_id: str, day: str | None = None) -> dict[str, int]:
+    def usage(
+        self, key_id: str, day: str | None = None, *, kind: str = KEY_KIND_CUSTOMER
+    ) -> dict[str, int]:
         """Per-endpoint request counts for a key on a day (default today)."""
         day = day or self._today_utc()
         out: dict[str, int] = {}
-        for (k, endpoint, d), count in self._counts.items():
+        for (k, endpoint, d), count in self._bucket(kind).items():
             if k == key_id and d == day:
                 out[endpoint] = count
         return out
 
-    def total_requests(self, key_id: str, day: str | None = None) -> int:
-        return sum(self.usage(key_id, day=day).values())
+    def total_requests(
+        self, key_id: str, day: str | None = None, *, kind: str = KEY_KIND_CUSTOMER
+    ) -> int:
+        return sum(self.usage(key_id, day=day, kind=kind).values())
 
     @staticmethod
     def current_month_utc() -> str:
         return datetime.now(UTC).strftime("%Y-%m")
 
-    def month_usage(self, key_id: str, month: str | None = None) -> dict[str, int]:
+    def month_usage(
+        self, key_id: str, month: str | None = None, *, kind: str = KEY_KIND_CUSTOMER
+    ) -> dict[str, int]:
         """Per-endpoint request counts for a key in a UTC month."""
         month = month or self.current_month_utc()
         out: dict[str, int] = {}
-        for (k, endpoint, d), count in self._counts.items():
+        for (k, endpoint, d), count in self._bucket(kind).items():
             if k == key_id and d.startswith(month):
                 out[endpoint] = out.get(endpoint, 0) + count
         return out
 
-    def month_total(self, key_id: str, month: str | None = None) -> int:
-        return sum(self.month_usage(key_id, month=month).values())
+    def month_total(
+        self, key_id: str, month: str | None = None, *, kind: str = KEY_KIND_CUSTOMER
+    ) -> int:
+        return sum(self.month_usage(key_id, month=month, kind=kind).values())
+
+    def day_totals(
+        self, day: str | None = None, *, kind: str = KEY_KIND_CUSTOMER
+    ) -> dict[str, Any]:
+        """All-keys totals for one UTC day within one class bucket.
+
+        The operator split view (§6): the customer block excludes
+        internal usage by construction, and the internal block reports
+        operator usage on its own — visible, never merged.
+        """
+        day = day or self._today_utc()
+        by_endpoint: dict[str, int] = {}
+        keys: set[str] = set()
+        total = 0
+        for (k, endpoint, d), count in self._bucket(kind).items():
+            if d == day:
+                by_endpoint[endpoint] = by_endpoint.get(endpoint, 0) + count
+                keys.add(k)
+                total += count
+        return {
+            "day_utc": day,
+            "total_requests": total,
+            "by_endpoint": by_endpoint,
+            "keys_active": len(keys),
+        }
 
 
 # ---------------------------------------------------------------------------

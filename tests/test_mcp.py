@@ -572,3 +572,44 @@ def test_mcp_api_alias_missing_key_is_32001():
     r = _initialize(client, path="/api/mcp")
     assert r.status_code == 401
     assert r.json()["error"]["code"] == -32001
+
+
+# ---------------------------------------------------------------------------
+# Internal key class over MCP (§6, 2026-11-07): the identical pipeline,
+# no allowance consulted, usage metered into the internal bucket.
+# ---------------------------------------------------------------------------
+
+
+def test_mcp_internal_key_end_to_end_and_metered_internally():
+    store = KeyStore()
+    record, raw = _issue(store, kind="internal")
+    metering = MeteringRecorder()
+    client = _client(store=store, metering=metering)
+
+    init = _initialize(client, raw)
+    assert init.status_code == 200
+    r = _call(client, "research", {"ticker": "AAPL"}, raw=raw)
+    assert r.status_code == 200
+    result = r.json()["result"]
+    assert result["isError"] is False
+    payload = result["structuredContent"]
+    assert payload["ticker"] == "AAPL"
+    assert payload["company_name"] == "Stub Corp"
+
+    # The customer bucket is untouched (no debit)…
+    assert metering.usage(record.key_id) == {}
+    assert metering.month_total(record.key_id) == 0
+    # …and the call is recorded, stamped internal, under the "mcp" label.
+    assert metering.usage(record.key_id, kind="internal") == {"mcp": 1}
+    usage = client.get("/api/usage", headers={"x-ra-key": raw})
+    assert usage.status_code == 200
+    assert usage.json()["kind"] == "internal"
+    assert usage.json()["monthly_usage"] == {"mcp": 1}
+
+
+def test_mcp_internal_key_still_needs_api_access():
+    store = KeyStore()
+    _, raw = _issue(store, entitlements={RA_PRO}, kind="internal")
+    client = _client(store=store, metering=MeteringRecorder())
+    r = _call(client, "research", {"ticker": "AAPL"}, raw=raw)
+    assert r.status_code == 403  # entitlement checks unchanged for internal

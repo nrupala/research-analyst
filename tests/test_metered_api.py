@@ -204,3 +204,131 @@ def test_metering_month_aggregation_ignores_other_months():
     rec.record("key_a", "quant", day="2026-09-30")
     assert rec.month_usage("key_a", month="2026-10") == {"research": 2}
     assert rec.month_total("key_a", month="2026-10") == 2
+
+
+# ---------------------------------------------------------------------------
+# Internal key class (§6, 2026-11-07): full pipeline, no toll, stamped.
+# Served-call metering is seeded on the recorder, this file's convention
+# (a pipeline-failed call is never metered, so the Boom orchestrator's
+# 500 proves admission only).
+# ---------------------------------------------------------------------------
+
+
+def test_internal_key_admitted_through_the_same_gates():
+    store = KeyStore()
+    _, raw = store.create("ops", {API_ACCESS}, kind="internal")
+    client = _client(store=store, metering=MeteringRecorder())
+    assert _research(client, raw).status_code == 500  # admitted; pipeline ran
+
+
+def test_internal_key_still_needs_api_access():
+    store = KeyStore()
+    _, raw = store.create("ops-app", {RA_PRO}, kind="internal")
+    client = _client(store=store)
+    assert _research(client, raw).status_code == 403  # the checks unchanged
+
+
+def test_internal_usage_lands_in_the_internal_bucket_only():
+    store = KeyStore()
+    record, _ = store.create("ops", {API_ACCESS}, kind="internal")
+    metering = MeteringRecorder()
+    metering.record(record.key_id, "research", kind="internal")
+    metering.record(record.key_id, "mcp", kind="internal")
+    # Customer bucket — the billing truth — is untouched: no debit.
+    assert metering.month_total(record.key_id) == 0
+    assert metering.usage(record.key_id) == {}
+    # The usage is recorded, stamped internal.
+    assert metering.month_total(record.key_id, kind="internal") == 2
+    assert metering.usage(record.key_id, kind="internal") == {
+        "research": 1,
+        "mcp": 1,
+    }
+
+
+def test_internal_key_never_trips_an_allowance_gate():
+    store = KeyStore()
+    record, raw = store.create("ops", {API_ACCESS}, kind="internal")
+    metering = MeteringRecorder()
+    for _ in range(50):
+        metering.record(record.key_id, "research", kind="internal")
+    client = _client(store=store, metering=metering)
+    assert _research(client, raw).status_code == 500
+
+
+def test_usage_views_are_stamped_and_class_separate():
+    store = KeyStore()
+    cust, cust_raw = store.create(
+        "cust", {API_ACCESS}, plan="api_pro", monthly_call_allowance=100_000
+    )
+    internal, int_raw = store.create("ops", {API_ACCESS}, kind="internal")
+    metering = MeteringRecorder()
+    metering.record(cust.key_id, "research")
+    metering.record(internal.key_id, "research", kind="internal")
+    client = _client(store=store, metering=metering)
+    cust_view = client.get("/api/usage", headers={"x-ra-key": cust_raw}).json()
+    assert cust_view["kind"] == "customer"
+    assert cust_view["monthly_total_requests"] == 1  # its own call only
+    int_view = client.get("/api/usage", headers={"x-ra-key": int_raw}).json()
+    assert int_view["kind"] == "internal"
+    assert int_view["monthly_total_requests"] == 1  # its own internal call
+    assert int_view["monthly_call_allowance"] is None
+    assert int_view["monthly_remaining"] is None
+
+
+def test_operator_summary_reports_internal_separately(monkeypatch):
+    monkeypatch.setattr(server_mod.settings.telemetry, "admin_key", "test-admin")
+    store = KeyStore()
+    cust, _ = store.create("cust", {API_ACCESS})
+    internal, _ = store.create("ops", {API_ACCESS}, kind="internal")
+    metering = MeteringRecorder()
+    metering.record(cust.key_id, "research")
+    metering.record(cust.key_id, "research")
+    metering.record(internal.key_id, "research", kind="internal")
+    metering.record(internal.key_id, "mcp", kind="internal")
+    client = _client(store=store, metering=metering)
+    r = client.get(
+        "/api/telemetry/summary", headers={"x-ra-admin-key": "test-admin"}
+    )
+    assert r.status_code == 200
+    usage = r.json()["api_usage"]
+    assert usage["customer"]["total_requests"] == 2
+    assert usage["customer"]["by_endpoint"] == {"research": 2}
+    assert usage["customer"]["keys_active"] == 1
+    assert usage["internal"]["total_requests"] == 2
+    assert usage["internal"]["by_endpoint"] == {"research": 1, "mcp": 1}
+    assert usage["internal"]["keys_active"] == 1
+    # And the operator surface still refuses non-operators.
+    assert client.get("/api/telemetry/summary").status_code == 401
+
+
+def test_metering_buckets_split_persist_and_sink_stays_customer_only(tmp_path):
+    path = tmp_path / "metering.json"
+    events = []
+    rec = MeteringRecorder(sink=lambda k, e, d: events.append(k), path=path)
+    rec.record("key_c", "research")
+    rec.record("key_i", "research", kind="internal")
+    rec.record("key_i", "mcp", kind="internal")
+    assert events == ["key_c"]  # the billing sink never sees internal usage
+    assert rec.day_totals()["total_requests"] == 1
+    internal_totals = rec.day_totals(kind="internal")
+    assert internal_totals["total_requests"] == 2
+    assert internal_totals["by_endpoint"] == {"research": 1, "mcp": 1}
+    assert internal_totals["keys_active"] == 1
+    rec2 = MeteringRecorder(path=path)
+    assert rec2.day_totals()["total_requests"] == 1
+    assert rec2.day_totals(kind="internal")["total_requests"] == 2
+    assert rec2.month_total("key_i") == 0
+    assert rec2.month_total("key_i", kind="internal") == 2
+
+
+def test_no_http_route_mints_keys():
+    store = KeyStore()
+    _, raw = store.create("cust", {API_ACCESS})
+    client = _client(store=store)
+    # Minting is an operator act on the key file itself; the API surface
+    # exposes no mint route — anonymously, or with a customer key.
+    body = {"label": "x", "kind": "internal"}
+    assert client.post("/api/keys", json=body).status_code in (404, 405)
+    assert client.post(
+        "/api/keys", json=body, headers={"x-ra-key": raw}
+    ).status_code in (404, 405)

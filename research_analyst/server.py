@@ -75,12 +75,15 @@ from .config import settings
 from .disclaimer import DISCLAIMER_FULL, DISCLAIMER_SHORT, DISCLAIMER_VERSION
 from .entitlements import (
     API_ACCESS,
+    KEY_KIND_CUSTOMER,
+    KEY_KIND_INTERNAL,
     RA_PRO,
     APIKeyRecord,
     KeyStore,
     MeteringRecorder,
     WhiteLabelProfile,
     has_entitlement,
+    is_internal,
 )
 from .enums import ReportType
 from .exporters import ts_definitions, xml_from_dict
@@ -499,7 +502,11 @@ def create_app(
     def _meter(request: Request, endpoint: str) -> None:
         record = _key_record(request)
         key_id = record.key_id if record else "anonymous"
-        request.app.state.metering.record(key_id, endpoint)
+        # The stamp (§6): an internal key's usage is recorded in the
+        # internal metering bucket — never the customer bucket, so it
+        # can never debit an allowance or enter a customer aggregation.
+        kind = record.kind if record else KEY_KIND_CUSTOMER
+        request.app.state.metering.record(key_id, endpoint, kind=kind)
 
     # --- Telemetry (Stream C): first-party, on-box, aggregates only ---
     # Content rules live in telemetry.py: route template only (never a
@@ -597,7 +604,10 @@ def create_app(
                 status_code=429,
                 detail="Rate limit exceeded for this API key. Slow down and retry.",
             )
-        if record.monthly_call_allowance is not None:
+        # Internal keys (§6) skip the toll entirely: no allowance is
+        # consulted and nothing is debited. Every other check — auth,
+        # entitlement, rate cap — applies to them unchanged.
+        if not is_internal(record) and record.monthly_call_allowance is not None:
             used = request.app.state.metering.month_total(record.key_id)
             if used >= record.monthly_call_allowance:
                 raise HTTPException(
@@ -962,7 +972,17 @@ def create_app(
             custom_assumptions=scenario.custom_assumptions,
         )
         api_response = await _serve_research(body, str(uuid.uuid4())[:8])
-        request.app.state.metering.record(scenario.key_id, "shared")
+        # A shared run meters to the scenario's owner, in the owner's
+        # class bucket (§6): an internal owner's share views are
+        # internal usage, never customer usage.
+        owner = None
+        if request.app.state.key_store is not None:
+            owner = request.app.state.key_store.get(scenario.key_id)
+        request.app.state.metering.record(
+            scenario.key_id,
+            "shared",
+            kind=owner.kind if owner else KEY_KIND_CUSTOMER,
+        )
         fmt = negotiate_format(format, request.headers.get("accept", ""))
         if fmt == "html":
             raise HTTPException(
@@ -1309,7 +1329,10 @@ def create_app(
     #   rate cap, the same monthly allowance.
     # - Successful tools/call invocations meter through the same
     #   MeteringRecorder under the "mcp" endpoint label, so
-    #   /api/usage reports them beside the REST labels.
+    #   /api/usage reports them beside the REST labels. The key's class
+    #   (§6) rides along: an internal key's calls land in the internal
+    #   metering bucket and consult no allowance; every other gate —
+    #   auth, `api.access`, the per-key rate cap — is identical.
     # - The research tool serves _serve_research's payload and the
     #   quant tool serves _serve_quant's, verbatim.
     # Stateless per request: no session id is issued or required.
@@ -1469,7 +1492,9 @@ def create_app(
                 status_code=429,
                 detail="Rate limit exceeded for this API key. Slow down and retry.",
             )
-        if record.monthly_call_allowance is not None:
+        # Internal keys (§6): no allowance consulted, nothing debited —
+        # the rate cap above still applies to them unchanged.
+        if not is_internal(record) and record.monthly_call_allowance is not None:
             used = request.app.state.metering.month_total(record.key_id)
             if used >= record.monthly_call_allowance:
                 raise HTTPException(
@@ -1577,7 +1602,9 @@ def create_app(
                 },
             )
         request.app.state.metering.record(
-            record.key_id if record else "anonymous", "mcp"
+            record.key_id if record else "anonymous",
+            "mcp",
+            kind=record.kind if record else KEY_KIND_CUSTOMER,
         )
         return _mcp_result(req_id, result)
 
@@ -1670,18 +1697,24 @@ def create_app(
         from .entitlements import effective_entitlements
 
         metering = request.app.state.metering
-        monthly = metering.month_usage(record.key_id)
+        # A key reads its own class bucket (§6): a customer key sees the
+        # customer counts exactly as before; an internal key sees its
+        # internal counts, stamped with its class.
+        monthly = metering.month_usage(record.key_id, kind=record.kind)
         monthly_total = sum(monthly.values())
         allowance = record.monthly_call_allowance
         return JSONResponse(
             {
                 "key_id": record.key_id,
                 "label": record.label,
+                "kind": record.kind,
                 "entitlements": sorted(effective_entitlements(record)),
                 "plan": record.plan,
                 "day_utc": metering._today_utc(),
-                "usage": metering.usage(record.key_id),
-                "total_requests": metering.total_requests(record.key_id),
+                "usage": metering.usage(record.key_id, kind=record.kind),
+                "total_requests": metering.total_requests(
+                    record.key_id, kind=record.kind
+                ),
                 "month_utc": metering.current_month_utc(),
                 "monthly_usage": monthly,
                 "monthly_total_requests": monthly_total,
@@ -1722,7 +1755,19 @@ def create_app(
                 raise HTTPException(
                     status_code=400, detail="day must be YYYY-MM-DD."
                 ) from None
-        return JSONResponse(request.app.state.telemetry.summary(day))
+        data = request.app.state.telemetry.summary(day)
+        # The operator split (§6): metered API usage for the summary day,
+        # customer and internal reported side by side, never merged —
+        # the customer block is the revenue-facing truth and excludes
+        # internal usage by construction.
+        metering = request.app.state.metering
+        data["api_usage"] = {
+            "customer": metering.day_totals(data["day_utc"]),
+            "internal": metering.day_totals(
+                data["day_utc"], kind=KEY_KIND_INTERNAL
+            ),
+        }
+        return JSONResponse(data)
 
     # ================================================================
     # Stripe billing (Stream A) — dormant until configured
