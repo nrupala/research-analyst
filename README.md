@@ -5,7 +5,7 @@ See LICENSE and COMMERCIAL-LICENSE.md for licensing terms (commercial licenses a
 
 # Research Analyst
 
-**Institutional-grade equity and ETF research agent with disciplined 7-step methodology.**
+**An attempt to provide institutional-grade equity and ETF research, with a disciplined 7-step methodology.**
 
 Research Analyst is a structured, disciplined research agent designed to generate repeatable, high-quality investment analysis. It synthesizes fundamentals, technicals, macro context, competitor dynamics, and valuation frameworks into clear, actionable research reports.
 
