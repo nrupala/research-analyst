@@ -26,16 +26,20 @@ No network, no billing, no real keys: everything is in-memory.
 import hashlib
 import json
 
+import pytest
+
 from research_analyst.entitlements import (
     API_ACCESS,
     RA_PRO,
     TWF_PRO,
     WHITE_LABEL,
+    APIKeyRecord,
     KeyStore,
     MeteringRecorder,
     WhiteLabelProfile,
     effective_entitlements,
     has_entitlement,
+    is_internal,
 )
 
 
@@ -128,3 +132,50 @@ def test_white_label_profile_inactive_by_default():
     assert WhiteLabelProfile().is_active() is False
     assert WhiteLabelProfile(org_name="Acme").is_active() is True
     assert WhiteLabelProfile(show_support_link=False).is_active() is True
+
+
+# ---------------------------------------------------------------------------
+# Key classes (§6, 2026-11-07): customer (default) vs internal/operator
+# ---------------------------------------------------------------------------
+
+
+def test_internal_mint_carries_the_stamp():
+    store = KeyStore()
+    record, raw = store.create("ops", {API_ACCESS}, kind="internal")
+    assert record.kind == "internal"
+    assert is_internal(record)
+    assert store.verify(raw).kind == "internal"
+
+
+def test_customer_is_default_and_legacy_records_read_as_customer():
+    store = KeyStore()
+    record, _ = store.create("plain", {RA_PRO})
+    assert record.kind == "customer"
+    assert not is_internal(record)
+    base = record.to_dict()
+    legacy = dict(base)
+    del legacy["kind"]  # a record written before the class existed
+    assert APIKeyRecord.from_dict(legacy).kind == "customer"
+    bogus = dict(base, kind="partner")  # an unrecognized value fails safe
+    assert APIKeyRecord.from_dict(bogus).kind == "customer"
+
+
+def test_internal_mint_fails_closed():
+    store = KeyStore()
+    with pytest.raises(ValueError):
+        store.create("bad", {API_ACCESS}, kind="partner")
+    with pytest.raises(ValueError):
+        store.create(
+            "bad", {API_ACCESS}, kind="internal", monthly_call_allowance=10
+        )
+
+
+def test_internal_stamp_persists_in_the_key_file(tmp_path):
+    path = tmp_path / "keys.json"
+    store = KeyStore(path)
+    record, raw = store.create("ops", {API_ACCESS}, kind="internal")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["keys"][0]["kind"] == "internal"
+    fresh = KeyStore(path)
+    assert fresh.verify(raw).kind == "internal"
+    assert fresh.get(record.key_id).kind == "internal"
