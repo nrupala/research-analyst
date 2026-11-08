@@ -662,6 +662,15 @@ html { font-size: clamp(14px, 13.3px + 0.22vw, 17px); }
 }
 
 /* Quant tab: discount-rate assumption form */
+/* Quant Lab Phase 1 chart panels: vendored Plotly figures (white Ink &
+   Brass cards on the app theme), their view lines, notes and chips. */
+.quant-chart-panel{margin:.75rem 0}
+.quant-chart{background:#ffffff;border-radius:8px;min-height:120px}
+.quant-chart[hidden]{display:none}
+.quant-chart-view{font-size:var(--fs-xs);color:var(--c-text-3);margin:.3rem 0 0}
+.quant-chart-note{font-size:var(--fs-sm);color:var(--c-text-2);margin:.3rem 0}
+.quant-chart-chips{margin:.3rem 0}
+.quant-chip{display:inline-block;font-size:var(--fs-xs);color:var(--c-warning);border:1px solid var(--c-warning);border-radius:999px;padding:.1rem .5rem;margin:0 .25rem .25rem 0}
 .quant-dr{display:flex;align-items:center;gap:.5rem;margin:1rem 0;flex-wrap:wrap}
 .quant-dr label{font-size:.9rem}
 .quant-dr input{width:7rem;padding:.35rem .5rem;border:1px solid var(--c-border);border-radius:4px;font:inherit;background:var(--c-surface);color:var(--c-text)}

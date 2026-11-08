@@ -28,6 +28,7 @@ var PRECACHE = [
     "/",
     "/style.css",
     "/app.js",
+    "/vendor/plotly-2.32.0.min.js",
     "/worker.js",
     "/manifest.json",
     "/icons/icon-192x192.png",
