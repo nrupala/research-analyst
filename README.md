@@ -280,6 +280,46 @@ Health check. Returns `{"status": "ok"}`.
 
 Interactive Swagger UI documentation.
 
+### `POST /mcp` — MCP for agents
+
+Streamable-HTTP MCP (JSON-RPC 2.0, stateless) at `POST /mcp` — publicly
+`POST https://analyst.thinkvalue.org/api/mcp`. An API key is required:
+the `X-RA-Key` header or `Authorization: Bearer`, the same key REST
+takes, carrying API access. Agents start with [`SKILL.md`](SKILL.md),
+the onboarding guide for this surface.
+
+| Tool | What it answers |
+|---|---|
+| `filing_picture` | The filing picture for one ticker from SEC EDGAR, in one call, displayed in three named buckets: filings found, periods covered, and **not covered — named**. |
+| `research` | The full research report — the `POST /api/research` payload, verbatim. |
+| `quant` | The quantitative study (growth trends, DuPont decomposition, forensic screens, valuation models, capital allocation) from the same merged statements as the report. |
+
+### Data freshness — how refresh actually works, measured
+
+There is **no background refresh job and no refresh timer**. Freshness
+is end-of-day and on demand, by design:
+
+- A generated report is cached and served only until the next US
+  market close (16:00 America/New_York, weekends skipped) after it was
+  generated, and never past a 24-hour outer cap
+  (`RA_SERVER_REPORT_CACHE_TTL_SECONDS`, default 86400). The first
+  request after the boundary regenerates the report.
+- A cached report older than ~2 days is stamped `stale`, with a
+  visible warning, instead of being silently re-served.
+- Provider data (SEC EDGAR, market data) is fetched on demand and held
+  in a TTL disk cache (default 1 hour for market data); entries
+  persist until a later request needs them again.
+
+**Measured on the production host, 2026-11-18:** the on-disk provider
+cache held 60 entries; their fetch timestamps ran from 2026-10-16
+07:20 UTC to 2026-11-15 06:44 UTC, and at measurement time the entry
+ages were 82 hours (youngest), 324 hours (median), and 802 hours
+(oldest). That is what a demand cache looks like: an entry's age says
+when that ticker was last researched, not when a refresh cycle ran —
+there is no cycle, and no refresh log exists to measure one from. Any
+wording elsewhere that describes a scheduled (for example "48-hour")
+refresh does not describe this system; this section is the record.
+
 ---
 
 ## Configuration
@@ -294,6 +334,7 @@ All settings are environment-variable driven. No `.env` file required — defaul
 | `RA_ANALYSIS_MC_SIMULATION_PATHS` | `10000` | Monte Carlo paths |
 | `RA_SERVER_HOST` | `127.0.0.1` | Server bind host |
 | `RA_SERVER_PORT` | `8700` | Server bind port |
+| `RA_SERVER_REPORT_CACHE_TTL_SECONDS` | `86400` | Report cache outer cap (the end-of-day expiry applies first) |
 
 ---
 
