@@ -38,6 +38,11 @@ Semantics under test:
   auth, limits, tool errors — are never metered.
 - Tool descriptions carry the constitution: research and education
   only, no advice, no recommendation language.
+- The filing_picture composite answers in three named buckets —
+  filings_found, periods_covered, not_covered_named — assembled from
+  the SEC EDGAR provider the pipeline reads. Every gap is named;
+  absent data is reported as missing, never fabricated, and an
+  unresolvable ticker is an isError result, not an empty picture.
 """
 # Module: tests/test_mcp.py
 
@@ -320,13 +325,13 @@ def test_mcp_rate_cap_gets_429(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_mcp_tools_list_publishes_research_and_quant():
+def test_mcp_tools_list_publishes_all_three_tools():
     store = KeyStore()
     _, raw = _issue(store)
     client = _client(store=store)
     r = _rpc(client, {"jsonrpc": "2.0", "id": 3, "method": "tools/list"}, raw=raw)
     tools = r.json()["result"]["tools"]
-    assert [t["name"] for t in tools] == ["research", "quant"]
+    assert [t["name"] for t in tools] == ["research", "quant", "filing_picture"]
     for tool in tools:
         assert tool["inputSchema"]["required"] == ["ticker"]
         description = tool["description"]
@@ -528,6 +533,231 @@ def test_mcp_quant_no_statements_is_error_result():
 
 
 # ---------------------------------------------------------------------------
+# tools/call — filing_picture (the composite: one call, three buckets)
+# ---------------------------------------------------------------------------
+
+
+class _StubEdgarProvider:
+    """SEC EDGAR provider stub — fixed fixtures, no network.
+
+    Mirrors the real provider's async context-manager shape and the
+    three methods the composite reads. Class attributes are the
+    fixture knobs; each test sets them before the call.
+    """
+
+    profile = None
+    profile_error = None
+    filings: dict = {}
+    statements: list = []
+
+    async def __aenter__(self):  # noqa: ANN202
+        return self
+
+    async def __aexit__(self, *exc):  # noqa: ANN001, ANN202
+        return None
+
+    async def get_company_profile(self, ticker):  # noqa: ANN001, ANN202
+        if self.profile_error is not None:
+            raise self.profile_error
+        return self.profile
+
+    async def search_filings(self, ticker, form_type="10-K", query="", limit=10):  # noqa: ANN001, ANN202
+        return list(self.filings.get(form_type, []))[:limit]
+
+    async def get_financials(self, ticker, periods=5):  # noqa: ANN001, ANN202
+        return list(self.statements)[:periods]
+
+
+def _filing(form: str, filed: str) -> dict:
+    return {
+        "filing_date": filed,
+        "form_type": form,
+        "description": f"Stub Corp — {form}",
+        "url": "https://www.sec.gov/Archives/edgar/data/123/0000000000",
+    }
+
+
+def _full_stmt(year: int) -> FinancialStatement:
+    return FinancialStatement(
+        period=f"FY{year}",
+        period_end_date=date(year, 12, 31),
+        is_annual=True,
+        revenue=Decimal("1000"),
+        net_income=Decimal("100"),
+        total_assets=Decimal("2000"),
+        total_equity=Decimal("1200"),
+        operating_cash_flow=Decimal("150"),
+        free_cash_flow=Decimal("120"),
+    )
+
+
+def _stub_edgar(*, filings=None, statements=None, profile_error=None):  # noqa: ANN001, ANN202
+    _StubEdgarProvider.profile = CompanyProfile(
+        ticker="AAA",
+        name="Stub Corp",
+        security_type=SecurityType.EQUITY,
+        cik="0000000123",
+    )
+    _StubEdgarProvider.profile_error = profile_error
+    _StubEdgarProvider.filings = filings or {}
+    _StubEdgarProvider.statements = statements or []
+    return patch.object(server_mod, "SECEdgarProvider", _StubEdgarProvider)
+
+
+def test_mcp_filing_picture_full_coverage_buckets():
+    store = KeyStore()
+    record, raw = _issue(store)
+    metering = MeteringRecorder()
+    client = _client(store=store, metering=metering)
+    filings = {
+        "10-K": [_filing("10-K", "2026-01-30"), _filing("10-K", "2025-01-31")],
+        "10-Q": [
+            _filing("10-Q", "2026-05-02"),
+            _filing("10-Q", "2025-11-01"),
+            _filing("10-Q", "2025-08-02"),
+        ],
+        "8-K": [_filing("8-K", "2026-03-15")],
+    }
+    statements = [_full_stmt(2021 + i) for i in range(5)]
+    with _stub_edgar(filings=filings, statements=statements):
+        r = _call(client, "filing_picture", {"ticker": "AAA"}, raw=raw)
+    assert r.status_code == 200
+    result = r.json()["result"]
+    assert result["isError"] is False
+
+    payload = result["structuredContent"]
+    assert payload["ticker"] == "AAA"
+    assert payload["company_name"] == "Stub Corp"
+    assert payload["cik"] == "0000000123"
+    assert payload["source"] == "SEC EDGAR"
+
+    found = payload["filings_found"]
+    assert found["total"] == 6
+    assert found["by_form"]["10-K"]["count"] == 2
+    assert found["by_form"]["10-K"]["latest_filing_date"] == "2026-01-30"
+    assert found["by_form"]["10-Q"]["count"] == 3
+    assert found["by_form"]["8-K"]["count"] == 1
+
+    covered = payload["periods_covered"]
+    assert covered["statement_count"] == 5
+    assert covered["annual_count"] == 5
+    assert covered["quarterly_count"] == 0
+    assert covered["earliest_period_end"] == "2021-12-31"
+    assert covered["latest_period_end"] == "2025-12-31"
+    assert [p["period"] for p in covered["periods"]] == [
+        "FY2021",
+        "FY2022",
+        "FY2023",
+        "FY2024",
+        "FY2025",
+    ]
+
+    # Full coverage: the only named gaps are the two standing scope
+    # limits — no form named missing, no line item named absent.
+    gaps = payload["not_covered_named"]
+    assert len(gaps) == 2
+    assert any("before 2020-01-01" in g for g in gaps)
+    assert any("Form 4" in g for g in gaps)
+    assert not any(g.startswith(("10-K:", "10-Q:", "8-K:")) for g in gaps)
+    assert not any("absent from all" in g for g in gaps)
+
+    # The text rendering carries the same three named buckets.
+    markdown = result["content"][0]["text"]
+    assert "## Filings found" in markdown
+    assert "## Periods covered" in markdown
+    assert "## Not covered — named" in markdown
+
+    # A JSON text block carries the same payload for text-only clients.
+    texts = [c["text"] for c in result["content"] if c["type"] == "text"]
+    parsed = [json.loads(t) for t in texts if t.lstrip().startswith("{")]
+    assert parsed and parsed[0]["filings_found"]["total"] == 6
+
+    # Metered once, under the "mcp" label, like the other tools.
+    assert metering.usage(record.key_id) == {"mcp": 1}
+
+
+def test_mcp_filing_picture_names_every_gap():
+    store = KeyStore()
+    _, raw = _issue(store)
+    client = _client(store=store, metering=MeteringRecorder())
+    filings = {
+        "10-K": [_filing("10-K", "2026-01-30")],
+        "10-Q": [_filing("10-Q", "2026-05-02"), _filing("10-Q", "2025-11-01")],
+        "8-K": [],  # a core form with no filings — must be named
+    }
+    # Both statements lack the two cash-flow line items entirely.
+    statements = [
+        FinancialStatement(
+            period=f"FY{year}",
+            period_end_date=date(year, 12, 31),
+            is_annual=True,
+            revenue=Decimal("1000"),
+            net_income=Decimal("100"),
+            total_assets=Decimal("2000"),
+            total_equity=Decimal("1200"),
+        )
+        for year in (2024, 2025)
+    ]
+    with _stub_edgar(filings=filings, statements=statements):
+        r = _call(client, "filing_picture", {"ticker": "AAA"}, raw=raw)
+    result = r.json()["result"]
+    assert result["isError"] is False
+    payload = result["structuredContent"]
+
+    # Counts are exactly what the provider returned — nothing invented.
+    assert payload["filings_found"]["total"] == 3
+    assert payload["filings_found"]["by_form"]["8-K"]["count"] == 0
+    assert payload["filings_found"]["by_form"]["8-K"]["latest_filing_date"] is None
+    assert payload["periods_covered"]["statement_count"] == 2
+
+    gaps = payload["not_covered_named"]
+    assert any(g.startswith("8-K:") for g in gaps)
+    assert any("Operating cash flow" in g and "absent from all 2" in g for g in gaps)
+    assert any("Free cash flow" in g and "absent from all 2" in g for g in gaps)
+    # Present line items are never named as gaps.
+    assert not any("Revenue" in g and "absent" in g for g in gaps)
+    assert not any("Total assets" in g and "absent" in g for g in gaps)
+
+
+def test_mcp_filing_picture_no_statements_stays_missing():
+    store = KeyStore()
+    _, raw = _issue(store)
+    client = _client(store=store, metering=MeteringRecorder())
+    filings = {"10-K": [_filing("10-K", "2026-01-30")], "10-Q": [], "8-K": []}
+    with _stub_edgar(filings=filings, statements=[]):
+        r = _call(client, "filing_picture", {"ticker": "AAA"}, raw=raw)
+    result = r.json()["result"]
+    assert result["isError"] is False
+    payload = result["structuredContent"]
+    covered = payload["periods_covered"]
+    assert covered["statement_count"] == 0
+    assert covered["periods"] == []
+    assert covered["earliest_period_end"] is None
+    assert covered["latest_period_end"] is None
+    gaps = payload["not_covered_named"]
+    assert any("Standardized financial statements" in g for g in gaps)
+    assert any(g.startswith("10-Q:") for g in gaps)
+    assert any(g.startswith("8-K:") for g in gaps)
+
+
+def test_mcp_filing_picture_unknown_ticker_is_error_not_fabrication():
+    store = KeyStore()
+    record, raw = _issue(store)
+    metering = MeteringRecorder()
+    client = _client(store=store, metering=metering)
+    with _stub_edgar(profile_error=ValueError("CIK not found for ticker 'ZZZZ'")):
+        r = _call(client, "filing_picture", {"ticker": "ZZZZ"}, raw=raw)
+    assert r.status_code == 200
+    result = r.json()["result"]
+    assert result["isError"] is True
+    text = result["content"][0]["text"]
+    assert "No SEC EDGAR record" in text
+    assert "Traceback" not in text  # no stack traces, ever
+    # A failed call is never metered.
+    assert metering.usage(record.key_id) == {}
+
+
+# ---------------------------------------------------------------------------
 # /api/mcp alias — the same handler behind the /api/* Worker routes
 # (the public hosts proxy only /api/* to the origin, so /mcp alone
 # is unreachable there; the alias is the published endpoint)
@@ -550,7 +780,7 @@ def test_mcp_api_alias_initialize_and_tools_list():
         path="/api/mcp",
     )
     tools = r.json()["result"]["tools"]
-    assert [t["name"] for t in tools] == ["research", "quant"]
+    assert [t["name"] for t in tools] == ["research", "quant", "filing_picture"]
 
 
 def test_mcp_api_alias_tools_call_research():

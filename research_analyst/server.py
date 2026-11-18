@@ -90,6 +90,7 @@ from .exporters import ts_definitions, xml_from_dict
 from .models import ResearchRequest
 from .orchestrator import ResearchOrchestrator
 from .providers.market_data import MarketDataProvider
+from .providers.sec_edgar import SECEdgarProvider
 from .report_export import embed_card_html, research_csv, research_pdf
 from .reports.comparative_renderer import render_html, render_markdown
 from .scenarios import MAX_SCENARIOS_PER_KEY, ScenarioStore, scenario_public
@@ -1406,6 +1407,35 @@ def create_app(
                 "additionalProperties": False,
             },
         },
+        {
+            "name": "filing_picture",
+            "description": (
+                "The filing picture for one ticker from SEC EDGAR, in one "
+                "call: what filings exist, which statement periods they "
+                "cover, and what is NOT covered — named, never silently "
+                "dropped. Answers in three buckets: filings_found (counts "
+                "by core form — 10-K, 10-Q, 8-K — with filing dates), "
+                "periods_covered (the standardized financial statements "
+                "EDGAR data supports), and not_covered_named (every gap: "
+                "a core form with no filings, a core line item absent "
+                "from every returned statement, and the declared scope "
+                "limits of the search). Call this before `research` or "
+                "`quant` to learn what the underlying record can and "
+                "cannot support. Research and education only — not "
+                "investment advice and not a recommendation."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "ticker": {
+                        "type": "string",
+                        "description": "Ticker symbol, e.g. AAPL or RELIANCE.NS.",
+                    },
+                },
+                "required": ["ticker"],
+                "additionalProperties": False,
+            },
+        },
     ]
     _mcp_tool_names = {tool["name"] for tool in _mcp_tools}
 
@@ -1540,6 +1570,176 @@ def create_app(
             "isError": False,
         }
 
+    # Core EDGAR forms the filing picture reports on, and the core
+    # statement line items whose absence is a named gap, never a
+    # silently zero-filled value.
+    _filing_picture_forms = ("10-K", "10-Q", "8-K")
+    _filing_picture_core_fields = (
+        ("revenue", "Revenue"),
+        ("net_income", "Net income"),
+        ("total_assets", "Total assets"),
+        ("total_equity", "Total equity"),
+        ("operating_cash_flow", "Operating cash flow"),
+        ("free_cash_flow", "Free cash flow"),
+    )
+
+    async def _mcp_tool_filing_picture(ticker: str) -> dict[str, Any]:
+        """The composite tool: the filing picture for one ticker, in
+        one call, assembled from the same SEC EDGAR provider the
+        research pipeline reads — no second fetch path.
+
+        The answer is three named buckets (the house bucketed-display
+        pattern): filings_found, periods_covered, and
+        not_covered_named. Every gap is named in the third bucket —
+        a core form with no filings, a core line item absent from
+        every returned statement, the declared limits of the search
+        itself. Nothing absent is presented as zero or smoothed over.
+        """
+        try:
+            async with SECEdgarProvider() as sec:
+                profile = await sec.get_company_profile(ticker)
+                filings_by_form: dict[str, list[dict[str, Any]]] = {}
+                for form in _filing_picture_forms:
+                    filings_by_form[form] = await sec.search_filings(
+                        ticker, form_type=form, limit=10
+                    )
+                statements = await sec.get_financials(ticker, periods=5)
+        except ValueError as e:
+            # CIK resolution failed: the ticker has no SEC EDGAR record
+            # this provider can reach. A tool-level failure per MCP
+            # convention (the dispatch turns HTTPException into an
+            # isError result) — never a fabricated empty picture.
+            raise HTTPException(
+                status_code=404,
+                detail=f"No SEC EDGAR record could be resolved for {ticker}: {e}",
+            ) from e
+
+        by_form: dict[str, Any] = {}
+        total_filings = 0
+        for form in _filing_picture_forms:
+            filings = filings_by_form[form]
+            total_filings += len(filings)
+            dates = sorted(
+                (f.get("filing_date", "") for f in filings if f.get("filing_date")),
+                reverse=True,
+            )
+            by_form[form] = {
+                "count": len(filings),
+                "latest_filing_date": dates[0] if dates else None,
+                "filings": [
+                    {
+                        "filing_date": f.get("filing_date", ""),
+                        "form_type": f.get("form_type", form),
+                        "description": f.get("description", ""),
+                        "url": f.get("url", ""),
+                    }
+                    for f in filings
+                ],
+            }
+        filings_found = {"total": total_filings, "by_form": by_form}
+
+        periods = [
+            {
+                "period": s.period,
+                "period_end_date": s.period_end_date.isoformat()
+                if s.period_end_date
+                else None,
+                "is_annual": s.is_annual,
+            }
+            for s in statements
+        ]
+        period_ends = sorted(
+            (p["period_end_date"] for p in periods if p["period_end_date"]),
+        )
+        periods_covered = {
+            "statement_count": len(periods),
+            "annual_count": sum(1 for p in periods if p["is_annual"]),
+            "quarterly_count": sum(1 for p in periods if not p["is_annual"]),
+            "earliest_period_end": period_ends[0] if period_ends else None,
+            "latest_period_end": period_ends[-1] if period_ends else None,
+            "periods": periods,
+        }
+
+        not_covered: list[str] = []
+        for form in _filing_picture_forms:
+            if by_form[form]["count"] == 0:
+                not_covered.append(
+                    f"{form}: no filings found in the searched window "
+                    "(SEC EDGAR full-text index, 2020-01-01 to today)."
+                )
+        if not statements:
+            not_covered.append(
+                "Standardized financial statements: SEC EDGAR company-facts "
+                "data returned none for this ticker, so no statement periods "
+                "are covered."
+            )
+        else:
+            for attr, label in _filing_picture_core_fields:
+                if all(getattr(s, attr) is None for s in statements):
+                    not_covered.append(
+                        f"{label}: absent from all {len(statements)} returned "
+                        "statements — reported as missing, not estimated."
+                    )
+        not_covered.append(
+            "Filings before 2020-01-01: outside the searched window."
+        )
+        not_covered.append(
+            "Form 4 (insider transactions), DEF 14A (proxy), and foreign "
+            "private-issuer forms (20-F, 40-F, 6-K): outside this tool's "
+            "core form set."
+        )
+
+        payload: dict[str, Any] = {
+            "ticker": ticker,
+            "company_name": profile.name,
+            "cik": profile.cik,
+            "source": "SEC EDGAR",
+            "filings_found": filings_found,
+            "periods_covered": periods_covered,
+            "not_covered_named": not_covered,
+            "boundary": (
+                "Research and education only — decision intelligence with "
+                "provenance for the reader's own decision; not investment "
+                "advice and not a recommendation."
+            ),
+        }
+
+        lines = [
+            f"# Filing picture — {ticker} ({profile.name})",
+            "",
+            "Source: SEC EDGAR. Research and education only — not "
+            "investment advice.",
+            "",
+            "## Filings found",
+            f"Total: {total_filings} across the core forms.",
+        ]
+        for form in _filing_picture_forms:
+            bucket = by_form[form]
+            latest = bucket["latest_filing_date"] or "none"
+            lines.append(f"- {form}: {bucket['count']} (latest {latest})")
+        lines += [
+            "",
+            "## Periods covered",
+            f"{periods_covered['statement_count']} standardized statements "
+            f"({periods_covered['annual_count']} annual, "
+            f"{periods_covered['quarterly_count']} quarterly); period ends "
+            f"{periods_covered['earliest_period_end'] or 'none'} to "
+            f"{periods_covered['latest_period_end'] or 'none'}.",
+            "",
+            "## Not covered — named",
+        ]
+        lines += [f"- {gap}" for gap in not_covered]
+        markdown = "\n".join(lines)
+
+        return {
+            "content": [
+                {"type": "text", "text": markdown},
+                {"type": "text", "text": json.dumps(payload)},
+            ],
+            "structuredContent": payload,
+            "isError": False,
+        }
+
     async def _mcp_tools_call(
         request: Request,
         record: APIKeyRecord | None,
@@ -1587,6 +1787,8 @@ def create_app(
         try:
             if name == "research":
                 result = await _mcp_tool_research(ticker)
+            elif name == "filing_picture":
+                result = await _mcp_tool_filing_picture(ticker)
             else:
                 result = await _mcp_tool_quant(ticker, arguments)
         except HTTPException as e:

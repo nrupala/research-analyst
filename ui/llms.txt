@@ -16,8 +16,15 @@ equities and ETFs.
   formats json, xml, markdown, html, ts via ?format= or Accept header;
   every payload carries a schema_version.
 - MCP (streamable HTTP, JSON-RPC 2.0): POST
-  https://analyst.thinkvalue.org/api/mcp — tools `research` and `quant`;
-  an API key is required (X-RA-Key header or Authorization: Bearer).
+  https://analyst.thinkvalue.org/api/mcp — tools `research`, `quant`,
+  and `filing_picture` (the SEC EDGAR filing picture for one ticker in
+  one call, in three named buckets: filings found, periods covered,
+  not covered — named); an API key is required (X-RA-Key header or
+  Authorization: Bearer). Agent onboarding: SKILL.md in the source repo.
+- Freshness: no scheduled refresh exists. Reports regenerate on
+  demand at the next US market close (24-hour outer cap) and are
+  stamped stale past ~2 days; the measured record is in the repo
+  README ("Data freshness — how refresh actually works, measured").
 
 ## Data sources
 
